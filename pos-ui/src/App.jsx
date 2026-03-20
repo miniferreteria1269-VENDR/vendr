@@ -256,7 +256,7 @@ function App() {
         product_id: i.product_id,
         quantity: i.quantity
       }))
-    });
+    };
 
   const finalizeIntake = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
