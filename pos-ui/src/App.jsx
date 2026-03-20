@@ -194,6 +194,33 @@ function App() {
     setSearchTerm("");
   };
 
+  const removeItem = (index) => {
+    setTickets(prev =>
+      prev.map(ticket =>
+        ticket.id === activeTicket
+          ? {
+              ...ticket,
+              items: ticket.items.filter((_, i) => i !== index)
+            }
+          : ticket
+      )
+    );
+  };
+
+  const updateItemField = (index, field, value) => {
+    setTickets(prev =>
+      prev.map(ticket =>
+        ticket.id === activeTicket
+          ? {
+              ...ticket,
+              items: ticket.items.map((item, i) =>
+                i === index ? { ...item, [field]: value } : item
+              )
+            }
+          : ticket
+      )
+    );
+  };
 
   const renameTicket = (ticketId) => {
     console.log("RENAME CLICKED", ticketId);
