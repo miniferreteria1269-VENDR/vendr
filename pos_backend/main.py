@@ -528,107 +528,70 @@ def change_price(store_id:int,product_id:int,cost:float,price:float):
 @app.post("/intake-ticket")
 def intake_ticket(ticket: IntakeTicket):
 
-    conn = db()
-    cursor = conn.cursor()
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT MAX(ticket_id) FROM events")
-    result = cursor.fetchone()[0]
-    ticket_id = 1 if result is None else result + 1
+        cursor.execute("SELECT MAX(ticket_id) FROM events")
+        result = cursor.fetchone()[0]
+        ticket_id = 1 if result is None else result + 1
 
-    now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
-    total_cost = 0  # 🔥 track cost for cash deduction
+        for item in ticket.items:
 
-    for item in ticket.items:
+            cursor.execute("""
+                SELECT name
+                FROM products
+                WHERE product_id = %s AND store_id = %s
+            """, (item.product_id, ticket.store_id))
 
-        cursor.execute("""
-            SELECT name
-            FROM products
-            WHERE product_id = %s AND store_id = %s
-        """, (item.product_id, ticket.store_id))
+            product = cursor.fetchone()
 
-        product = cursor.fetchone()
+            if not product:
+                raise ValueError("Product not found")
 
-        if not product:
-            raise ValueError("Product not found")
+            name = product[0]
 
-        name = product[0]
+            cursor.execute("""
+                INSERT INTO events
+                (store_id, event_type, product_id, product_name_at_time,
+                quantity, cost_at_time, price_at_time, event_datetime, ticket_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                ticket.store_id,
+                "intake",
+                item.product_id,
+                name,
+                item.quantity,
+                item.cost,
+                item.price,
+                now,
+                ticket_id
+            ))
 
-        # INSERT EVENT
-        cursor.execute("""
-            INSERT INTO events
-            (store_id, event_type, product_id, product_name_at_time,
-            quantity, cost_at_time, price_at_time, event_datetime, ticket_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            ticket.store_id,
-            "intake",
-            item.product_id,
-            name,
-            item.quantity,
-            item.cost,
-            item.price,
-            now,
-            ticket_id
-        ))
+            cursor.execute("""
+                UPDATE products
+                SET stock = stock + %s,
+                    cost = %s,
+                    price = %s
+                WHERE product_id = %s AND store_id = %s
+            """, (
+                item.quantity,
+                item.cost,
+                item.price,
+                item.product_id,
+                ticket.store_id
+            ))
 
-        # UPDATE STOCK
-        cursor.execute("""
-            UPDATE products
-            SET stock = stock + %s,
-                cost = %s,
-                price = %s
-            WHERE product_id = %s AND store_id = %s
-        """, (
-            item.quantity,
-            item.cost,
-            item.price,
-            item.product_id,
-            ticket.store_id
-        ))
+        conn.commit()
+        conn.close()
 
-        total_cost += item.cost * item.quantity
+        return {"ticket_id": ticket_id}
 
-    # -----------------------------
-    # CASH EVENT (ONLY IF PAID)
-    # -----------------------------
-
-    if ticket.paid:
-
-        cursor.execute("""
-            SELECT organization_id
-            FROM stores
-            WHERE store_id = %s
-        """, (ticket.store_id,))
-
-        result = cursor.fetchone()
-        org_id = result[0] if result and result[0] is not None else None
-
-        cursor.execute("""
-            INSERT INTO cash_events (
-                organization_id,
-                store_id,
-                type,
-                direction,
-                amount,
-                note,
-                reference_id
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (
-            org_id,
-            ticket.store_id,
-            "intake_paid",
-            -1,  # 🔥 money leaving
-            total_cost,
-            "Inventory purchase",
-            ticket_id
-        ))
-
-    conn.commit()
-    conn.close()
-
-    return {"ticket_id": ticket_id}
+    except Exception as e:
+        print("🔥 INTAKE ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # -----------------------------
