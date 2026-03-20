@@ -1,0 +1,83 @@
+import sqlite3
+from inventory_engine import InventoryEngine
+
+
+def rebuild_products(store_id):
+
+    conn = sqlite3.connect("pos.db")
+    cursor = conn.cursor()
+
+    # Load only events for this store
+    cursor.execute(
+        "SELECT * FROM events WHERE store_id = ? ORDER BY event_id",
+        (store_id,)
+    )
+    events = cursor.fetchall()
+
+    engine = InventoryEngine()
+    product_names = {}
+
+    for event in events:
+
+        event_type = event[2].strip().lower()
+        product_id = event[3]
+        product_name = event[4]
+        quantity = event[5]
+        cost = event[6]
+        price = event[7]
+
+        if product_name:
+            product_names[product_id] = product_name
+
+        if event_type == "create":
+            engine.create(product_id, quantity, cost, price, True)
+
+        elif event_type == "intake":
+            engine.intake(product_id, quantity, cost, price)
+
+        elif event_type == "sale":
+            engine.sale(product_id, quantity)
+
+        elif event_type == "loss":
+            engine.loss(product_id, quantity)
+
+        elif event_type == "price_change":
+            engine.price_change(product_id, cost, price)
+
+    # Delete products only for this store
+    cursor.execute(
+        "DELETE FROM products WHERE store_id = ?",
+        (store_id,)
+    )
+
+    # Rebuild products
+    for product_id, p in engine.products.items():
+
+        name = product_names.get(product_id, "Unknown")
+
+        cursor.execute("""
+            INSERT INTO products (
+                product_id,
+                store_id,
+                name,
+                stock,
+                cost,
+                price,
+                tracks_stock,
+                is_active,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        """, (
+            product_id,
+            store_id,
+            name,
+            p["stock"],
+            p["cost"],
+            p["price"],
+            1,
+            1
+        ))
+
+    conn.commit()
+    conn.close()

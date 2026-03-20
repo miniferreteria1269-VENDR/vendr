@@ -1,0 +1,5 @@
+restart app
+
+cd pos_backend
+venv\Scripts\activate
+uvicorn main:app --reload
