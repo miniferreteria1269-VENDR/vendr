@@ -235,6 +235,18 @@ function App() {
     );
   };
 
+  const cancelTicket = () => {
+    const remaining = tickets.filter(t => t.id !== activeTicket);
+
+    setTickets(remaining);
+
+    if (remaining.length > 0) {
+      setActiveTicket(remaining[0].id);
+    } else {
+      setActiveTicket(null);
+    }
+  };
+
   const finalizeSale = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
