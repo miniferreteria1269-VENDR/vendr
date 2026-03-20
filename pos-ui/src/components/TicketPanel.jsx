@@ -1,19 +1,20 @@
 import TicketRow from "./TicketRow";
 
-function TicketPanel({
-  tickets,
-  activeTicket,
-  setActiveTicket,
-  currentTicket,
-  createTicket,
-  removeItem,
-  updateItemField,
-  finalizeSale,
-  finalizeIntake,
-  cancelTicket,
-  renameTicket
-}) {
 
+
+<TicketPanel
+  tickets={tickets}
+  activeTicket={activeTicket}
+  setActiveTicket={setActiveTicket}
+  currentTicket={currentTicket}
+  createTicket={createTicket}
+  removeItem={removeItem}
+  updateItemField={updateItemField}
+  cancelTicket={cancelTicket}
+  renameTicket={renameTicket}
+  finalizeSale={finalizeSale}
+  finalizeIntake={finalizeIntake}
+/>
   return (
 
     <div style={{ flex: 1, borderLeft: "2px solid #ccc", padding: 20 }}>
