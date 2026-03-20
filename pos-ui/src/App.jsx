@@ -346,8 +346,12 @@ function App() {
             setActiveTicket={setActiveTicket}
             currentTicket={currentTicket}
             createTicket={createTicket}
+            removeItem={removeItem}
+            updateItemField={updateItemField}
+            cancelTicket={cancelTicket}
             renameTicket={renameTicket}
             finalizeSale={finalizeSale}
+            finalizeIntake={finalizeIntake}
           />
         </div>
       )}

@@ -1,20 +1,19 @@
 import TicketRow from "./TicketRow";
 
+function TicketPanel({
+  tickets,
+  activeTicket,
+  setActiveTicket,
+  currentTicket,
+  createTicket,
+  removeItem,
+  updateItemField,
+  finalizeSale,
+  finalizeIntake,
+  cancelTicket,
+  renameTicket
+}) {
 
-
-<TicketPanel
-  tickets={tickets}
-  activeTicket={activeTicket}
-  setActiveTicket={setActiveTicket}
-  currentTicket={currentTicket}
-  createTicket={createTicket}
-  removeItem={removeItem}
-  updateItemField={updateItemField}
-  cancelTicket={cancelTicket}
-  renameTicket={renameTicket}
-  finalizeSale={finalizeSale}
-  finalizeIntake={finalizeIntake}
-/>
   return (
 
     <div style={{ flex: 1, borderLeft: "2px solid #ccc", padding: 20 }}>
@@ -122,23 +121,19 @@ import TicketRow from "./TicketRow";
           <div style={{ marginTop: 15 }}>
 
             {currentTicket.type === "sale" && (
-              <button
-                onClick={() => finalizeSale?.()}
-              >
+              <button onClick={finalizeSale}>
                 Finalize Sale
               </button>
             )}
 
             {currentTicket.type === "intake" && (
-              <button
-                onClick={() => finalizeIntake?.()}
-              >
+              <button onClick={finalizeIntake}>
                 Finalize Intake
               </button>
             )}
 
             <button
-              onClick={() => cancelTicket?.()}
+              onClick={cancelTicket}
               style={{ marginLeft: 10 }}
             >
               Cancel
