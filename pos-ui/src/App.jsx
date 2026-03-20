@@ -250,20 +250,32 @@ function App() {
   const finalizeSale = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
-    await axios.post(`${API}/sale-ticket`, {
-      store_id: storeId,
-      items: currentTicket.items.map(i => ({
-        product_id: i.product_id,
-        quantity: i.quantity
-      }))
-    };
+    try {
+      await axios.post(`${API}/sale-ticket`, {
+        store_id: storeId,
+        items: currentTicket.items.map(i => ({
+          product_id: i.product_id,
+          quantity: i.quantity
+        }))
+      });
+
+      setTickets(prev => prev.filter(t => t.id !== activeTicket));
+      setActiveTicket(null);
+      loadProducts();
+
+    } catch (err) {
+      console.error("Sale error:", err);
+      alert("Sale failed");
+    }
+  }; // ✅ CLOSE finalizeSale properly
+
 
   const finalizeIntake = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
     try {
       await axios.post(`${API}/intake-ticket`, {
-        store_id: storeId,
+       store_id: storeId,
         items: currentTicket.items.map(i => ({
           product_id: i.product_id,
           quantity: i.quantity,
@@ -280,11 +292,6 @@ function App() {
       console.error("Intake error:", err);
       alert("Intake failed");
     }
-  };
-
-    setTickets(prev => prev.filter(t => t.id !== activeTicket));
-    setActiveTicket(null);
-    loadProducts();
   };
 
   // -----------------------------
