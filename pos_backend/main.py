@@ -109,6 +109,23 @@ class IntakeTicket(BaseModel):
     items: List[IntakeItem]
     paid: bool = False
 
+class CashEventRequest(BaseModel):
+    store_id: int
+    amount: float
+    type: str  # "revenue" or "expense"
+    category: str
+    note: Optional[str] = None
+
+class ReturnItem(BaseModel):
+    product_id: int
+    quantity: int
+
+class ReturnRequest(BaseModel):
+    store_id: int
+    amount: float
+    items: List[ReturnItem] = []
+    note: Optional[str] = None
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -1763,4 +1780,162 @@ def test_cash_balance(store_id: int):
 
     conn.close()
 
-    return {"balance": float(balance)}
+    return {"balance": round(float(balance), 2)}
+
+@app.post("/cash-event")
+def create_cash_event(data: CashEventRequest):
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        direction = 1 if data.type == "revenue" else -1
+
+        cursor.execute("""
+            SELECT organization_id
+            FROM stores
+            WHERE store_id = %s
+        """, (data.store_id,))
+
+        result = cursor.fetchone()
+        org_id = result[0] if result and result[0] is not None else None
+
+        cursor.execute("""
+            INSERT INTO cash_events (
+                organization_id,
+                store_id,
+                type,
+                direction,
+                amount,
+                category,
+                note
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            org_id,
+            data.store_id,
+            data.type,
+            direction,
+            data.amount,
+            data.category,
+            data.note
+        ))
+
+        conn.commit()
+        conn.close()
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        print("🔥 CASH EVENT ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/returns")
+def process_return(data: ReturnRequest):
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        cursor.execute("SELECT MAX(ticket_id) FROM events")
+        result = cursor.fetchone()[0]
+        ticket_id = 1 if result is None else result + 1
+
+        # -----------------------------
+        # RETURN (inventory comes back)
+        # -----------------------------
+        if data.items:
+
+            for item in data.items:
+
+                cursor.execute("""
+                    SELECT name, cost, price
+                    FROM products
+                    WHERE product_id = %s AND store_id = %s
+                """, (item.product_id, data.store_id))
+
+                product = cursor.fetchone()
+
+                if not product:
+                    raise ValueError("Product not found")
+
+                name, cost, price = product
+
+                cursor.execute("""
+                    INSERT INTO events
+                    (store_id, event_type, product_id, product_name_at_time,
+                    quantity, cost_at_time, price_at_time, event_datetime, ticket_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    data.store_id,
+                    "intake",
+                    item.product_id,
+                    name,
+                    item.quantity,
+                    cost,
+                    price,
+                    now,
+                    ticket_id
+                ))
+
+                cursor.execute("""
+                    UPDATE products
+                    SET stock = stock + %s
+                    WHERE product_id = %s AND store_id = %s
+                """, (
+                    item.quantity,
+                    item.product_id,
+                    data.store_id
+                ))
+
+            event_type = "return"
+
+        # -----------------------------
+        # REFUND (cash only)
+        # -----------------------------
+        else:
+            event_type = "refund"
+
+        # -----------------------------
+        # CASH EVENT
+        # -----------------------------
+        cursor.execute("""
+            SELECT organization_id
+            FROM stores
+            WHERE store_id = %s
+        """, (data.store_id,))
+
+        result = cursor.fetchone()
+        org_id = result[0] if result and result[0] is not None else None
+
+        cursor.execute("""
+            INSERT INTO cash_events (
+                organization_id,
+                store_id,
+                type,
+                direction,
+                amount,
+                note,
+                reference_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            org_id,
+            data.store_id,
+            event_type,
+            -1,
+            data.amount,
+            data.note,
+            ticket_id
+        ))
+
+        conn.commit()
+        conn.close()
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        print("🔥 RETURN ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
