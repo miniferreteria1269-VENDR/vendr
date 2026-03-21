@@ -9,7 +9,7 @@ import SalesHistoryPanel from "./components/SalesHistoryPanel";
 import InventoryReport from "./components/InventoryReport";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
-
+import CashPanel from "./components/CashPanel";
 const API = "https://vendr-onkr.onrender.com";
 
 function App() {
@@ -352,6 +352,7 @@ function App() {
         <button onClick={() => setView("inventory")}>Inventory</button>
         <button onClick={() => setView("products")}>Products</button>
         <button onClick={() => setView("analysis")}>Analysis</button>
+        <button onClick={() => setView("cash")}>Cash</button>
       </div>
 
       {/* VIEWS */}
@@ -385,7 +386,7 @@ function App() {
       {view === "inventory" && <InventoryReport storeId={storeId} />}
       {view === "products" && <ProductManagement storeId={storeId} />}
       {view === "analysis" && <SalesAnalysisPanel storeId={storeId} />}
-
+      {view === "cash" && <CashPanel storeId={storeId} />}
     </div>
   );
 }
