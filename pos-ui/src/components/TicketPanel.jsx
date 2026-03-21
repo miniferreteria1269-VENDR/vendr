@@ -11,7 +11,9 @@ function TicketPanel({
   finalizeSale,
   finalizeIntake,
   cancelTicket,
-  renameTicket
+  renameTicket,
+  intakePaid,            // ✅ NEW
+  setIntakePaid          // ✅ NEW
 }) {
 
   return (
@@ -87,6 +89,20 @@ function TicketPanel({
                 : "Intake Ticket")}
           </h3>
 
+          {/* ✅ PAID TOGGLE (ONLY FOR INTAKE) */}
+          {currentTicket.type === "intake" && (
+            <div style={{ marginBottom: 10 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={intakePaid}
+                  onChange={(e) => setIntakePaid(e.target.checked)}
+                />
+                {" "}Paid
+              </label>
+            </div>
+          )}
+
           {/* INTAKE HEADER */}
           {currentTicket.type === "intake" && (
             <div
@@ -117,7 +133,7 @@ function TicketPanel({
             />
           ))}
 
-         
+          {/* ACTIONS */}
           <div style={{ marginTop: 15 }}>
 
             {currentTicket.type === "sale" && (

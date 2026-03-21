@@ -33,7 +33,7 @@ function App() {
 
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  
+  const [intakePaid, setIntakePaid] = useState(false);
   const handleLogout = () => {
     localStorage.removeItem("user");
 
@@ -253,6 +253,7 @@ function App() {
     try {
       await axios.post(`${API}/sale-ticket`, {
         store_id: storeId,
+        paid: intakePaid,
         items: currentTicket.items.map(i => ({
           product_id: i.product_id,
           quantity: i.quantity
@@ -378,6 +379,7 @@ function App() {
             renameTicket={renameTicket}
             finalizeSale={finalizeSale}
             finalizeIntake={finalizeIntake}
+            setIntakePaid={setIntakePaid}
           />
         </div>
       )}
