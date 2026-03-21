@@ -379,6 +379,7 @@ function App() {
             renameTicket={renameTicket}
             finalizeSale={finalizeSale}
             finalizeIntake={finalizeIntake}
+            intakePaid={intakePaid} 
             setIntakePaid={setIntakePaid}
           />
         </div>
