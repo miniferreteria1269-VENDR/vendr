@@ -362,6 +362,7 @@ function App() {
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
             addItem={addItem}
+            storeId={storeId}
           />
 
           <TicketPanel

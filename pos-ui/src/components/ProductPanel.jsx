@@ -103,7 +103,7 @@ function ProductPanel({
       <SearchBar
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
-        handleSearchEnter={handleSearchEnter}
+       
       />
 
       {/* QUICK PRODUCTS */}

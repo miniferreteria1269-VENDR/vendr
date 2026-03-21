@@ -117,7 +117,7 @@ function TicketPanel({
             />
           ))}
 
-          {ACTIONS }
+         
           <div style={{ marginTop: 15 }}>
 
             {currentTicket.type === "sale" && (
