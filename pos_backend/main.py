@@ -107,6 +107,8 @@ class IntakeItem(BaseModel):
 class IntakeTicket(BaseModel):
     store_id: int
     items: List[IntakeItem]
+    paid: bool = False
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -538,6 +540,11 @@ def intake_ticket(ticket: IntakeTicket):
 
         now = datetime.now(timezone.utc).isoformat()
 
+        total_cost = 0  # ✅ NEW
+
+        # -----------------------------
+        # PROCESS ITEMS (UNCHANGED LOGIC)
+        # -----------------------------
         for item in ticket.items:
 
             cursor.execute("""
@@ -553,6 +560,7 @@ def intake_ticket(ticket: IntakeTicket):
 
             name = product[0]
 
+            # INSERT EVENT (inventory truth)
             cursor.execute("""
                 INSERT INTO events
                 (store_id, event_type, product_id, product_name_at_time,
@@ -570,6 +578,7 @@ def intake_ticket(ticket: IntakeTicket):
                 ticket_id
             ))
 
+            # UPDATE STOCK
             cursor.execute("""
                 UPDATE products
                 SET stock = stock + %s,
@@ -584,6 +593,49 @@ def intake_ticket(ticket: IntakeTicket):
                 ticket.store_id
             ))
 
+            # ✅ ACCUMULATE COST
+            total_cost += item.cost * item.quantity
+
+        # -----------------------------
+        # CASH EVENT (ONLY IF PAID)
+        # -----------------------------
+        if ticket.paid:
+
+            cursor.execute("""
+                SELECT organization_id
+                FROM stores
+                WHERE store_id = %s
+            """, (ticket.store_id,))
+
+            result = cursor.fetchone()
+            org_id = result[0] if result and result[0] is not None else None
+
+            cursor.execute("""
+                INSERT INTO cash_events (
+                    organization_id,
+                    store_id,
+                    type,
+                    direction,
+                    amount,
+                    category,
+                    note,
+                    reference_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                org_id,
+                ticket.store_id,
+                "intake_paid",
+                -1,
+                total_cost,
+                "inventory",
+                "Paid intake",
+                ticket_id
+            ))
+
+        # -----------------------------
+        # COMMIT (single atomic operation)
+        # -----------------------------
         conn.commit()
         conn.close()
 
@@ -592,8 +644,6 @@ def intake_ticket(ticket: IntakeTicket):
     except Exception as e:
         print("🔥 INTAKE ERROR:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
-
-
 # -----------------------------
 # ADMIN RECOVERY
 # -----------------------------
