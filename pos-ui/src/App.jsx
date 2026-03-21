@@ -253,7 +253,7 @@ function App() {
     try {
       await axios.post(`${API}/sale-ticket`, {
         store_id: storeId,
-        paid: intakePaid,
+        
         items: currentTicket.items.map(i => ({
           product_id: i.product_id,
           quantity: i.quantity
@@ -277,13 +277,14 @@ function App() {
     try {
       await axios.post(`${API}/intake-ticket`, {
        store_id: storeId,
-        items: currentTicket.items.map(i => ({
-          product_id: i.product_id,
-          quantity: i.quantity,
-          cost: i.cost,
-          price: i.price
-        }))
-      });
+       paid: intakePaid, 
+       items: currentTicket.items.map(i => ({
+         product_id: i.product_id,
+         quantity: i.quantity,
+         cost: i.cost,
+         price: i.price
+       }))
+     });
 
       setTickets(prev => prev.filter(t => t.id !== activeTicket));
       setActiveTicket(null);
