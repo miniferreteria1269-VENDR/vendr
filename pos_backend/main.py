@@ -4,7 +4,7 @@ from rebuild_engine import rebuild_products
 
 from datetime import datetime, timezone
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import pandas as pd
 from fastapi import UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
