@@ -119,12 +119,15 @@ class CashEventRequest(BaseModel):
 class ReturnItem(BaseModel):
     product_id: int
     quantity: int
+    cost: float
+    price: float
+
 
 class ReturnRequest(BaseModel):
     store_id: int
     amount: float
     items: List[ReturnItem] = []
-    note: Optional[str] = None
+    note: Optional[str] = ""
 
 class LoginRequest(BaseModel):
     email: str
@@ -1935,6 +1938,105 @@ def process_return(data: ReturnRequest):
         conn.close()
 
         return {"status": "ok"}
+
+    except Exception as e:
+        print("🔥 RETURN ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/returns")
+def process_return(data: ReturnRequest):
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # -----------------------------
+        # GENERATE TICKET ID (only if needed)
+        # -----------------------------
+        ticket_id = None
+
+        if len(data.items) > 0:
+            cursor.execute("SELECT MAX(ticket_id) FROM events")
+            result = cursor.fetchone()[0]
+            ticket_id = 1 if result is None else result + 1
+
+        # -----------------------------
+        # CASE 1: RETURN (WITH ITEMS)
+        # -----------------------------
+        if len(data.items) > 0:
+
+            for item in data.items:
+
+                # get product name
+                cursor.execute("""
+                    SELECT name
+                    FROM products
+                    WHERE product_id = %s AND store_id = %s
+                """, (item.product_id, data.store_id))
+
+                product = cursor.fetchone()
+
+                if not product:
+                    raise ValueError("Product not found")
+
+                name = product[0]
+
+                # create intake event (inventory increases)
+                cursor.execute("""
+                    INSERT INTO events
+                    (store_id, event_type, product_id, product_name_at_time,
+                    quantity, cost_at_time, price_at_time, event_datetime, ticket_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    data.store_id,
+                    "intake",  # ✅ return = intake event
+                    item.product_id,
+                    name,
+                    item.quantity,
+                    item.cost,
+                    item.price,
+                    now,
+                    ticket_id
+                ))
+
+                # update stock
+                cursor.execute("""
+                    UPDATE products
+                    SET stock = stock + %s
+                    WHERE product_id = %s AND store_id = %s
+                """, (
+                    item.quantity,
+                    item.product_id,
+                    data.store_id
+                ))
+
+        # -----------------------------
+        # CASH EVENT (ALWAYS)
+        # -----------------------------
+        cursor.execute("""
+            INSERT INTO cash_events
+            (store_id, type, direction, amount, category, note, reference_id, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            data.store_id,
+            "return" if len(data.items) > 0 else "refund",
+            -1,  # money leaving business
+            data.amount,
+            "Devolucion",
+            data.note,
+            ticket_id,
+            now
+        ))
+
+        conn.commit()
+        conn.close()
+
+        return {
+            "status": "ok",
+            "type": "return" if len(data.items) > 0 else "refund"
+        }
 
     except Exception as e:
         print("🔥 RETURN ERROR:", str(e))
