@@ -1,0 +1,213 @@
+import { useState } from "react";
+import axios from "axios";
+
+const API = "https://vendr-onkr.onrender.com";
+
+function ReturnModal({ storeId, products, onClose, onSuccess }) {
+
+  const [amount, setAmount] = useState("");
+  const [includesReturn, setIncludesReturn] = useState(false);
+  const [note, setNote] = useState("");
+  const [items, setItems] = useState([]);
+
+  const addItem = () => {
+    setItems(prev => [
+      ...prev,
+      { product_id: "", quantity: 1, cost: 0, price: 0 }
+    ]);
+  };
+
+  const updateItem = (index, field, value) => {
+    setItems(prev =>
+      prev.map((item, i) =>
+        i === index ? { ...item, [field]: value } : item
+      )
+    );
+  };
+
+  const handleProductSelect = (index, productId) => {
+    const selected = products.find(
+      p => p.product_id == productId
+    );
+
+    if (!selected) return;
+
+    setItems(prev =>
+      prev.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              product_id: selected.product_id,
+              cost: selected.cost ?? 0,
+              price: selected.price ?? 0
+            }
+          : item
+      )
+    );
+  };
+
+  const removeItem = (index) => {
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const submit = async () => {
+    const value = Number(amount);
+
+    if (isNaN(value) || value <= 0) {
+      alert("Enter a valid amount");
+      return;
+    }
+
+    if (includesReturn && items.length === 0) {
+      alert("Add at least one product");
+      return;
+    }
+
+    try {
+      await axios.post(`${API}/returns`, {
+        store_id: storeId,
+        amount: value,
+        items: includesReturn
+          ? items.map(i => ({
+              product_id: Number(i.product_id),
+              quantity: Number(i.quantity),
+              cost: Number(i.cost),
+              price: Number(i.price)
+            }))
+          : [],
+        note
+      });
+
+      onSuccess();
+      onClose();
+
+    } catch (err) {
+      console.error("Return error:", err);
+      alert("Failed to process return/refund");
+    }
+  };
+
+  return (
+    <div style={modalStyle}>
+
+      <h3>Return / Refund</h3>
+
+      {/* AMOUNT */}
+      <input
+        type="number"
+        placeholder="Amount"
+        value={amount}
+        onChange={e => setAmount(e.target.value)}
+      />
+
+      {/* CHECKBOX */}
+      <div style={{ marginTop: 10 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={includesReturn}
+            onChange={(e) => setIncludesReturn(e.target.checked)}
+          />
+          {" "}Includes product return
+        </label>
+      </div>
+
+      {/* ITEMS */}
+      {includesReturn && (
+        <div style={{ marginTop: 10 }}>
+
+          <button onClick={addItem}>+ Add Item</button>
+
+          {items.map((item, index) => (
+            <div key={index} style={{ marginTop: 8 }}>
+
+              {/* PRODUCT SELECT */}
+              <select
+                value={item.product_id}
+                onChange={(e) =>
+                  handleProductSelect(index, e.target.value)
+                }
+              >
+                <option value="">Select product</option>
+
+                {products.map(p => (
+                  <option key={p.product_id} value={p.product_id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* QUANTITY */}
+              <input
+                type="number"
+                placeholder="Qty"
+                value={item.quantity}
+                onChange={(e) =>
+                  updateItem(index, "quantity", e.target.value)
+                }
+                style={{ width: 60 }}
+              />
+
+              {/* COST */}
+              <input
+                type="number"
+                placeholder="Cost"
+                value={item.cost}
+                onChange={(e) =>
+                  updateItem(index, "cost", e.target.value)
+                }
+                style={{ width: 80 }}
+              />
+
+              {/* PRICE */}
+              <input
+                type="number"
+                placeholder="Price"
+                value={item.price}
+                onChange={(e) =>
+                  updateItem(index, "price", e.target.value)
+                }
+                style={{ width: 80 }}
+              />
+
+              {/* REMOVE */}
+              <button onClick={() => removeItem(index)}>✕</button>
+
+            </div>
+          ))}
+
+        </div>
+      )}
+
+      {/* NOTE */}
+      <input
+        placeholder="Note (optional)"
+        value={note}
+        onChange={e => setNote(e.target.value)}
+        style={{ marginTop: 10 }}
+      />
+
+      {/* ACTIONS */}
+      <div style={{ marginTop: 15 }}>
+        <button onClick={submit}>Confirm</button>
+        <button onClick={onClose} style={{ marginLeft: 10 }}>
+          Cancel
+        </button>
+      </div>
+
+    </div>
+  );
+}
+
+const modalStyle = {
+  position: "fixed",
+  top: "30%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  background: "white",
+  padding: 20,
+  border: "1px solid #ccc",
+  zIndex: 1000
+};
+
+export default ReturnModal;

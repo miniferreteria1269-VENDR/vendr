@@ -62,6 +62,7 @@ function CashPanel({ storeId }) {
       {showReturn && (
         <ReturnModal
           storeId={storeId}
+          products={products} 
           onClose={() => setShowReturn(false)}
           onSuccess={loadBalance}
         />
