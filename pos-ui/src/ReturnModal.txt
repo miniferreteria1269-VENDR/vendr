@@ -6,74 +6,35 @@ const API = "https://vendr-onkr.onrender.com";
 function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
 
   const [amount, setAmount] = useState("");
-  const [includesReturn, setIncludesReturn] = useState(false);
+  const [mode, setMode] = useState("refund"); // "refund" or "return"
   const [note, setNote] = useState("");
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState([
+    { product_id: "", quantity: 1, cost: 0, price: 0 }
+  ]);
 
-  const addItem = () => {
-    setItems(prev => [
-      ...prev,
-      { product_id: "", quantity: 1, cost: 0, price: 0 }
-    ]);
-  };
-
-  const removeItem = (index) => {
-    setItems(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const updateItem = (index, field, value) => {
+  const updateItem = (field, value) => {
     setItems(prev =>
-      prev.map((item, i) =>
-        i === index ? { ...item, [field]: value } : item
-      )
+      prev.map(item => ({ ...item, [field]: value }))
     );
   };
 
-  const handleProductSelect = (index, productId) => {
-    const selected = products.find(
-      p => p.product_id == productId
-    );
-
+  const handleProductSelect = (productId) => {
+    const selected = products.find(p => p.product_id == productId);
     if (!selected) return;
 
-    setItems(prev =>
-      prev.map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              product_id: selected.product_id,
-              cost: selected.cost ?? 0,
-              price: selected.price ?? 0
-            }
-          : item
-      )
-    );
-  };
-
-  const handleCheckbox = (checked) => {
-    setIncludesReturn(checked);
-
-    if (checked && items.length === 0) {
-      setItems([
-        { product_id: "", quantity: 1, cost: 0, price: 0 }
-      ]);
-    }
-
-    if (!checked) {
-      setItems([]);
-    }
+    setItems([{
+      product_id: selected.product_id,
+      quantity: 1,
+      cost: selected.cost ?? 0,
+      price: selected.price ?? 0
+    }]);
   };
 
   const submit = async () => {
     const value = Number(amount);
 
-    if (isNaN(value) || value <= 0) {
-      alert("Enter a valid amount");
-      return;
-    }
-
-    if (includesReturn && items.length === 0) {
-      alert("Add at least one product");
+    if (!value || value <= 0) {
+      alert("Enter valid amount");
       return;
     }
 
@@ -81,14 +42,7 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
       await axios.post(`${API}/returns`, {
         store_id: storeId,
         amount: value,
-        items: includesReturn
-          ? items.map(i => ({
-              product_id: Number(i.product_id),
-              quantity: Number(i.quantity),
-              cost: Number(i.cost),
-              price: Number(i.price)
-            }))
-          : [],
+        items: mode === "return" ? items : [],
         note
       });
 
@@ -96,8 +50,8 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
       onClose();
 
     } catch (err) {
-      console.error("Return error:", err);
-      alert("Failed to process return/refund");
+      console.error(err);
+      alert("Failed");
     }
   };
 
@@ -105,6 +59,16 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
     <div style={modalStyle}>
 
       <h3>Return / Refund</h3>
+
+      {/* MODE SWITCH */}
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={() => setMode("refund")}>
+          Refund
+        </button>
+        <button onClick={() => setMode("return")} style={{ marginLeft: 10 }}>
+          Return
+        </button>
+      </div>
 
       {/* AMOUNT */}
       <input
@@ -114,91 +78,37 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
         onChange={(e) => setAmount(e.target.value)}
       />
 
-      {/* CHECKBOX */}
-      <div style={{ marginTop: 10 }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={includesReturn}
-            onChange={(e) => {
-              const checked = e.target.checked;
-              setIncludesReturn(checked);
-
-              if (checked) {
-                setItems([
-                  { product_id: "", quantity: 1, cost: 0, price: 0 }
-                ]);
-              } else {
-                setItems([]);
-              }
-            }}
-          />
-          {" "}Includes product return
-        </label>
-      </div>      
-
-      {/* ITEMS */}
-      {true && (
+      {/* PRODUCT SECTION (always visible in return mode) */}
+      {mode === "return" && (
         <div style={{ marginTop: 10 }}>
 
-          {items.map((item, index) => (
-            <div key={index} style={{ marginBottom: 8 }}>
+          <select
+            value={items[0].product_id}
+            onChange={(e) => handleProductSelect(e.target.value)}
+          >
+            <option value="">Select product</option>
+            {products.map(p => (
+              <option key={p.product_id} value={p.product_id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
 
-              <select
-                value={item.product_id}
-                onChange={(e) =>
-                  handleProductSelect(index, e.target.value)
-                }
-              >
-                <option value="">Select product</option>
-
-                {products.map(p => (
-                  <option key={p.product_id} value={p.product_id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                type="number"
-                value={item.quantity}
-                onChange={(e) =>
-                  updateItem(index, "quantity", e.target.value)
-                }
-                style={{ width: 60 }}
-              />
-
-              <input
-                type="number"
-                value={item.cost}
-                onChange={(e) =>
-                  updateItem(index, "cost", e.target.value)
-                }
-                style={{ width: 80 }}
-              />
-
-              <input
-                type="number"
-                value={item.price}
-                onChange={(e) =>
-                  updateItem(index, "price", e.target.value)
-                }
-                style={{ width: 80 }}
-              />
-
-              <button onClick={() => removeItem(index)}>✕</button>
-
-            </div>
-          ))}
-
-          <button onClick={addItem}>+ Add Item</button>
+          <input
+            type="number"
+            value={items[0].quantity}
+            onChange={(e) =>
+              updateItem("quantity", e.target.value)
+            }
+            style={{ width: 60 }}
+          />
 
         </div>
       )}
 
       {/* NOTE */}
       <input
-        placeholder="Note (optional)"
+        placeholder="Note"
         value={note}
         onChange={(e) => setNote(e.target.value)}
         style={{ marginTop: 10 }}
