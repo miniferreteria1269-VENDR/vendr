@@ -3,7 +3,7 @@ import axios from "axios";
 
 const API = "https://vendr-onkr.onrender.com";
 
-function ReturnModal({ storeId, products = [], onClose, onSuccess })
+function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
 
   const [amount, setAmount] = useState("");
   const [includesReturn, setIncludesReturn] = useState(false);
