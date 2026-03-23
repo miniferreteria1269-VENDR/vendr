@@ -17,6 +17,10 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
     ]);
   };
 
+  const removeItem = (index) => {
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
+
   const updateItem = (index, field, value) => {
     setItems(prev =>
       prev.map((item, i) =>
@@ -46,8 +50,18 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
     );
   };
 
-  const removeItem = (index) => {
-    setItems(prev => prev.filter((_, i) => i !== index));
+  const handleCheckbox = (checked) => {
+    setIncludesReturn(checked);
+
+    if (checked && items.length === 0) {
+      setItems([
+        { product_id: "", quantity: 1, cost: 0, price: 0 }
+      ]);
+    }
+
+    if (!checked) {
+      setItems([]);
+    }
   };
 
   const submit = async () => {
@@ -97,7 +111,7 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
         type="number"
         placeholder="Amount"
         value={amount}
-        onChange={e => setAmount(e.target.value)}
+        onChange={(e) => setAmount(e.target.value)}
       />
 
       {/* CHECKBOX */}
@@ -106,37 +120,19 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
           <input
             type="checkbox"
             checked={includesReturn}
-            onChange={(e) => {
-              const checked = e.target.checked;
-              setIncludesReturn(checked);
-
-              // 🔥 AUTO ADD FIRST ITEM
-              if (checked && items.length === 0) {
-                setItems([
-                  { product_id: "", quantity: 1, cost: 0, price: 0 }
-                ]);
-              }
-
-              // 🔥 OPTIONAL: clear items if unchecked
-              if (!checked) {
-                setItems([]);
-              }
-            }}
+            onChange={(e) => handleCheckbox(e.target.checked)}
           />
           {" "}Includes product return
         </label>
-      </div>      
+      </div>
 
       {/* ITEMS */}
       {includesReturn && (
         <div style={{ marginTop: 10 }}>
 
-          <button onClick={addItem}>+ Add Item</button>
-
           {items.map((item, index) => (
-            <div key={index} style={{ marginTop: 8 }}>
+            <div key={index} style={{ marginBottom: 8 }}>
 
-              {/* PRODUCT SELECT */}
               <select
                 value={item.product_id}
                 onChange={(e) =>
@@ -152,10 +148,8 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
                 ))}
               </select>
 
-              {/* QUANTITY */}
               <input
                 type="number"
-                placeholder="Qty"
                 value={item.quantity}
                 onChange={(e) =>
                   updateItem(index, "quantity", e.target.value)
@@ -163,10 +157,8 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
                 style={{ width: 60 }}
               />
 
-              {/* COST */}
               <input
                 type="number"
-                placeholder="Cost"
                 value={item.cost}
                 onChange={(e) =>
                   updateItem(index, "cost", e.target.value)
@@ -174,10 +166,8 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
                 style={{ width: 80 }}
               />
 
-              {/* PRICE */}
               <input
                 type="number"
-                placeholder="Price"
                 value={item.price}
                 onChange={(e) =>
                   updateItem(index, "price", e.target.value)
@@ -185,11 +175,12 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
                 style={{ width: 80 }}
               />
 
-              {/* REMOVE */}
               <button onClick={() => removeItem(index)}>✕</button>
 
             </div>
           ))}
+
+          <button onClick={addItem}>+ Add Item</button>
 
         </div>
       )}
@@ -198,7 +189,7 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
       <input
         placeholder="Note (optional)"
         value={note}
-        onChange={e => setNote(e.target.value)}
+        onChange={(e) => setNote(e.target.value)}
         style={{ marginTop: 10 }}
       />
 
