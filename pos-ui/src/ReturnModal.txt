@@ -127,7 +127,7 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
       </div>
 
       {/* ITEMS */}
-      {includesReturn && (
+      {true && (
         <div style={{ marginTop: 10 }}>
 
           {items.map((item, index) => (
