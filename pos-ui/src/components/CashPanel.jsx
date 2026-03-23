@@ -3,7 +3,7 @@ import axios from "axios";
 import ReturnModal from "./ReturnModal";
 const API = "https://vendr-onkr.onrender.com";
 
-function CashPanel({ storeId }) {
+function CashPanel({ storeId, products }) {
 
   const [balance, setBalance] = useState(0);
   const [showReturn, setShowReturn] = useState(false);

@@ -390,7 +390,12 @@ function App() {
       {view === "inventory" && <InventoryReport storeId={storeId} />}
       {view === "products" && <ProductManagement storeId={storeId} />}
       {view === "analysis" && <SalesAnalysisPanel storeId={storeId} />}
-      {view === "cash" && <CashPanel storeId={storeId} />}
+      {view === "cash" && (
+        <CashPanel
+          storeId={storeId}
+          products={products}   // ✅ ADD THIS
+        />
+      )}
     </div>
   );
 }
