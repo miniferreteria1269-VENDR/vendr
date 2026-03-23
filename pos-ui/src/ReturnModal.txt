@@ -106,11 +106,26 @@ function ReturnModal({ storeId, products = [], onClose, onSuccess }) {
           <input
             type="checkbox"
             checked={includesReturn}
-            onChange={(e) => setIncludesReturn(e.target.checked)}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setIncludesReturn(checked);
+
+              // 🔥 AUTO ADD FIRST ITEM
+              if (checked && items.length === 0) {
+                setItems([
+                  { product_id: "", quantity: 1, cost: 0, price: 0 }
+                ]);
+              }
+
+              // 🔥 OPTIONAL: clear items if unchecked
+              if (!checked) {
+                setItems([]);
+              }
+            }}
           />
           {" "}Includes product return
         </label>
-      </div>
+      </div>      
 
       {/* ITEMS */}
       {includesReturn && (
