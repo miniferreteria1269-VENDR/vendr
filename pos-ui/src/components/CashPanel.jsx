@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-
+import ReturnModal from "./ReturnModal";
 const API = "https://vendr-onkr.onrender.com";
 
 function CashPanel({ storeId }) {
 
   const [balance, setBalance] = useState(0);
-
+  const [showReturn, setShowReturn] = useState(false);
   const [showRevenue, setShowRevenue] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
 
@@ -39,6 +39,10 @@ function CashPanel({ storeId }) {
           + Revenue
         </button>
 
+        <button onClick={() => setShowReturn(true)}>
+          Return / Refund
+        </button>
+
         <button
           onClick={() => setShowExpense(true)}
           style={{ marginLeft: 10 }}
@@ -55,6 +59,14 @@ function CashPanel({ storeId }) {
         />
       )}
 
+      {showReturn && (
+        <ReturnModal
+          storeId={storeId}
+          onClose={() => setShowReturn(false)}
+          onSuccess={loadBalance}
+        />
+      )}
+
       {showExpense && (
         <ExpenseModal
           storeId={storeId}
@@ -66,5 +78,5 @@ function CashPanel({ storeId }) {
     </div>
   );
 }
-
+      
 export default CashPanel;
