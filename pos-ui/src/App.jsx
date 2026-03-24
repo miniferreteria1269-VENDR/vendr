@@ -267,8 +267,10 @@ function App() {
 
       setTickets(prev => prev.filter(t => t.id !== activeTicket));
       setActiveTicket(null);
+      setDiscountValue(0);
+      setDiscountType("percent");
       loadProducts();
-
+      
     } catch (err) {
       console.error("Sale error:", err);
       alert("Sale failed");
