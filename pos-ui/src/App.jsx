@@ -32,14 +32,12 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [intakePaid, setIntakePaid] = useState(false);
 
-  // 🔥 DISCOUNT STATE
+  // 🔥 DISCOUNT
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState("percent");
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("tickets");
-    localStorage.removeItem("activeTicket");
+    localStorage.clear();
     setUser(null);
   };
 
@@ -62,7 +60,7 @@ function App() {
   }, [activeTicket]);
 
   // -----------------------------
-  // LOAD PRODUCTS
+  // PRODUCTS
   // -----------------------------
   const loadProducts = async () => {
     if (!storeId) return;
@@ -81,7 +79,7 @@ function App() {
       setProducts(sorted);
 
     } catch (err) {
-      console.error("Load products error:", err);
+      console.error(err);
     }
   };
 
@@ -89,18 +87,12 @@ function App() {
     loadProducts();
   }, [storeId]);
 
-  // -----------------------------
-  // SEARCH
-  // -----------------------------
   useEffect(() => {
     const delay = setTimeout(() => {
       if (!storeId) return;
 
-      if (searchTerm.trim() === "") {
-        loadProducts();
-      } else {
-        searchProducts(searchTerm);
-      }
+      if (!searchTerm.trim()) loadProducts();
+      else searchProducts(searchTerm);
     }, 300);
 
     return () => clearTimeout(delay);
@@ -112,11 +104,10 @@ function App() {
         params: { store_id: storeId, name: term }
       });
 
-      const data = res.data.products ?? res.data;
-      setProducts(data);
+      setProducts(res.data.products ?? res.data);
 
     } catch (err) {
-      console.error("Search error:", err);
+      console.error(err);
     }
   };
 
@@ -130,26 +121,52 @@ function App() {
       label: "",
       items: []
     };
-  
+
     setTickets(prev => [...prev, ticket]);
     setActiveTicket(ticket.id);
   };
 
-
-  // ✅ MOVE THIS OUTSIDE
   const removeItem = (index) => {
+    setTickets(prev =>
+      prev.map(ticket =>
+        ticket.id === activeTicket
+          ? { ...ticket, items: ticket.items.filter((_, i) => i !== index) }
+          : ticket
+      )
+    );
+  };
+
+  const updateItemField = (index, field, value) => {
     setTickets(prev =>
       prev.map(ticket =>
         ticket.id === activeTicket
           ? {
               ...ticket,
-              items: ticket.items.filter((_, i) => i !== index)
+              items: ticket.items.map((item, i) =>
+                i === index ? { ...item, [field]: value } : item
+              )
             }
           : ticket
       )
     );
   };
 
+  const cancelTicket = () => {
+    const remaining = tickets.filter(t => t.id !== activeTicket);
+    setTickets(remaining);
+    setActiveTicket(remaining.length ? remaining[0].id : null);
+  };
+
+  const renameTicket = (ticketId) => {
+    const newLabel = prompt("Ticket name:");
+    if (!newLabel) return;
+
+    setTickets(prev =>
+      prev.map(t =>
+        t.id === ticketId ? { ...t, label: newLabel } : t
+      )
+    );
+  };
 
   const addItem = (product) => {
     if (!currentTicket) return;
@@ -194,63 +211,51 @@ function App() {
     setTickets(updated);
     setSearchTerm("");
   };
+
   // -----------------------------
-  // 🔥 FINALIZE SALE (FIXED)
+  // FINALIZE SALE (DISCOUNT FIXED)
   // -----------------------------
   const finalizeSale = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
     try {
-
-      // 🔥 CALCULATE SUBTOTAL
       const subtotal = currentTicket.items.reduce(
         (sum, i) => sum + i.price * i.quantity,
         0
       );
 
-      // 🔥 CALCULATE DISCOUNT
-      let discountAmount = 0;
+      const discountAmount =
+        discountType === "percent"
+          ? subtotal * (discountValue / 100)
+          : discountValue;
 
-      if (discountType === "percent") {
-        discountAmount = subtotal * (discountValue / 100);
-      } else {
-        discountAmount = discountValue;
-      }
+      const ratio = subtotal > 0 ? (subtotal - discountAmount) / subtotal : 1;
 
-      // 🔥 CONVERT TO RATIO
-      const discountRatio =
-        subtotal > 0 ? (subtotal - discountAmount) / subtotal : 1;
-
-      // 🔥 APPLY DISCOUNT PER ITEM
-      const discountedItems = currentTicket.items.map(i => ({
+      const items = currentTicket.items.map(i => ({
         product_id: i.product_id,
         quantity: i.quantity,
-        price: i.price * discountRatio
+        price: i.price * ratio
       }));
 
       await axios.post(`${API}/sale-ticket`, {
         store_id: storeId,
-        items: discountedItems
+        items
       });
 
       setTickets(prev => prev.filter(t => t.id !== activeTicket));
       setActiveTicket(null);
 
-      // 🔥 RESET DISCOUNT
       setDiscountValue(0);
       setDiscountType("percent");
 
       loadProducts();
 
     } catch (err) {
-      console.error("Sale error:", err);
+      console.error(err);
       alert("Sale failed");
     }
   };
 
-  // -----------------------------
-  // FINALIZE INTAKE
-  // -----------------------------
   const finalizeIntake = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
@@ -258,12 +263,7 @@ function App() {
       await axios.post(`${API}/intake-ticket`, {
         store_id: storeId,
         paid: intakePaid,
-        items: currentTicket.items.map(i => ({
-          product_id: i.product_id,
-          quantity: i.quantity,
-          cost: i.cost,
-          price: i.price
-        }))
+        items: currentTicket.items
       });
 
       setTickets(prev => prev.filter(t => t.id !== activeTicket));
@@ -271,20 +271,18 @@ function App() {
       loadProducts();
 
     } catch (err) {
-      console.error("Intake error:", err);
+      console.error(err);
       alert("Intake failed");
     }
   };
 
   // -----------------------------
-  // LOGIN UI
+  // AUTH
   // -----------------------------
   if (!user) {
-    return authMode === "login" ? (
-      <Login onLogin={setUser} switchToSignup={() => setAuthMode("signup")} />
-    ) : (
-      <Signup onSignup={setUser} switchToLogin={() => setAuthMode("login")} />
-    );
+    return authMode === "login"
+      ? <Login onLogin={setUser} switchToSignup={() => setAuthMode("signup")} />
+      : <Signup onSignup={setUser} switchToLogin={() => setAuthMode("login")} />;
   }
 
   if (!storeId) return <div>Loading...</div>;
@@ -333,8 +331,6 @@ function App() {
             finalizeIntake={finalizeIntake}
             intakePaid={intakePaid}
             setIntakePaid={setIntakePaid}
-
-            // 🔥 PASS DISCOUNT
             discountValue={discountValue}
             setDiscountValue={setDiscountValue}
             discountType={discountType}
