@@ -358,12 +358,12 @@ def sale_ticket(ticket: SaleTicket):
 
     now = datetime.now(timezone.utc).isoformat()
 
-    total_revenue = 0
+    total_revenue = 0.0
 
     for item in ticket.items:
 
         cursor.execute("""
-            SELECT name, cost, price
+            SELECT name, cost
             FROM products
             WHERE product_id = %s AND store_id = %s
         """, (item.product_id, ticket.store_id))
@@ -373,7 +373,12 @@ def sale_ticket(ticket: SaleTicket):
         if not product:
             raise ValueError("Product not found")
 
-        name, cost, price = product
+        name, cost = product
+
+        # 🔥 USE DISCOUNTED PRICE FROM FRONTEND (ROUNDED)
+        price = round(float(item.price), 2)
+
+        line_total = round(price * item.quantity, 2)
 
         # INSERT EVENT
         cursor.execute("""
@@ -382,9 +387,19 @@ def sale_ticket(ticket: SaleTicket):
             quantity, cost_at_time, price_at_time, event_datetime, ticket_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
-            ticket.store_id, "sale", item.product_id, name,
-            item.quantity, cost, price, now, ticket_id
+            ticket.store_id,
+            "sale",
+            item.product_id,
+            name,
+            item.quantity,
+            cost,
+            price,
+            now,
+            ticket_id
         ))
+
+        # ACCUMULATE TOTAL SAFELY
+        total_revenue += line_total
 
         # UPDATE STOCK
         cursor.execute("""
@@ -395,10 +410,11 @@ def sale_ticket(ticket: SaleTicket):
             AND tracks_stock = 1
         """, (item.quantity, item.product_id, ticket.store_id))
 
-        total_revenue += price * item.quantity
+    # 🔥 FINAL ROUNDING (CRITICAL)
+    total_revenue = round(total_revenue, 2)
 
     # -----------------------------
-    # INSERT CASH EVENT (OUTSIDE LOOP)
+    # INSERT CASH EVENT
     # -----------------------------
 
     print("💰 INSERTING CASH EVENT:", total_revenue)
@@ -410,8 +426,6 @@ def sale_ticket(ticket: SaleTicket):
     """, (ticket.store_id,))
 
     result = cursor.fetchone()
-    print("ORG RESULT:", result)
-
     org_id = result[0] if result and result[0] is not None else None
 
     cursor.execute("""
