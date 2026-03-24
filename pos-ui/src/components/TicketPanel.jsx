@@ -13,19 +13,51 @@ function TicketPanel({
   cancelTicket,
   renameTicket,
   intakePaid,
-  setIntakePaid
+  setIntakePaid,
+
+  // 🔥 NEW PROPS
+  discountValue,
+  setDiscountValue,
+  discountType,
+  setDiscountType
 }) {
 
   // -----------------------------
-  // 🔥 RUNNING TOTAL (NEW)
+  // SUBTOTAL
   // -----------------------------
-  const total = currentTicket?.items.reduce((sum, item) => {
-    if (currentTicket.type === "sale") {
-      return sum + (item.price * item.quantity);
-    } else {
-      return sum + (item.cost * item.quantity);
-    }
+  const subtotal = currentTicket?.items.reduce((sum, item) => {
+    return sum + (item.price * item.quantity);
   }, 0) || 0;
+
+  // -----------------------------
+  // DISCOUNT
+  // -----------------------------
+  let discountAmount = 0;
+
+  if (discountType === "percent") {
+    discountAmount = subtotal * (discountValue / 100);
+  } else {
+    discountAmount = discountValue;
+  }
+
+  // -----------------------------
+  // TOTAL
+  // -----------------------------
+  const total =
+    currentTicket?.type === "sale"
+      ? Math.max(subtotal - discountAmount, 0)
+      : currentTicket?.items.reduce((sum, item) => {
+          return sum + (item.cost * item.quantity);
+        }, 0) || 0;
+
+  // -----------------------------
+  // PROFIT (SALE ONLY)
+  // -----------------------------
+  const totalCost = currentTicket?.items.reduce((sum, item) => {
+    return sum + (item.cost * item.quantity);
+  }, 0) || 0;
+
+  const profit = total - totalCost;
 
   return (
 
@@ -100,7 +132,7 @@ function TicketPanel({
                 : "Intake Ticket")}
           </h3>
 
-          {/* ✅ PAID TOGGLE (ONLY FOR INTAKE) */}
+          {/* INTAKE PAID */}
           {currentTicket.type === "intake" && (
             <div style={{ marginBottom: 10 }}>
               <label>
@@ -144,7 +176,38 @@ function TicketPanel({
             />
           ))}
 
-          {/* 🔥 TOTAL DISPLAY (NEW) */}
+          {/* 🔥 DISCOUNT (SALE ONLY) */}
+          {currentTicket.type === "sale" && (
+            <div style={{ marginTop: 10 }}>
+
+              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                <select
+                  value={discountType}
+                  onChange={(e) => setDiscountType(e.target.value)}
+                >
+                  <option value="percent">%</option>
+                  <option value="amount">$</option>
+                </select>
+
+                <input
+                  type="number"
+                  value={discountValue}
+                  onChange={(e) =>
+                    setDiscountValue(Number(e.target.value))
+                  }
+                  placeholder="Discount"
+                  style={{ width: 100 }}
+                />
+              </div>
+
+              <div style={{ fontSize: 14 }}>
+                Discount: -${discountAmount.toFixed(2)}
+              </div>
+
+            </div>
+          )}
+
+          {/* 🔥 TOTAL */}
           <div style={{
             marginTop: 10,
             fontWeight: "bold",
@@ -155,6 +218,17 @@ function TicketPanel({
               : "Total Cost: "}
             ${total.toFixed(2)}
           </div>
+
+          {/* ⚠️ LOSS WARNING */}
+          {currentTicket.type === "sale" && profit < 0 && (
+            <div style={{
+              color: "red",
+              fontWeight: "bold",
+              marginTop: 5
+            }}>
+              ⚠️ Warning: This sale generates a loss
+            </div>
+          )}
 
           {/* ACTIONS */}
           <div style={{ marginTop: 15 }}>

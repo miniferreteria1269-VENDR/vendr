@@ -21,7 +21,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
   const [authMode, setAuthMode] = useState("login");
-
+  const [discountValue, setDiscountValue] = useState(0);
+  const [discountType, setDiscountType] = useState("percent"); // "percent" or "amount"
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
     return saved ? JSON.parse(saved) : [];
@@ -376,6 +377,10 @@ function App() {
             finalizeIntake={finalizeIntake}
             intakePaid={intakePaid}
             setIntakePaid={setIntakePaid}
+            discountValue={discountValue}
+            setDiscountValue={setDiscountValue}
+            discountType={discountType}
+            setDiscountType={setDiscountType}
           />
         </div>
       )}
