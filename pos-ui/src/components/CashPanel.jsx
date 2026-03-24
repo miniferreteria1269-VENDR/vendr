@@ -4,6 +4,23 @@ import ReturnModal from "./ReturnModal";
 
 const API = "https://vendr-onkr.onrender.com";
 
+// ✅ EXPANDED EXPENSE CATEGORIES
+const EXPENSE_CATEGORIES = [
+  "Compra Mercadería",
+  "Nómina",
+  "Renta",
+  "Utilidades",
+  "Internet / Telecomunicaciones",
+  "Impuestos",
+  "Mantenimiento",
+  "Transporte / Envíos",
+  "Suministros / Papelería",
+  "Servicios / Honorarios",
+  "Comisiones / Bancos",
+  "Retiro Dueño",
+  "Otros"
+];
+
 function CashPanel({ storeId, products }) {
 
   const [balance, setBalance] = useState(0);
@@ -93,7 +110,7 @@ export default CashPanel;
 
 
 // =======================================================
-// 💰 REVENUE MODAL
+// 💰 REVENUE MODAL (FREE CATEGORY)
 // =======================================================
 
 function RevenueModal({ storeId, onClose, onSuccess }) {
@@ -140,7 +157,7 @@ function RevenueModal({ storeId, onClose, onSuccess }) {
 
       <input
         type="text"
-        placeholder="Category (e.g. Misc)"
+        placeholder="Category (e.g. Misc income)"
         value={category}
         onChange={(e) => setCategory(e.target.value)}
       />
@@ -166,7 +183,7 @@ function RevenueModal({ storeId, onClose, onSuccess }) {
 
 
 // =======================================================
-// 💸 EXPENSE MODAL
+// 💸 EXPENSE MODAL (DROPDOWN CATEGORY)
 // =======================================================
 
 function ExpenseModal({ storeId, onClose, onSuccess }) {
@@ -211,12 +228,18 @@ function ExpenseModal({ storeId, onClose, onSuccess }) {
         onChange={(e) => setAmount(e.target.value)}
       />
 
-      <input
-        type="text"
-        placeholder="Category (e.g. Utilities)"
+      {/* ✅ DROPDOWN CATEGORY */}
+      <select
         value={category}
         onChange={(e) => setCategory(e.target.value)}
-      />
+      >
+        <option value="">Select category</option>
+        {EXPENSE_CATEGORIES.map(cat => (
+          <option key={cat} value={cat}>
+            {cat}
+          </option>
+        ))}
+      </select>
 
       <input
         type="text"
@@ -239,7 +262,7 @@ function ExpenseModal({ storeId, onClose, onSuccess }) {
 
 
 // =======================================================
-// 🧱 SHARED MODAL STYLE
+// 🧱 MODAL STYLE
 // =======================================================
 
 const modalStyle = {
@@ -255,5 +278,5 @@ const modalStyle = {
   display: "flex",
   flexDirection: "column",
   gap: 8,
-  minWidth: 250
+  minWidth: 260
 };
