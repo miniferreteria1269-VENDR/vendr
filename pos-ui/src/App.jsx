@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import axios from "axios";
 import Login from "./Login";
@@ -10,17 +9,19 @@ import InventoryReport from "./components/InventoryReport";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
+
 const API = "https://vendr-onkr.onrender.com";
 
 function App() {
 
   // -----------------------------
-  // STATE (ALL HOOKS FIRST)
+  // STATE
   // -----------------------------
 
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
   const [authMode, setAuthMode] = useState("login");
+
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
     return saved ? JSON.parse(saved) : [];
@@ -34,19 +35,16 @@ function App() {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [intakePaid, setIntakePaid] = useState(false);
+
   const handleLogout = () => {
     localStorage.removeItem("user");
-
-    // optional cleanup (recommended)
     localStorage.removeItem("tickets");
     localStorage.removeItem("activeTicket");
-
     setUser(null);
   };
 
-
   // -----------------------------
-  // LOAD USER FROM STORAGE
+  // LOAD USER
   // -----------------------------
 
   useEffect(() => {
@@ -57,7 +55,7 @@ function App() {
   }, []);
 
   // -----------------------------
-  // SAFE DERIVED VALUES
+  // DERIVED
   // -----------------------------
 
   const storeId = user?.store_id;
@@ -78,7 +76,7 @@ function App() {
   }, [activeTicket]);
 
   // -----------------------------
-  // LOAD PRODUCTS
+  // LOAD PRODUCTS (FIXED)
   // -----------------------------
 
   const loadProducts = async () => {
@@ -89,7 +87,9 @@ function App() {
         params: { store_id: storeId }
       });
 
-      const sorted = (res.data.products || []).sort((a, b) =>
+      const data = res.data.products ?? res.data;
+
+      const sorted = data.sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
       );
 
@@ -105,7 +105,7 @@ function App() {
   }, [storeId]);
 
   // -----------------------------
-  // SEARCH
+  // SEARCH (FIXED)
   // -----------------------------
 
   useEffect(() => {
@@ -131,7 +131,9 @@ function App() {
         }
       });
 
-      setProducts(res.data.products);
+      const data = res.data.products ?? res.data;
+
+      setProducts(data);
 
     } catch (err) {
       console.error("Search error:", err);
@@ -139,7 +141,7 @@ function App() {
   };
 
   // -----------------------------
-  // TICKET ACTIONS
+  // TICKETS
   // -----------------------------
 
   const createTicket = (type) => {
@@ -156,6 +158,9 @@ function App() {
 
   const addItem = (product) => {
     if (!currentTicket) return;
+
+    // DEBUG (optional - remove after confirming fix)
+    console.log("ADD ITEM PRODUCT:", product);
 
     const updated = tickets.map(ticket => {
       if (ticket.id !== activeTicket) return ticket;
@@ -183,7 +188,7 @@ function App() {
             product_id: product.product_id,
             name: product.name,
             quantity: 1,
-            cost: product.cost || 0,
+            cost: product.cost ?? 0,   // ✅ FIXED
             price: product.price
           }
         ]
@@ -223,8 +228,6 @@ function App() {
   };
 
   const renameTicket = (ticketId) => {
-    console.log("RENAME CLICKED", ticketId);
-
     const newLabel = prompt("Ticket label:");
     if (!newLabel) return;
 
@@ -253,7 +256,6 @@ function App() {
     try {
       await axios.post(`${API}/sale-ticket`, {
         store_id: storeId,
-        
         items: currentTicket.items.map(i => ({
           product_id: i.product_id,
           quantity: i.quantity
@@ -268,23 +270,22 @@ function App() {
       console.error("Sale error:", err);
       alert("Sale failed");
     }
-  }; // ✅ CLOSE finalizeSale properly
-
+  };
 
   const finalizeIntake = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
     try {
       await axios.post(`${API}/intake-ticket`, {
-       store_id: storeId,
-       paid: intakePaid, 
-       items: currentTicket.items.map(i => ({
-         product_id: i.product_id,
-         quantity: i.quantity,
-         cost: i.cost,
-         price: i.price
-       }))
-     });
+        store_id: storeId,
+        paid: intakePaid,
+        items: currentTicket.items.map(i => ({
+          product_id: i.product_id,
+          quantity: i.quantity,
+          cost: i.cost,
+          price: i.price
+        }))
+      });
 
       setTickets(prev => prev.filter(t => t.id !== activeTicket));
       setActiveTicket(null);
@@ -297,7 +298,7 @@ function App() {
   };
 
   // -----------------------------
-  // LOGIN GATES (AFTER HOOKS)
+  // LOGIN
   // -----------------------------
 
   if (!user) {
@@ -315,9 +316,9 @@ function App() {
           />
         )}
       </div>
-  
     );
   }
+
   if (!storeId) {
     return <div>Loading...</div>;
   }
@@ -329,25 +330,17 @@ function App() {
   return (
     <div style={{ fontFamily: "Arial", height: "100vh" }}>
 
-      {/* HEADER */}
       <div style={{
         padding: 10,
         fontWeight: "bold",
         fontSize: 18,
         display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center"
+        justifyContent: "space-between"
       }}>
-        <div>
-          {user.store_name || `Store ${storeId}`}
-        </div>
+        <div>{user.store_name || `Store ${storeId}`}</div>
+        <button onClick={handleLogout}>Logout</button>
+      </div>
 
-        <button onClick={handleLogout}>
-          Logout
-        </button>
-      </div>      
-
-      {/* NAV */}
       <div style={{ padding: 10 }}>
         <button onClick={() => setView("pos")}>POS</button>
         <button onClick={() => setView("sales")}>Sales</button>
@@ -357,7 +350,6 @@ function App() {
         <button onClick={() => setView("cash")}>Cash</button>
       </div>
 
-      {/* VIEWS */}
       {view === "pos" && (
         <div style={{ display: "flex", height: "100%" }}>
           <ProductPanel
@@ -380,7 +372,7 @@ function App() {
             renameTicket={renameTicket}
             finalizeSale={finalizeSale}
             finalizeIntake={finalizeIntake}
-            intakePaid={intakePaid} 
+            intakePaid={intakePaid}
             setIntakePaid={setIntakePaid}
           />
         </div>
@@ -391,10 +383,7 @@ function App() {
       {view === "products" && <ProductManagement storeId={storeId} />}
       {view === "analysis" && <SalesAnalysisPanel storeId={storeId} />}
       {view === "cash" && (
-        <CashPanel
-          storeId={storeId}
-          products={products}   // ✅ ADD THIS
-        />
+        <CashPanel storeId={storeId} products={products} />
       )}
     </div>
   );
