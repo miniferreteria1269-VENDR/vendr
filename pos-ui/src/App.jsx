@@ -159,21 +159,23 @@ function App() {
   const addItem = (product) => {
     if (!currentTicket) return;
 
-    // DEBUG (optional - remove after confirming fix)
-    console.log("ADD ITEM PRODUCT:", product);
+    // 🔥 Pull fresh version from current products state
+    const fullProduct = products.find(
+      p => p.product_id === product.product_id
+    ) || product;
 
     const updated = tickets.map(ticket => {
       if (ticket.id !== activeTicket) return ticket;
 
       const existing = ticket.items.find(
-        i => i.product_id === product.product_id
+        i => i.product_id === fullProduct.product_id
       );
 
       if (existing) {
         return {
           ...ticket,
           items: ticket.items.map(i =>
-            i.product_id === product.product_id
+            i.product_id === fullProduct.product_id
               ? { ...i, quantity: i.quantity + 1 }
               : i
           )
@@ -185,11 +187,11 @@ function App() {
         items: [
           ...ticket.items,
           {
-            product_id: product.product_id,
-            name: product.name,
+            product_id: fullProduct.product_id,
+            name: fullProduct.name,
             quantity: 1,
-            cost: product.cost ?? 0,   // ✅ FIXED
-            price: product.price
+            cost: fullProduct.cost ?? 0,   // ✅ now reliable
+            price: fullProduct.price
           }
         ]
       };
