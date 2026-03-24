@@ -12,9 +12,20 @@ function TicketPanel({
   finalizeIntake,
   cancelTicket,
   renameTicket,
-  intakePaid,            // ✅ NEW
-  setIntakePaid          // ✅ NEW
+  intakePaid,
+  setIntakePaid
 }) {
+
+  // -----------------------------
+  // 🔥 RUNNING TOTAL (NEW)
+  // -----------------------------
+  const total = currentTicket?.items.reduce((sum, item) => {
+    if (currentTicket.type === "sale") {
+      return sum + (item.price * item.quantity);
+    } else {
+      return sum + (item.cost * item.quantity);
+    }
+  }, 0) || 0;
 
   return (
 
@@ -132,6 +143,18 @@ function TicketPanel({
               ticketType={currentTicket.type}
             />
           ))}
+
+          {/* 🔥 TOTAL DISPLAY (NEW) */}
+          <div style={{
+            marginTop: 10,
+            fontWeight: "bold",
+            fontSize: 18
+          }}>
+            {currentTicket.type === "sale"
+              ? "Total Sale: "
+              : "Total Cost: "}
+            ${total.toFixed(2)}
+          </div>
 
           {/* ACTIONS */}
           <div style={{ marginTop: 15 }}>
