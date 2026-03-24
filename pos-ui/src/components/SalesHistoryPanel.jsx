@@ -14,7 +14,7 @@ function SalesHistoryPanel({ storeId }) {
         const res = await axios.get(`${API}/sales-history`, {
           params: { store_id: storeId }
         });
-
+        console.log("SALES DATA:", res.data);
         setSales(res.data.sales || []);
       } catch (err) {
         console.error(err);
