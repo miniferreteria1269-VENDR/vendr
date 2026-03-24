@@ -718,7 +718,7 @@ def search_products(store_id: int, name: str, include_inactive: bool = False):
     if include_inactive:
 
         cursor.execute("""
-            SELECT product_id, name, stock, price, is_active
+            SELECT product_id, name, stock, cost, price, is_active
             FROM products
             WHERE store_id = %s
             AND LOWER(name) LIKE %s
@@ -727,7 +727,7 @@ def search_products(store_id: int, name: str, include_inactive: bool = False):
     else:
 
         cursor.execute("""
-            SELECT product_id, name, stock, price, is_active
+            SELECT product_id, name, stock, cost, price, is_active
             FROM products
             WHERE store_id = %s
             AND is_active = 1
@@ -744,12 +744,12 @@ def search_products(store_id: int, name: str, include_inactive: bool = False):
             "product_id": row[0],
             "name": row[1],
             "stock": row[2],
-            "price": row[3],
-            "is_active": row[4]
+            "cost": row[3],   # ✅ now correct
+            "price": row[4],
+            "is_active": row[5]
         })
 
     return {"products": results}
-
 @app.get("/product/{product_id}")
 def get_product(store_id: int, product_id: int):
 
