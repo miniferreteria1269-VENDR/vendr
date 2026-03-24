@@ -37,43 +37,68 @@ function SalesHistoryPanel({ storeId }) {
           gap: 8
         }}>
 
-          {Array.isArray(sales) && sales.map((sale, index) => (
-            <div
-              key={index}
-              style={{
-                background: COLORS.panelAlt,
-                borderRadius: 10,
-                padding: 10,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center"
-              }}
-            >
+          {Array.isArray(sales) && sales.map((sale, index) => {
 
-              {/* LEFT */}
-              <div>
-                <div style={{ fontWeight: 500 }}>
-                  Ticket #{sale.ticket_id}
+            // ✅ SAFE DATE
+            const rawDate =
+              sale.event_datetime ||
+              sale.event_time ||
+              sale.created_at;
+
+            const formattedDate = rawDate
+              ? new Date(rawDate).toLocaleString()
+              : "No date";
+
+            // ✅ SAFE TOTAL (fallback calculation)
+            const total =
+              sale.total ??
+              ((sale.price_at_time || 0) * (sale.quantity || 0));
+
+            return (
+              <div
+                key={index}
+                style={{
+                  background: COLORS.panelAlt,
+                  borderRadius: 10,
+                  padding: 10,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}
+              >
+
+                {/* LEFT */}
+                <div>
+                  <div style={{ fontWeight: 500 }}>
+                    Ticket #{sale.ticket_id || "—"}
+                  </div>
+
+                  <div style={{
+                    fontSize: 12,
+                    color: COLORS.textDim
+                  }}>
+                    {formattedDate}
+                  </div>
                 </div>
 
+                {/* RIGHT */}
                 <div style={{
-                  fontSize: 12,
-                  color: COLORS.textDim
+                  fontWeight: "bold",
+                  color: COLORS.primary
                 }}>
-                  {new Date(sale.event_datetime).toLocaleString()}
+                  ${Number(total).toFixed(2)}
                 </div>
-              </div>
 
-              {/* RIGHT */}
-              <div style={{
-                fontWeight: "bold",
-                color: COLORS.primary
-              }}>
-                ${Number(sale.total || 0).toFixed(2)}
               </div>
+            );
+          })}
 
+          {/* EMPTY STATE */}
+          {Array.isArray(sales) && sales.length === 0 && (
+            <div style={{ color: COLORS.textDim }}>
+              No sales yet
             </div>
-          ))}
+          )}
 
         </div>
 
