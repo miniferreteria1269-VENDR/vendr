@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import ReturnModal from "./ReturnModal";
-import { COLORS, card, btnPrimary, btnDanger } from "../uiStyles";
+import { COLORS, card, btnPrimary, btnSecondary, btnDanger } from "../uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
 
