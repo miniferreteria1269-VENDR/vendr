@@ -12,6 +12,22 @@ import CashPanel from "./components/CashPanel";
 
 const API = "https://vendr-onkr.onrender.com";
 
+// 🎨 GLOBAL COLOR SYSTEM (Halo + Toast hybrid)
+const COLORS = {
+  bg: "#0f1115",
+  panel: "#1a1d24",
+  panelAlt: "#222733",
+  border: "#2f3542",
+
+  text: "#e6edf3",
+  textDim: "#9da7b3",
+
+  primary: "#3aa0ff",
+  primaryDark: "#1f6feb",
+
+  danger: "#ff5c5c"
+};
+
 function App() {
 
   const [user, setUser] = useState(null);
@@ -32,7 +48,6 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [intakePaid, setIntakePaid] = useState(false);
 
-  // 🔥 DISCOUNT
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState("percent");
 
@@ -112,7 +127,7 @@ function App() {
   };
 
   // -----------------------------
-  // TICKETS
+  // TICKETS (UNCHANGED)
   // -----------------------------
   const createTicket = (type) => {
     const ticket = {
@@ -212,9 +227,6 @@ function App() {
     setSearchTerm("");
   };
 
-  // -----------------------------
-  // FINALIZE SALE (DISCOUNT FIXED)
-  // -----------------------------
   const finalizeSale = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
@@ -285,30 +297,75 @@ function App() {
       : <Signup onSignup={setUser} switchToLogin={() => setAuthMode("login")} />;
   }
 
-  if (!storeId) return <div>Loading...</div>;
+  if (!storeId) return <div style={{ color: COLORS.text }}>Loading...</div>;
 
   // -----------------------------
   // UI
   // -----------------------------
   return (
-    <div style={{ fontFamily: "Arial", height: "100vh" }}>
+    <div style={{
+      fontFamily: "system-ui, -apple-system, sans-serif",
+      background: COLORS.bg,
+      color: COLORS.text,
+      height: "100vh",
+      display: "flex",
+      flexDirection: "column"
+    }}>
 
-      <div style={{ padding: 10, display: "flex", justifyContent: "space-between" }}>
+      {/* HEADER */}
+      <div style={{
+        padding: 12,
+        display: "flex",
+        justifyContent: "space-between",
+        borderBottom: `1px solid ${COLORS.border}`
+      }}>
         <div>{user.store_name || `Store ${storeId}`}</div>
-        <button onClick={handleLogout}>Logout</button>
+        <button
+          onClick={handleLogout}
+          style={{
+            background: COLORS.panelAlt,
+            border: "none",
+            color: COLORS.text,
+            padding: "6px 10px",
+            borderRadius: 6
+          }}
+        >
+          Logout
+        </button>
       </div>
 
-      <div style={{ padding: 10 }}>
-        <button onClick={() => setView("pos")}>POS</button>
-        <button onClick={() => setView("sales")}>Sales</button>
-        <button onClick={() => setView("inventory")}>Inventory</button>
-        <button onClick={() => setView("products")}>Products</button>
-        <button onClick={() => setView("analysis")}>Analysis</button>
-        <button onClick={() => setView("cash")}>Cash</button>
+      {/* NAV */}
+      <div style={{
+        padding: 10,
+        display: "flex",
+        gap: 8,
+        borderBottom: `1px solid ${COLORS.border}`
+      }}>
+        {["pos", "sales", "inventory", "products", "analysis", "cash"].map(v => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            style={{
+              background: view === v ? COLORS.primary : COLORS.panelAlt,
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 12px",
+              cursor: "pointer"
+            }}
+          >
+            {v.toUpperCase()}
+          </button>
+        ))}
       </div>
 
       {view === "pos" && (
-        <div style={{ display: "flex", height: "100%" }}>
+        <div style={{
+          display: "flex",
+          height: "100%",
+          gap: 12,
+          padding: 12
+        }}>
           <ProductPanel
             products={products}
             searchTerm={searchTerm}
