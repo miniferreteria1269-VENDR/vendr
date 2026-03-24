@@ -15,7 +15,7 @@ function SalesHistoryPanel({ storeId }) {
           params: { store_id: storeId }
         });
 
-        setSales(res.data || []);
+        setSales(res.data.sales || []);
       } catch (err) {
         console.error(err);
       }
@@ -37,7 +37,7 @@ function SalesHistoryPanel({ storeId }) {
           gap: 8
         }}>
 
-          {sales.map((sale, index) => (
+          {Array.isArray(sales) && sales.map((sale, index) => (
             <div
               key={index}
               style={{
