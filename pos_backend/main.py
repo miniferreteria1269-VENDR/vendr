@@ -90,6 +90,7 @@ def startup():
 class SaleItem(BaseModel):
     product_id: int
     quantity: int
+    price: float  # 🔥 REQUIRED
 
 
 class SaleTicket(BaseModel):
