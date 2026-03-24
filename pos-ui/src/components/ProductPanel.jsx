@@ -15,18 +15,15 @@ function ProductPanel({
 }) {
 
   return (
-    <>
-      <h1 style={{ color: "red" }}>PRODUCT PANEL LOADED</h1>
-
-      <div style={{
-        width: "40%",
-        background: COLORS.panel,
-        borderRadius: 14,
-        padding: 16,
-        display: "flex",
-        flexDirection: "column",
-        color: COLORS.text
-      }}>
+    <div style={{
+      width: "40%",
+      background: COLORS.panel,
+      borderRadius: 14,
+      padding: 16,
+      display: "flex",
+      flexDirection: "column",
+      color: COLORS.text
+    }}>
 
       {/* SEARCH */}
       <input
@@ -76,7 +73,7 @@ function ProductPanel({
             }}
           >
 
-            {/* LEFT SIDE */}
+            {/* LEFT */}
             <div>
               <div style={{ fontWeight: 500 }}>
                 {product.name}
@@ -90,7 +87,7 @@ function ProductPanel({
               </div>
             </div>
 
-            {/* RIGHT SIDE */}
+            {/* RIGHT */}
             <div style={{
               fontWeight: "bold",
               color: COLORS.primary
