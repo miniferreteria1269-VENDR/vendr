@@ -1,15 +1,20 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import ReturnModal from "./ReturnModal";
+
 const API = "https://vendr-onkr.onrender.com";
 
 function CashPanel({ storeId, products }) {
 
   const [balance, setBalance] = useState(0);
+
   const [showReturn, setShowReturn] = useState(false);
   const [showRevenue, setShowRevenue] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
 
+  // -----------------------------
+  // LOAD BALANCE
+  // -----------------------------
   const loadBalance = async () => {
     try {
       const res = await axios.get(`${API}/test-cash-balance`, {
@@ -34,7 +39,9 @@ function CashPanel({ storeId, products }) {
 
       <h1>${Number(balance).toFixed(2)}</h1>
 
-      <div style={{ marginTop: 20 }}>
+      {/* ACTION BUTTONS */}
+      <div style={{ marginTop: 20, display: "flex", gap: 10 }}>
+
         <button onClick={() => setShowRevenue(true)}>
           + Revenue
         </button>
@@ -43,14 +50,13 @@ function CashPanel({ storeId, products }) {
           Return / Refund
         </button>
 
-        <button
-          onClick={() => setShowExpense(true)}
-          style={{ marginLeft: 10 }}
-        >
+        <button onClick={() => setShowExpense(true)}>
           - Expense
         </button>
+
       </div>
 
+      {/* REVENUE MODAL */}
       {showRevenue && (
         <RevenueModal
           storeId={storeId}
@@ -59,15 +65,17 @@ function CashPanel({ storeId, products }) {
         />
       )}
 
+      {/* RETURN MODAL */}
       {showReturn && (
         <ReturnModal
           storeId={storeId}
-          products={products} 
+          products={products}
           onClose={() => setShowReturn(false)}
           onSuccess={loadBalance}
         />
       )}
 
+      {/* EXPENSE MODAL */}
       {showExpense && (
         <ExpenseModal
           storeId={storeId}
@@ -79,5 +87,173 @@ function CashPanel({ storeId, products }) {
     </div>
   );
 }
-      
+
 export default CashPanel;
+
+
+
+// =======================================================
+// 💰 REVENUE MODAL
+// =======================================================
+
+function RevenueModal({ storeId, onClose, onSuccess }) {
+
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("");
+  const [note, setNote] = useState("");
+
+  const submit = async () => {
+    if (!amount || !category) {
+      alert("Amount and category required");
+      return;
+    }
+
+    try {
+      await axios.post(`${API}/cash-event`, {
+        store_id: storeId,
+        amount: Number(amount),
+        type: "revenue",
+        category,
+        note
+      });
+
+      onSuccess();
+      onClose();
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed");
+    }
+  };
+
+  return (
+    <div style={modalStyle}>
+
+      <h3>Add Revenue</h3>
+
+      <input
+        type="number"
+        placeholder="Amount"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+
+      <input
+        type="text"
+        placeholder="Category (e.g. Misc)"
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+      />
+
+      <input
+        type="text"
+        placeholder="Note (optional)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+
+      <div style={{ marginTop: 10 }}>
+        <button onClick={submit}>Save</button>
+        <button onClick={onClose} style={{ marginLeft: 10 }}>
+          Cancel
+        </button>
+      </div>
+
+    </div>
+  );
+}
+
+
+
+// =======================================================
+// 💸 EXPENSE MODAL
+// =======================================================
+
+function ExpenseModal({ storeId, onClose, onSuccess }) {
+
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("");
+  const [note, setNote] = useState("");
+
+  const submit = async () => {
+    if (!amount || !category) {
+      alert("Amount and category required");
+      return;
+    }
+
+    try {
+      await axios.post(`${API}/cash-event`, {
+        store_id: storeId,
+        amount: Number(amount),
+        type: "expense",
+        category,
+        note
+      });
+
+      onSuccess();
+      onClose();
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed");
+    }
+  };
+
+  return (
+    <div style={modalStyle}>
+
+      <h3>Add Expense</h3>
+
+      <input
+        type="number"
+        placeholder="Amount"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+
+      <input
+        type="text"
+        placeholder="Category (e.g. Utilities)"
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+      />
+
+      <input
+        type="text"
+        placeholder="Note (optional)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+
+      <div style={{ marginTop: 10 }}>
+        <button onClick={submit}>Save</button>
+        <button onClick={onClose} style={{ marginLeft: 10 }}>
+          Cancel
+        </button>
+      </div>
+
+    </div>
+  );
+}
+
+
+
+// =======================================================
+// 🧱 SHARED MODAL STYLE
+// =======================================================
+
+const modalStyle = {
+  position: "fixed",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  background: "white",
+  padding: 20,
+  border: "1px solid #ccc",
+  borderRadius: 6,
+  zIndex: 1000,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  minWidth: 250
+};
