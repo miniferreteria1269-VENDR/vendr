@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { COLORS, card, btnPrimary, btnSecondary, input } from "../uiStyles";
 
 function InventoryReport({ storeId }) {
 
@@ -11,613 +12,257 @@ function InventoryReport({ storeId }) {
   const [paretoItems, setParetoItems] = useState([]);
   const [deadStockItems, setDeadStockItems] = useState([]);
   const [serviceItems, setServiceItems] = useState([]);
+
   const [serviceStartDate, setServiceStartDate] = useState("");
   const [serviceEndDate, setServiceEndDate] = useState("");
   const [deadStockDays, setDeadStockDays] = useState(90);
 
-  const [totals, setTotals] = useState({
-    cost: 0,
-    price: 0
-  });
+  const [totals, setTotals] = useState({ cost: 0, price: 0 });
 
-  const formatMoney = (value) => {
-    return Number(value || 0).toFixed(2);
-  };
-
-  // -----------------------------
-  // LOAD INVENTORY REPORT
-  // -----------------------------
+  const formatMoney = (v) => Number(v || 0).toFixed(2);
 
   const loadInventory = async () => {
+    const res = await axios.get("https://vendr-onkr.onrender.com/stock-report", {
+      params: { store_id: storeId, name: searchTerm || undefined }
+    });
 
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/stock-report",
-      {
-        params: {
-          store_id: storeId,
-          name: searchTerm || undefined
-        }
-      }
-    );
-
-    const data = res.data;
-
-    const sortedProducts = (data.products || []).sort((a, b) =>
+    const sorted = (res.data.products || []).sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
     );
 
-    setProducts(sortedProducts);
-
+    setProducts(sorted);
     setTotals({
-      cost: data.total_inventory_cost || 0,
-      price: data.total_inventory_price || 0
+      cost: res.data.total_inventory_cost || 0,
+      price: res.data.total_inventory_price || 0
     });
-
   };
-
-  // -----------------------------
-  // LOAD LOW STOCK
-  // -----------------------------
 
   const loadLowStock = async () => {
-
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/low-stock",
-      {
-        params: { store_id: storeId }
-      }
-    );
-
+    const res = await axios.get("https://vendr-onkr.onrender.com/low-stock", {
+      params: { store_id: storeId }
+    });
     setLowStockItems(res.data.low_stock || []);
-
   };
-
-  // -----------------------------
-  // LOAD PARETO
-  // -----------------------------
 
   const loadPareto = async () => {
-
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/inventory-pareto",
-      {
-        params: { store_id: storeId }
-      }
-    );
-
+    const res = await axios.get("https://vendr-onkr.onrender.com/inventory-pareto", {
+      params: { store_id: storeId }
+    });
     setParetoItems(res.data.products || []);
-
   };
 
-  // -----------------------------
-  // LOAD DEAD STOCK
-  // -----------------------------
-
   const loadDeadStock = async () => {
-
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/dead-stock",
-      {
-        params: {
-          store_id: storeId,
-          days: deadStockDays
-        }
-      }
-    );
-
+    const res = await axios.get("https://vendr-onkr.onrender.com/dead-stock", {
+      params: { store_id: storeId, days: deadStockDays }
+    });
     setDeadStockItems(res.data.products || []);
-
   };
 
   const loadServices = async () => {
-    if (!storeId) return;
-
-    try {
-      const res = await axios.get(
-        "https://vendr-onkr.onrender.com/service-report",
-        {
-          params: {
-            store_id: storeId,
-            start_date: serviceStartDate || undefined,
-            end_date: serviceEndDate || undefined
-          }
-        }
-      );
-
-      setServiceItems(res.data.services || []);
-
-    } catch (err) {
-      console.error("Service report error:", err);
-    }
+    const res = await axios.get("https://vendr-onkr.onrender.com/service-report", {
+      params: {
+        store_id: storeId,
+        start_date: serviceStartDate || undefined,
+        end_date: serviceEndDate || undefined
+      }
+    });
+    setServiceItems(res.data.services || []);
   };
 
-  // -----------------------------
-  // INITIAL LOAD
-  // -----------------------------
+  useEffect(() => { loadInventory(); }, []);
 
   useEffect(() => {
-    loadInventory();
-  }, []);
-
-  // -----------------------------
-  // SEARCH DEBOUNCE
-  // -----------------------------
-
-  useEffect(() => {
-
     if (inventoryView !== "stock") return;
-
-    const delay = setTimeout(() => {
-      loadInventory();
-    }, 300);
-
+    const delay = setTimeout(loadInventory, 300);
     return () => clearTimeout(delay);
-
   }, [searchTerm]);
 
   useEffect(() => {
-    if (inventoryView === "services") {
-      loadServices();
-    }
-  }, [serviceStartDate, serviceEndDate]); 
-
-  // -----------------------------
-  // VIEW SWITCH LOADER
-  // -----------------------------
+    if (inventoryView === "services") loadServices();
+  }, [serviceStartDate, serviceEndDate]);
 
   useEffect(() => {
-
-    if (inventoryView === "lowstock") {
-      loadLowStock();
-    }
-
-    if (inventoryView === "pareto") {
-      loadPareto();
-    }
-
-    if (inventoryView === "services") {
-      loadServices();
-    }
-
-    if (inventoryView === "deadstock") {
-      loadDeadStock();
-    }
-
+    if (inventoryView === "lowstock") loadLowStock();
+    if (inventoryView === "pareto") loadPareto();
+    if (inventoryView === "services") loadServices();
+    if (inventoryView === "deadstock") loadDeadStock();
   }, [inventoryView]);
 
-  // reload dead stock when threshold changes
   useEffect(() => {
-
-    if (inventoryView === "deadstock") {
-      loadDeadStock();
-    }
-
+    if (inventoryView === "deadstock") loadDeadStock();
   }, [deadStockDays]);
 
   return (
+    <div style={{ padding: 16 }}>
 
-    <div style={{ padding: 20 }}>
+      <h2 style={{ marginBottom: 12 }}>Inventory</h2>
 
-      <h2>Inventory</h2>
-
-      {/* NAVIGATION */}
-
-      <div style={{ marginBottom: 20 }}>
-
-        <button onClick={() => setInventoryView("stock")}>
-          Stock Report
-        </button>
-
-        <button
-          onClick={() => setInventoryView("pareto")}
-          style={{ marginLeft: 10 }}
-        >
-          Pareto
-        </button>
-
-        <button
-          onClick={() => setInventoryView("lowstock")}
-          style={{ marginLeft: 10 }}
-        >
-          Low Stock
-        </button>
-        <button
-          onClick={() => setInventoryView("services")}
-          style={{ marginLeft: 10 }}
-        >
-          Services
-        </button>
-        <button
-          onClick={() => setInventoryView("deadstock")}
-          style={{ marginLeft: 10 }}
-        >
-          Dead Stock
-        </button>
-
+      {/* NAV */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {["stock","pareto","lowstock","services","deadstock"].map(v => (
+          <button
+            key={v}
+            onClick={() => setInventoryView(v)}
+            style={inventoryView === v ? btnPrimary : btnSecondary}
+          >
+            {v.toUpperCase()}
+          </button>
+        ))}
       </div>
 
-      {/* SEARCH BAR */}
-
+      {/* SEARCH */}
       {inventoryView === "stock" && (
-
-        <div style={{ marginBottom: 20 }}>
-
-          <input
-            type="text"
-            placeholder="Search inventory..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: 300,
-              padding: 8
-            }}
-          />
-
-        </div>
-
+        <input
+          placeholder="Search inventory..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{ ...input, marginBottom: 16, width: 300 }}
+        />
       )}
 
-      {/* STOCK REPORT */}
-
+      {/* STOCK VIEW */}
       {inventoryView === "stock" && (
+        <div style={card}>
 
-        <>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 40,
-              marginBottom: 20,
-              fontWeight: "bold"
-            }}
-          >
-
-            <div>
-              Total Inventory Cost: ${formatMoney(totals.cost)}
+          {/* TOTALS */}
+          <div style={{
+            display: "flex",
+            gap: 30,
+            marginBottom: 16,
+            fontWeight: "bold"
+          }}>
+            <div>Cost: ${formatMoney(totals.cost)}</div>
+            <div>Value: ${formatMoney(totals.price)}</div>
+            <div style={{ color: COLORS.primary }}>
+              Profit: ${formatMoney(totals.price - totals.cost)}
             </div>
-
-            <div>
-              Total Inventory Retail Value: ${formatMoney(totals.price)}
-            </div>
-
-            <div>
-              Projected Margin: ${formatMoney(totals.price - totals.cost)}
-            </div>
-
           </div>
 
-          <div
-            style={{
-              border: "1px solid #ccc",
-              maxHeight: "65vh",
-              overflowY: "auto"
-            }}
-          >
+          {/* LIST */}
+          <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
+            {products.map((p, i) => (
+              <div key={i} style={{
+                background: COLORS.panelAlt,
+                padding: 10,
+                borderRadius: 8,
+                marginBottom: 6,
+                display: "flex",
+                justifyContent: "space-between"
+              }}>
+                <div>
+                  <b>{p.name}</b>
+                  <div style={{ fontSize: 12, color: COLORS.textDim }}>
+                    Qty: {p.quantity}
+                  </div>
+                </div>
 
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse"
-              }}
-            >
-
-              <thead style={{ background: "#eee" }}>
-
-                <tr>
-                  <th style={cellHeader}>Product</th>
-                  <th style={cellHeader}>Qty</th>
-                  <th style={cellHeader}>Cost</th>
-                  <th style={cellHeader}>Price</th>
-                  <th style={cellHeader}>Investment</th>
-                  <th style={cellHeader}>Valuation</th>
-                </tr>
-
-              </thead>
-
-              <tbody>
-
-                {products.map((p, index) => (
-
-                  <tr key={index}>
-
-                    <td style={cell}>{p.name}</td>
-                    <td style={cell}>{p.quantity}</td>
-                    <td style={cell}>${formatMoney(p.cost)}</td>
-                    <td style={cell}>${formatMoney(p.price)}</td>
-                    <td style={cell}>${formatMoney(p.investment)}</td>
-                    <td style={cell}>${formatMoney(p.valuation)}</td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
-
+                <div style={{ textAlign: "right" }}>
+                  <div>${formatMoney(p.price)}</div>
+                  <div style={{ fontSize: 12, color: COLORS.textDim }}>
+                    Inv: ${formatMoney(p.investment)}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
-        </>
-
+        </div>
       )}
 
       {/* LOW STOCK */}
-
       {inventoryView === "lowstock" && (
-
-        <div>
-
-          <h3>Low Stock Report</h3>
+        <div style={card}>
+          <h3>Low Stock</h3>
 
           {lowStockItems.length === 0 && (
-            <p>No low stock items.</p>
+            <div style={{ color: COLORS.textDim }}>No issues</div>
           )}
 
-          {lowStockItems.map((item, index) => (
-
-            <div
-              key={index}
-              style={{
-                borderBottom: "1px solid #eee",
-                padding: "8px 0"
-              }}
-            >
-
-              <b>{item.name}</b>
-
-              <div>
-                Stock: {item.stock} | Minimum: {item.threshold}
-              </div>
-
+          {lowStockItems.map((i, idx) => (
+            <div key={idx} style={{
+              padding: 8,
+              borderBottom: `1px solid ${COLORS.border}`
+            }}>
+              <b>{i.name}</b>
+              <div>Stock: {i.stock} / Min: {i.threshold}</div>
             </div>
-
           ))}
-
         </div>
-
       )}
 
       {/* PARETO */}
-
       {inventoryView === "pareto" && (
+        <div style={card}>
+          <h3>Pareto</h3>
 
-        <div>
-
-          <h3>Pareto Inventory Report</h3>
-
-          <div
-            style={{
-              border: "1px solid #ccc",
-              maxHeight: "65vh",
-              overflowY: "auto"
-            }}
-          >
-
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-
-              <thead style={{ background: "#eee" }}>
-
-                <tr>
-                  <th style={cellHeader}>Product</th>
-                  <th style={cellHeader}>Stock</th>
-                  <th style={cellHeader}>Cost</th>
-                  <th style={cellHeader}>Investment</th>
-                </tr>
-
-              </thead>
-
-              <tbody>
-
-                {paretoItems.map((p, index) => (
-
-                  <tr key={index}>
-
-                    <td style={cell}>{p.name}</td>
-                    <td style={cell}>{p.stock}</td>
-                    <td style={cell}>${formatMoney(p.cost)}</td>
-                    <td style={cell}>${formatMoney(p.investment)}</td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
+          {paretoItems.map((p, i) => (
+            <div key={i} style={{
+              background: COLORS.panelAlt,
+              padding: 8,
+              marginBottom: 6,
+              borderRadius: 6
+            }}>
+              {p.name} — ${formatMoney(p.investment)}
+            </div>
+          ))}
         </div>
-
       )}
 
+      {/* SERVICES */}
       {inventoryView === "services" && (
+        <div style={card}>
 
-        <div>
-
-          <h3>Service Performance</h3>
-
-          {/* DATE FILTERS */}
-          <div style={{ marginBottom: 15 }}>
-
-            <label>From:</label>
-            <input
-              type="date"
-              value={serviceStartDate}
-              onChange={(e) => setServiceStartDate(e.target.value)}
-              style={{ marginLeft: 5, marginRight: 10 }}
-            />
-
-            <label>To:</label>
-            <input
-              type="date"
-              value={serviceEndDate}
-              onChange={(e) => setServiceEndDate(e.target.value)}
-              style={{ marginLeft: 5, marginRight: 10 }}
-            />
-
-            <button onClick={loadServices}>
+          <div style={{ marginBottom: 12 }}>
+            <input type="date" value={serviceStartDate}
+              onChange={(e)=>setServiceStartDate(e.target.value)} style={input}/>
+            <input type="date" value={serviceEndDate}
+              onChange={(e)=>setServiceEndDate(e.target.value)} style={{...input, marginLeft:8}}/>
+            <button onClick={loadServices} style={{...btnPrimary, marginLeft:8}}>
               Apply
             </button>
-
           </div>
 
-          {/* TABLE */}
-          <div
-            style={{
-              border: "1px solid #ccc",
-              maxHeight: "65vh",
-              overflowY: "auto"
-            }}
-          >
-
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-
-              <thead style={{ background: "#eee" }}>
-                <tr>
-                  <th style={cellHeader}>Service</th>
-                  <th style={cellHeader}>Instances</th>
-                  <th style={cellHeader}>Cost</th>
-                  <th style={cellHeader}>Revenue</th>
-                  <th style={cellHeader}>Profit</th>
-                </tr>
-              </thead>
-
-              <tbody>
-
-                {serviceItems.map((s, index) => (
-
-                  <tr key={index}>
-
-                    <td style={cell}>{s.name}</td>
-                    <td style={cell}>{s.instances}</td>
-                    <td style={cell}>${formatMoney(s.cost)}</td>
-                    <td style={cell}>${formatMoney(s.revenue)}</td>
-                    <td style={cell}>
-                      ${formatMoney(s.profit)}
-                    </td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
+          {serviceItems.map((s,i)=>(
+            <div key={i} style={{
+              background: COLORS.panelAlt,
+              padding: 8,
+              borderRadius: 6,
+              marginBottom: 6
+            }}>
+              {s.name} — ${formatMoney(s.revenue)}
+            </div>
+          ))}
         </div>
-
-      )}      
+      )}
 
       {/* DEAD STOCK */}
-
       {inventoryView === "deadstock" && (
+        <div style={card}>
 
-        <div>
+          <div style={{ marginBottom: 12 }}>
+            <input type="number" value={deadStockDays}
+              onChange={(e)=>setDeadStockDays(Number(e.target.value))}
+              style={input}/>
+            <button onClick={loadDeadStock} style={{...btnPrimary, marginLeft:8}}>
+              Apply
+            </button>
+          </div>
 
-          <h3>Dead Stock Report</h3>
-
-          <div style={{ marginBottom: 10 }}>
-
-            Dead Stock Threshold:
-
-            
-            <div style={{ marginBottom: 15 }}>
-
-              <label>
-                Dead Stock Threshold (days)
-              </label>
-
-              <div style={{ display: "flex", gap: 10, marginTop: 5 }}>
-
-                <input
-                  type="number"
-                  value={deadStockDays}
-                  onChange={(e) => setDeadStockDays(Number(e.target.value))}
-                  style={{ width: 100 }}
-                />
-
-                <button onClick={loadDeadStock}>
-                  Apply
-                </button>
-
-              </div>
-
+          {deadStockItems.map((p,i)=>(
+            <div key={i} style={{
+              background: COLORS.panelAlt,
+              padding: 8,
+              marginBottom: 6,
+              borderRadius: 6
+            }}>
+              {p.name} — {p.days_since_sale ?? "Never"}
             </div>
-
-          </div>
-
-          {deadStockItems.length === 0 && (
-            <p>No dead stock detected.</p>
-          )}
-
-          <div
-            style={{
-              border: "1px solid #ccc",
-              maxHeight: "65vh",
-              overflowY: "auto"
-            }}
-          >
-
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-
-              <thead style={{ background: "#eee" }}>
-
-                <tr>
-                  <th style={cellHeader}>Product</th>
-                  <th style={cellHeader}>Stock</th>
-                  <th style={cellHeader}>Cost</th>
-                  <th style={cellHeader}>Investment</th>
-                  <th style={cellHeader}>Last Sale</th>
-                  <th style={cellHeader}>Days Since Sale</th>
-                </tr>
-
-              </thead>
-
-              <tbody>
-
-                {deadStockItems.map((p, index) => (
-
-                  <tr key={index}>
-
-                    <td style={cell}>{p.name}</td>
-                    <td style={cell}>{p.stock}</td>
-                    <td style={cell}>${formatMoney(p.cost)}</td>
-                    <td style={cell}>${formatMoney(p.investment)}</td>
-                    <td style={cell}>{p.last_sale || "Never"}</td>
-                    <td style={cell}>{p.days_since_sale ?? "Never"}</td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
+          ))}
         </div>
-
       )}
 
     </div>
-
   );
-
 }
-
-const cellHeader = {
-  textAlign: "left",
-  padding: "8px",
-  borderBottom: "1px solid #ccc"
-};
-
-const cell = {
-  padding: "8px",
-  borderBottom: "1px solid #eee"
-};
 
 export default InventoryReport;
