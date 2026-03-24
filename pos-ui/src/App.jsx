@@ -130,10 +130,26 @@ function App() {
       label: "",
       items: []
     };
-
+  
     setTickets(prev => [...prev, ticket]);
     setActiveTicket(ticket.id);
   };
+
+
+  // ✅ MOVE THIS OUTSIDE
+  const removeItem = (index) => {
+    setTickets(prev =>
+      prev.map(ticket =>
+        ticket.id === activeTicket
+          ? {
+              ...ticket,
+              items: ticket.items.filter((_, i) => i !== index)
+            }
+          : ticket
+      )
+    );
+  };
+
 
   const addItem = (product) => {
     if (!currentTicket) return;
@@ -178,7 +194,6 @@ function App() {
     setTickets(updated);
     setSearchTerm("");
   };
-
   // -----------------------------
   // 🔥 FINALIZE SALE (FIXED)
   // -----------------------------
