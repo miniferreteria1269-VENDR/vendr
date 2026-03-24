@@ -92,6 +92,10 @@ function TicketPanel({
           <button
             key={t.id}
             onClick={() => setActiveTicket(t.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              renameTicket(t.id);
+            }}
             style={{
               ...tabStyle,
               background: t.id === activeTicket
