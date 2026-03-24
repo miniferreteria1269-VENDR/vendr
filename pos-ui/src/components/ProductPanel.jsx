@@ -14,6 +14,14 @@ function ProductPanel({
   addItem
 }) {
 
+  // -----------------------------
+  // QUICK ITEMS LOGIC
+  // -----------------------------
+  const quickItems = products.slice(0, 8);
+
+  const displayProducts =
+    searchTerm.trim() === "" ? quickItems : products;
+
   return (
     <div style={{
       width: "40%",
@@ -41,6 +49,17 @@ function ProductPanel({
         }}
       />
 
+      {/* QUICK ITEMS LABEL */}
+      {searchTerm.trim() === "" && (
+        <div style={{
+          marginBottom: 8,
+          color: COLORS.textDim,
+          fontSize: 13
+        }}>
+          Quick Items
+        </div>
+      )}
+
       {/* PRODUCT LIST */}
       <div style={{
         flex: 1,
@@ -50,7 +69,7 @@ function ProductPanel({
         gap: 8
       }}>
 
-        {products.map((product) => (
+        {displayProducts.map((product) => (
           <div
             key={product.product_id}
             onClick={() => addItem(product)}
@@ -73,7 +92,7 @@ function ProductPanel({
             }}
           >
 
-            {/* LEFT */}
+            {/* LEFT SIDE */}
             <div>
               <div style={{ fontWeight: 500 }}>
                 {product.name}
@@ -87,7 +106,7 @@ function ProductPanel({
               </div>
             </div>
 
-            {/* RIGHT */}
+            {/* RIGHT SIDE */}
             <div style={{
               fontWeight: "bold",
               color: COLORS.primary
