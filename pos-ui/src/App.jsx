@@ -14,15 +14,10 @@ const API = "https://vendr-onkr.onrender.com";
 
 function App() {
 
-  // -----------------------------
-  // STATE
-  // -----------------------------
-
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
   const [authMode, setAuthMode] = useState("login");
-  const [discountValue, setDiscountValue] = useState(0);
-  const [discountType, setDiscountType] = useState("percent"); // "percent" or "amount"
+
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
     return saved ? JSON.parse(saved) : [];
@@ -37,6 +32,10 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [intakePaid, setIntakePaid] = useState(false);
 
+  // 🔥 DISCOUNT STATE
+  const [discountValue, setDiscountValue] = useState(0);
+  const [discountType, setDiscountType] = useState("percent");
+
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("tickets");
@@ -44,27 +43,13 @@ function App() {
     setUser(null);
   };
 
-  // -----------------------------
-  // LOAD USER
-  // -----------------------------
-
   useEffect(() => {
     const stored = localStorage.getItem("user");
-    if (stored) {
-      setUser(JSON.parse(stored));
-    }
+    if (stored) setUser(JSON.parse(stored));
   }, []);
-
-  // -----------------------------
-  // DERIVED
-  // -----------------------------
 
   const storeId = user?.store_id;
   const currentTicket = tickets.find(t => t.id === activeTicket);
-
-  // -----------------------------
-  // LOCAL STORAGE SYNC
-  // -----------------------------
 
   useEffect(() => {
     localStorage.setItem("tickets", JSON.stringify(tickets));
@@ -77,9 +62,8 @@ function App() {
   }, [activeTicket]);
 
   // -----------------------------
-  // LOAD PRODUCTS (FIXED)
+  // LOAD PRODUCTS
   // -----------------------------
-
   const loadProducts = async () => {
     if (!storeId) return;
 
@@ -106,9 +90,8 @@ function App() {
   }, [storeId]);
 
   // -----------------------------
-  // SEARCH (FIXED)
+  // SEARCH
   // -----------------------------
-
   useEffect(() => {
     const delay = setTimeout(() => {
       if (!storeId) return;
@@ -126,14 +109,10 @@ function App() {
   const searchProducts = async (term) => {
     try {
       const res = await axios.get(`${API}/products/search`, {
-        params: {
-          store_id: storeId,
-          name: term
-        }
+        params: { store_id: storeId, name: term }
       });
 
       const data = res.data.products ?? res.data;
-
       setProducts(data);
 
     } catch (err) {
@@ -144,7 +123,6 @@ function App() {
   // -----------------------------
   // TICKETS
   // -----------------------------
-
   const createTicket = (type) => {
     const ticket = {
       id: Date.now(),
@@ -160,7 +138,6 @@ function App() {
   const addItem = (product) => {
     if (!currentTicket) return;
 
-    // 🔥 Pull fresh version from current products state
     const fullProduct = products.find(
       p => p.product_id === product.product_id
     ) || product;
@@ -191,7 +168,7 @@ function App() {
             product_id: fullProduct.product_id,
             name: fullProduct.name,
             quantity: 1,
-            cost: fullProduct.cost ?? 0,   // ✅ now reliable
+            cost: fullProduct.cost ?? 0,
             price: fullProduct.price
           }
         ]
@@ -202,81 +179,63 @@ function App() {
     setSearchTerm("");
   };
 
-  const removeItem = (index) => {
-    setTickets(prev =>
-      prev.map(ticket =>
-        ticket.id === activeTicket
-          ? {
-              ...ticket,
-              items: ticket.items.filter((_, i) => i !== index)
-            }
-          : ticket
-      )
-    );
-  };
-
-  const updateItemField = (index, field, value) => {
-    setTickets(prev =>
-      prev.map(ticket =>
-        ticket.id === activeTicket
-          ? {
-              ...ticket,
-              items: ticket.items.map((item, i) =>
-                i === index ? { ...item, [field]: value } : item
-              )
-            }
-          : ticket
-      )
-    );
-  };
-
-  const renameTicket = (ticketId) => {
-    const newLabel = prompt("Ticket label:");
-    if (!newLabel) return;
-
-    setTickets(prev =>
-      prev.map(t =>
-        t.id === ticketId ? { ...t, label: newLabel } : t
-      )
-    );
-  };
-
-  const cancelTicket = () => {
-    const remaining = tickets.filter(t => t.id !== activeTicket);
-
-    setTickets(remaining);
-
-    if (remaining.length > 0) {
-      setActiveTicket(remaining[0].id);
-    } else {
-      setActiveTicket(null);
-    }
-  };
-
+  // -----------------------------
+  // 🔥 FINALIZE SALE (FIXED)
+  // -----------------------------
   const finalizeSale = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
     try {
+
+      // 🔥 CALCULATE SUBTOTAL
+      const subtotal = currentTicket.items.reduce(
+        (sum, i) => sum + i.price * i.quantity,
+        0
+      );
+
+      // 🔥 CALCULATE DISCOUNT
+      let discountAmount = 0;
+
+      if (discountType === "percent") {
+        discountAmount = subtotal * (discountValue / 100);
+      } else {
+        discountAmount = discountValue;
+      }
+
+      // 🔥 CONVERT TO RATIO
+      const discountRatio =
+        subtotal > 0 ? (subtotal - discountAmount) / subtotal : 1;
+
+      // 🔥 APPLY DISCOUNT PER ITEM
+      const discountedItems = currentTicket.items.map(i => ({
+        product_id: i.product_id,
+        quantity: i.quantity,
+        price: i.price * discountRatio
+      }));
+
       await axios.post(`${API}/sale-ticket`, {
         store_id: storeId,
-        items: currentTicket.items.map(i => ({
-          product_id: i.product_id,
-          quantity: i.quantity
-        }))
+        items: discountedItems
       });
 
       setTickets(prev => prev.filter(t => t.id !== activeTicket));
       setActiveTicket(null);
+
+      // 🔥 RESET DISCOUNT
       setDiscountValue(0);
       setDiscountType("percent");
+
       loadProducts();
-      
+
     } catch (err) {
       console.error("Sale error:", err);
       alert("Sale failed");
     }
   };
 
+  // -----------------------------
+  // FINALIZE INTAKE
+  // -----------------------------
   const finalizeIntake = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
@@ -303,45 +262,25 @@ function App() {
   };
 
   // -----------------------------
-  // LOGIN
+  // LOGIN UI
   // -----------------------------
-
   if (!user) {
-    return (
-      <div>
-        {authMode === "login" ? (
-          <Login
-            onLogin={setUser}
-            switchToSignup={() => setAuthMode("signup")}
-          />
-        ) : (
-          <Signup
-            onSignup={setUser}
-            switchToLogin={() => setAuthMode("login")}
-          />
-        )}
-      </div>
+    return authMode === "login" ? (
+      <Login onLogin={setUser} switchToSignup={() => setAuthMode("signup")} />
+    ) : (
+      <Signup onSignup={setUser} switchToLogin={() => setAuthMode("login")} />
     );
   }
 
-  if (!storeId) {
-    return <div>Loading...</div>;
-  }
+  if (!storeId) return <div>Loading...</div>;
 
   // -----------------------------
   // UI
   // -----------------------------
-
   return (
     <div style={{ fontFamily: "Arial", height: "100vh" }}>
 
-      <div style={{
-        padding: 10,
-        fontWeight: "bold",
-        fontSize: 18,
-        display: "flex",
-        justifyContent: "space-between"
-      }}>
+      <div style={{ padding: 10, display: "flex", justifyContent: "space-between" }}>
         <div>{user.store_name || `Store ${storeId}`}</div>
         <button onClick={handleLogout}>Logout</button>
       </div>
@@ -379,6 +318,8 @@ function App() {
             finalizeIntake={finalizeIntake}
             intakePaid={intakePaid}
             setIntakePaid={setIntakePaid}
+
+            // 🔥 PASS DISCOUNT
             discountValue={discountValue}
             setDiscountValue={setDiscountValue}
             discountType={discountType}
@@ -391,9 +332,8 @@ function App() {
       {view === "inventory" && <InventoryReport storeId={storeId} />}
       {view === "products" && <ProductManagement storeId={storeId} />}
       {view === "analysis" && <SalesAnalysisPanel storeId={storeId} />}
-      {view === "cash" && (
-        <CashPanel storeId={storeId} products={products} />
-      )}
+      {view === "cash" && <CashPanel storeId={storeId} products={products} />}
+
     </div>
   );
 }
