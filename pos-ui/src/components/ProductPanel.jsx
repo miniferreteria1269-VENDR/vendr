@@ -15,15 +15,18 @@ function ProductPanel({
 }) {
 
   return (
-    <div style={{
-      width: "40%",
-      background: COLORS.panel,
-      borderRadius: 14,
-      padding: 16,
-      display: "flex",
-      flexDirection: "column",
-      color: COLORS.text
-    }}>
+    <>
+      <h1 style={{ color: "red" }}>PRODUCT PANEL LOADED</h1>
+
+      <div style={{
+        width: "40%",
+        background: COLORS.panel,
+        borderRadius: 14,
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        color: COLORS.text
+      }}>
 
       {/* SEARCH */}
       <input
