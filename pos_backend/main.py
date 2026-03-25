@@ -2066,12 +2066,12 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
     try:
         cursor.execute("""
             SELECT
-                created_at,   -- r[0]
-                amount,       -- r[1]
-                direction,    -- r[2]
-                type,         -- r[3]
-                category,     -- r[4]
-                note          -- r[5]
+                created_at,
+                amount,
+                direction,
+                type,
+                category,
+                note
             FROM cash_events
             WHERE store_id = %s
             AND created_at::date BETWEEN %s AND %s
@@ -2088,7 +2088,7 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
                 "datetime": r[0],
                 "amount": float(r[1] or 0),
                 "direction": int(r[2] or 1),
-                "type": str(r[3] or ""),       # 👈 force string
+                "type": str(r[3] or ""),
                 "category": r[4] or "",
                 "note": r[5] or ""
             })
@@ -2101,7 +2101,6 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
 
     finally:
         conn.close()
-
         return {"movements": movements}
 
     except Exception as e:
