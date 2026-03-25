@@ -73,6 +73,15 @@ function MovementSummary({ storeId }) {
           const realAmount = (m.amount || 0) * (m.direction || 1);
           const isPositive = realAmount >= 0;
 
+          // ✅ ROBUST NOTE HANDLING
+          const note =
+            m.note &&
+            m.note !== "null" &&
+            m.note !== "NULL" &&
+            m.note.toString().trim() !== ""
+              ? m.note
+              : "-";
+
           return (
             <div
               key={i}
@@ -96,7 +105,7 @@ function MovementSummary({ storeId }) {
                   {m.type}
                 </div>
 
-                {/* ✅ CATEGORY */}
+                {/* CATEGORY */}
                 {m.category && (
                   <div style={{
                     fontSize: 12,
@@ -106,12 +115,12 @@ function MovementSummary({ storeId }) {
                   </div>
                 )}
 
-                {/* ✅ NOTE */}
+                {/* NOTE */}
                 <div style={{
                   fontSize: 12,
                   color: COLORS.textDim
                 }}>
-                  {m.note || "-"}
+                  {note}
                 </div>
               </div>
 
