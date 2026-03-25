@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLang } from "./LanguageContext";
 import axios from "axios";
 import Login from "./Login";
 import Signup from "./Signup";
@@ -29,6 +30,8 @@ const COLORS = {
 };
 
 function App() {
+
+  const { t } = useLang();
 
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
@@ -173,7 +176,7 @@ function App() {
   };
 
   const renameTicket = (ticketId) => {
-    const newLabel = prompt("Ticket name:");
+    const newLabel = prompt(t("ticket_name_prompt"));
     if (!newLabel) return;
 
     setTickets(prev =>
@@ -264,7 +267,7 @@ function App() {
 
     } catch (err) {
       console.error(err);
-      alert("Sale failed");
+      alert(t("sale_failed"));
     }
   };
 
@@ -284,7 +287,7 @@ function App() {
 
     } catch (err) {
       console.error(err);
-      alert("Intake failed");
+      alert(t("intake_failed"));
     }
   };
 
@@ -297,7 +300,7 @@ function App() {
       : <Signup onSignup={setUser} switchToLogin={() => setAuthMode("login")} />;
   }
 
-  if (!storeId) return <div style={{ color: COLORS.text }}>Loading...</div>;
+  if (!storeId) return <div style={{ color: COLORS.text }}>{t("loading")}</div>;
 
   // -----------------------------
   // UI
@@ -319,7 +322,7 @@ function App() {
         justifyContent: "space-between",
         borderBottom: `1px solid ${COLORS.border}`
       }}>
-        <div>{user.store_name || `Store ${storeId}`}</div>
+        <div>{user.store_name || `${t("store")} ${storeId}`}</div>
         <button
           onClick={handleLogout}
           style={{
@@ -330,7 +333,7 @@ function App() {
             borderRadius: 6
           }}
         >
-          Logout
+          {t("logout")}
         </button>
       </div>
 
@@ -354,7 +357,7 @@ function App() {
               cursor: "pointer"
             }}
           >
-            {v.toUpperCase()}
+            {t(v).toUpperCase()}
           </button>
         ))}
       </div>

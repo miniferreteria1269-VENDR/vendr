@@ -1,3 +1,4 @@
+import { useLang } from "../LanguageContext";
 import TicketRow from "./TicketRow";
 
 const COLORS = {
@@ -29,6 +30,8 @@ function TicketPanel({
   discountType,
   setDiscountType
 }) {
+
+  const { t } = useLang();
 
   // -----------------------------
   // CALCULATIONS (UNCHANGED)
@@ -75,35 +78,35 @@ function TicketPanel({
           onClick={() => createTicket("sale")}
           style={btnPrimary}
         >
-          + Sale
+          + {t("sale")}
         </button>
 
         <button
           onClick={() => createTicket("intake")}
           style={btnSecondary}
         >
-          + Intake
+          + {t("intake")}
         </button>
       </div>
 
       {/* TABS */}
       <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-        {tickets.map((t, i) => (
+        {tickets.map((tkt, i) => (
           <button
-            key={t.id}
-            onClick={() => setActiveTicket(t.id)}
+            key={tkt.id}
+            onClick={() => setActiveTicket(tkt.id)}
             onContextMenu={(e) => {
               e.preventDefault();
-              renameTicket(t.id);
+              renameTicket(tkt.id);
             }}
             style={{
               ...tabStyle,
-              background: t.id === activeTicket
+              background: tkt.id === activeTicket
                 ? COLORS.primary
                 : COLORS.panelAlt
             }}
           >
-            {t.label || `${t.type} ${i + 1}`}
+            {tkt.label || `${tkt.type} ${i + 1}`}
           </button>
         ))}
       </div>
@@ -115,8 +118,8 @@ function TicketPanel({
           <h3 style={{ marginBottom: 10 }}>
             {currentTicket.label ||
               (currentTicket.type === "sale"
-                ? "Sale Ticket"
-                : "Intake Ticket")}
+                ? t("sale_ticket")
+                : t("intake_ticket"))}
           </h3>
 
           {/* INTAKE PAID */}
@@ -127,7 +130,7 @@ function TicketPanel({
                 checked={intakePaid}
                 onChange={(e) => setIntakePaid(e.target.checked)}
               />
-              {" "}Paid
+              {" "}{t("paid")}
             </label>
           )}
 
@@ -170,7 +173,7 @@ function TicketPanel({
               </div>
 
               <div style={{ fontSize: 12, color: COLORS.textDim }}>
-                Discount: -${discountAmount.toFixed(2)}
+                {t("discount")}: -${discountAmount.toFixed(2)}
               </div>
             </div>
           )}
@@ -193,7 +196,7 @@ function TicketPanel({
           {/* WARNING */}
           {currentTicket.type === "sale" && profit < 0 && (
             <div style={{ color: COLORS.danger, marginTop: 6 }}>
-              ⚠ Loss on this sale
+              ⚠ {t("loss_on_sale")}
             </div>
           )}
 
@@ -201,18 +204,18 @@ function TicketPanel({
           <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
             {currentTicket.type === "sale" && (
               <button onClick={finalizeSale} style={btnPrimary}>
-                Finalize Sale
+                {t("finalize_sale")}
               </button>
             )}
 
             {currentTicket.type === "intake" && (
               <button onClick={finalizeIntake} style={btnPrimary}>
-                Finalize Intake
+                {t("finalize_intake")}
               </button>
             )}
 
             <button onClick={cancelTicket} style={btnDanger}>
-              Cancel
+              {t("cancel")}
             </button>
           </div>
 

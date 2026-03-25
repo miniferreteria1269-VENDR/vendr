@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+import { useLang } from "../LanguageContext";
 import axios from "axios";
 import { COLORS, card } from "../uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
 
 function SalesHistoryPanel({ storeId }) {
+
+  const { t } = useLang();
 
   const [sales, setSales] = useState([]);
 
@@ -28,7 +31,7 @@ function SalesHistoryPanel({ storeId }) {
     <div style={{ padding: 16 }}>
       <div style={card}>
 
-        <h2 style={{ marginBottom: 12 }}>Sales History</h2>
+        <h2 style={{ marginBottom: 12 }}>{t("sales_history")}</h2>
 
         <div style={{
           display: "flex",
@@ -52,7 +55,7 @@ function SalesHistoryPanel({ storeId }) {
               {/* LEFT */}
               <div>
                 <div style={{ fontWeight: 500 }}>
-                  Ticket #{sale.ticket_id ?? "—"}
+                  {t("ticket")} #{sale.ticket_id ?? "—"}
                 </div>
 
                 <div style={{

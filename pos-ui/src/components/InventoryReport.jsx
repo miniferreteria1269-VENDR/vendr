@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
+import { useLang } from "../LanguageContext";
 import axios from "axios";
 import { COLORS, card, btnPrimary, btnSecondary, input } from "../uiStyles";
 
 function InventoryReport({ storeId }) {
+
+  const { t } = useLang();
 
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -95,7 +98,7 @@ function InventoryReport({ storeId }) {
   return (
     <div style={{ padding: 16 }}>
 
-      <h2 style={{ marginBottom: 12 }}>Inventory</h2>
+      <h2 style={{ marginBottom: 12 }}>{t("inventory")}</h2>
 
       {/* NAV */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -105,7 +108,7 @@ function InventoryReport({ storeId }) {
             onClick={() => setInventoryView(v)}
             style={inventoryView === v ? btnPrimary : btnSecondary}
           >
-            {v.toUpperCase()}
+            {t(v).toUpperCase()}
           </button>
         ))}
       </div>
@@ -113,7 +116,7 @@ function InventoryReport({ storeId }) {
       {/* SEARCH */}
       {inventoryView === "stock" && (
         <input
-          placeholder="Search inventory..."
+          placeholder={t("search_inventory")}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{ ...input, marginBottom: 16, width: 300 }}
@@ -131,10 +134,10 @@ function InventoryReport({ storeId }) {
             marginBottom: 16,
             fontWeight: "bold"
           }}>
-            <div>Cost: ${formatMoney(totals.cost)}</div>
-            <div>Value: ${formatMoney(totals.price)}</div>
+            <div>{t("cost")}: ${formatMoney(totals.cost)}</div>
+            <div>{t("value")}: ${formatMoney(totals.price)}</div>
             <div style={{ color: COLORS.primary }}>
-              Profit: ${formatMoney(totals.price - totals.cost)}
+              {t("profit")}: ${formatMoney(totals.price - totals.cost)}
             </div>
           </div>
 
@@ -152,14 +155,14 @@ function InventoryReport({ storeId }) {
                 <div>
                   <b>{p.name}</b>
                   <div style={{ fontSize: 12, color: COLORS.textDim }}>
-                    Qty: {p.quantity}
+                    {t("qty")}: {p.quantity}
                   </div>
                 </div>
 
                 <div style={{ textAlign: "right" }}>
                   <div>${formatMoney(p.price)}</div>
                   <div style={{ fontSize: 12, color: COLORS.textDim }}>
-                    Inv: ${formatMoney(p.investment)}
+                    {t("inv")}: ${formatMoney(p.investment)}
                   </div>
                 </div>
               </div>
@@ -172,10 +175,10 @@ function InventoryReport({ storeId }) {
       {/* LOW STOCK */}
       {inventoryView === "lowstock" && (
         <div style={card}>
-          <h3>Low Stock</h3>
+          <h3>{t("lowstock")}</h3>
 
           {lowStockItems.length === 0 && (
-            <div style={{ color: COLORS.textDim }}>No issues</div>
+            <div style={{ color: COLORS.textDim }}>{t("no_issues")}</div>
           )}
 
           {lowStockItems.map((i, idx) => (
@@ -184,7 +187,7 @@ function InventoryReport({ storeId }) {
               borderBottom: `1px solid ${COLORS.border}`
             }}>
               <b>{i.name}</b>
-              <div>Stock: {i.stock} / Min: {i.threshold}</div>
+              <div>{t("stock")}: {i.stock} / {t("min")}: {i.threshold}</div>
             </div>
           ))}
         </div>
@@ -193,7 +196,7 @@ function InventoryReport({ storeId }) {
       {/* PARETO */}
       {inventoryView === "pareto" && (
         <div style={card}>
-          <h3>Pareto</h3>
+          <h3>{t("pareto")}</h3>
 
           {paretoItems.map((p, i) => (
             <div key={i} style={{
@@ -218,7 +221,7 @@ function InventoryReport({ storeId }) {
             <input type="date" value={serviceEndDate}
               onChange={(e)=>setServiceEndDate(e.target.value)} style={{...input, marginLeft:8}}/>
             <button onClick={loadServices} style={{...btnPrimary, marginLeft:8}}>
-              Apply
+              {t("apply")}
             </button>
           </div>
 
@@ -244,7 +247,7 @@ function InventoryReport({ storeId }) {
               onChange={(e)=>setDeadStockDays(Number(e.target.value))}
               style={input}/>
             <button onClick={loadDeadStock} style={{...btnPrimary, marginLeft:8}}>
-              Apply
+              {t("apply")}
             </button>
           </div>
 
@@ -255,7 +258,7 @@ function InventoryReport({ storeId }) {
               marginBottom: 6,
               borderRadius: 6
             }}>
-              {p.name} — {p.days_since_sale ?? "Never"}
+              {p.name} — {p.days_since_sale ?? t("never")}
             </div>
           ))}
         </div>
