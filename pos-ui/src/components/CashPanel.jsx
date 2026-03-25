@@ -4,6 +4,7 @@ import axios from "axios";
 import ReturnModal from "./ReturnModal";
 import RevenueModal from "./RevenueModal";
 import ExpenseModal from "./ExpenseModal";
+import MovementSummary from "./MovementSummary"; // ✅ ADDED
 import { COLORS, card, btnPrimary, btnSecondary, btnDanger } from "../uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
@@ -16,6 +17,8 @@ function CashPanel({ storeId, products }) {
   const [showReturn, setShowReturn] = useState(false);
   const [showRevenue, setShowRevenue] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
+
+  const [showSummary, setShowSummary] = useState(false); // ✅ ADDED
 
   const loadBalance = async () => {
     try {
@@ -73,7 +76,21 @@ function CashPanel({ storeId, products }) {
         <button onClick={() => setShowExpense(true)} style={btnDanger}>
           - {t("expense")}
         </button>
+
+        {/* ✅ ADDED BUTTON */}
+        <button
+          onClick={() => setShowSummary(prev => !prev)}
+          style={btnSecondary}
+        >
+          {t("movement_summary")}
+        </button>
+
       </div>
+
+      {/* ✅ ADDED SUMMARY PANEL */}
+      {showSummary && (
+        <MovementSummary storeId={storeId} />
+      )}
 
       {/* MODALS */}
       {showRevenue && (
