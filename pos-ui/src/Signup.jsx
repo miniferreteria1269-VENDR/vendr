@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { COLORS, card, btnPrimary, btnSecondary, input } from "./uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
 
@@ -46,44 +47,58 @@ export default function Signup({ onSignup, switchToLogin }) {
   };
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: COLORS.background || "#0f1115"
+    }}>
 
-      <h2>Create Account</h2>
+      <div style={{ ...card, width: 320 }}>
 
-      <input
-        placeholder="Store Name"
-        value={storeName}
-        onChange={(e) => setStoreName(e.target.value)}
-      />
+        <h2 style={{ marginBottom: 16 }}>Create Account</h2>
 
-      <br /><br />
+        <label>Store Name</label>
+        <input
+          style={{ ...input, width: "100%", marginBottom: 12 }}
+          placeholder="Store Name"
+          value={storeName}
+          onChange={(e) => setStoreName(e.target.value)}
+        />
 
-      <input
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
+        <label>Email</label>
+        <input
+          style={{ ...input, width: "100%", marginBottom: 12 }}
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
 
-      <br /><br />
+        <label>Password</label>
+        <input
+          style={{ ...input, width: "100%", marginBottom: 16 }}
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
+        <button
+          style={{ ...btnPrimary, width: "100%", marginBottom: 10 }}
+          onClick={handleSignup}
+        >
+          Sign Up
+        </button>
 
-      <br /><br />
+        <button
+          style={{ ...btnSecondary, width: "100%" }}
+          onClick={switchToLogin}
+        >
+          Back to Login
+        </button>
 
-      <button onClick={handleSignup}>
-        Sign Up
-      </button>
-
-      <br /><br />
-
-      <button onClick={switchToLogin}>
-        Back to Login
-      </button>
+      </div>
 
     </div>
   );
