@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { COLORS, card, btnPrimary, btnSecondary, input } from "../uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
 
@@ -20,7 +21,6 @@ export default function Login({ onLogin, switchToSignup }) {
       const data = await res.json();
 
       if (res.ok) {
-        // 🔥 CLEAR OLD SESSION DATA
         localStorage.removeItem("tickets");
         localStorage.removeItem("activeTicket");
 
@@ -37,36 +37,50 @@ export default function Login({ onLogin, switchToSignup }) {
   };
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: COLORS.background || "#0f1115"
+    }}>
 
-      <h2>Login</h2>
+      <div style={{ ...card, width: 320 }}>
 
-      <input
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
+        <h2 style={{ marginBottom: 16 }}>Login</h2>
 
-      <br /><br />
+        <label>Email</label>
+        <input
+          style={{ ...input, width: "100%", marginBottom: 12 }}
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
 
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
+        <label>Password</label>
+        <input
+          style={{ ...input, width: "100%", marginBottom: 16 }}
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-      <br /><br />
+        <button
+          style={{ ...btnPrimary, width: "100%", marginBottom: 10 }}
+          onClick={handleLogin}
+        >
+          Login
+        </button>
 
-      <button onClick={handleLogin}>
-        Login
-      </button>
+        <button
+          style={{ ...btnSecondary, width: "100%" }}
+          onClick={() => switchToSignup()}
+        >
+          Create Account
+        </button>
 
-      <br /><br />
-
-      <button onClick={() => switchToSignup()}>
-        Create Account
-      </button>
+      </div>
 
     </div>
   );
