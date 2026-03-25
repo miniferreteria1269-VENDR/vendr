@@ -2066,22 +2066,22 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
     try:
         cursor.execute("""
             SELECT
-                event_datetime,
+                created_at,
                 COALESCE(amount, 0),
                 COALESCE(type, ''),
                 COALESCE(note, '')
             FROM cash_events
             WHERE store_id = %s
-            AND event_datetime::date BETWEEN %s AND %s
-            
-            ORDER BY event_datetime DESC
+            AND created_at::date BETWEEN %s AND %s
+            AND type != 'sale'
+            ORDER BY created_at DESC
         """, (store_id, start_date, end_date))
 
         rows = cursor.fetchall()
 
         movements = [
             {
-                "datetime": r[0],
+                "datetime": r[0],  # maps to frontend field
                 "amount": float(r[1] or 0),
                 "type": r[2] or "",
                 "note": r[3] or ""
