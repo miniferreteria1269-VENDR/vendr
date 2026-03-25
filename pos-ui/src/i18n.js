@@ -107,6 +107,8 @@ export const translations = {
     note_optional: "Note (optional)",
     failed_add_revenue: "Failed to add revenue",
     failed_add_expense: "Failed to add expense",
+    movement_summary: "Movement Summary",
+    no_movements: "No movements",
 
     // CATEGORY LABELS
     owner_contribution: "Owner Contribution",
@@ -232,6 +234,8 @@ export const translations = {
     note_optional: "Nota (opcional)",
     failed_add_revenue: "Error al agregar ingreso",
     failed_add_expense: "Error al agregar gasto",
+    movement_summary: "Resumen de movimientos",
+    no_movements: "Sin movimientos",
 
     // CATEGORY LABELS
     owner_contribution: "Aporte del dueño",

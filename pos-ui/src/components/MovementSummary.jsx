@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
+import { useLang } from "../LanguageContext";
 import axios from "axios";
 import { COLORS, card, input } from "../uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
 
 function MovementSummary({ storeId }) {
+
+  const { t } = useLang();
 
   const today = new Date().toISOString().slice(0,10);
 
@@ -39,7 +42,7 @@ function MovementSummary({ storeId }) {
   return (
     <div style={{ ...card, marginTop: 16 }}>
 
-      <h3 style={{ marginBottom: 12 }}>Movement Summary</h3>
+      <h3 style={{ marginBottom: 12 }}>{t("movement_summary")}</h3>
 
       {/* DATE FILTER */}
       <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
@@ -58,7 +61,7 @@ function MovementSummary({ storeId }) {
         />
 
         <button onClick={load}>
-          Apply
+          {t("apply")}
         </button>
       </div>
 
@@ -93,7 +96,21 @@ function MovementSummary({ storeId }) {
                   {m.type}
                 </div>
 
-                <div style={{ fontSize: 12 }}>
+                {/* ✅ CATEGORY */}
+                {m.category && (
+                  <div style={{
+                    fontSize: 12,
+                    color: COLORS.primary
+                  }}>
+                    {m.category}
+                  </div>
+                )}
+
+                {/* ✅ NOTE */}
+                <div style={{
+                  fontSize: 12,
+                  color: COLORS.textDim
+                }}>
                   {m.note || "-"}
                 </div>
               </div>
@@ -112,7 +129,7 @@ function MovementSummary({ storeId }) {
 
         {movements.length === 0 && (
           <div style={{ color: COLORS.textDim }}>
-            No movements
+            {t("no_movements")}
           </div>
         )}
 

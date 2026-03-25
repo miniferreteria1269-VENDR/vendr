@@ -2070,6 +2070,7 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
                 amount,
                 direction,
                 type,
+                category,
                 note
             FROM cash_events
             WHERE store_id = %s
@@ -2086,6 +2087,7 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
                 "amount": float(r[1] or 0),
                 "direction": int(r[2] or 1),
                 "type": r[2] or "",
+                "category": r[4] or "",
                 "note": r[3] or ""
             }
             for r in rows
