@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLang } from "./useLang";
+import { useLang } from "./useLanguageContext";
 import { COLORS, card, btnPrimary, btnSecondary, input } from "./uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
