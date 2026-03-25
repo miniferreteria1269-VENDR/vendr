@@ -2063,31 +2063,37 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
     conn = db()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT
-            event_datetime,
-            amount,
-            type,
-            note
-        FROM cash_events
-        WHERE store_id = %s
-        AND DATE(event_datetime) BETWEEN %s AND %s
-        AND type != 'sale'
-        ORDER BY event_datetime DESC
-    """, (store_id, start_date, end_date))
+    try:
+        cursor.execute("""
+            SELECT
+                event_datetime,
+                COALESCE(amount, 0),
+                COALESCE(type, ''),
+                COALESCE(note, '')
+            FROM cash_events
+            WHERE store_id = %s
+            AND event_datetime::date BETWEEN %s AND %s
+            AND type != 'sale'
+            ORDER BY event_datetime DESC
+        """, (store_id, start_date, end_date))
 
-    rows = cursor.fetchall()
+        rows = cursor.fetchall()
 
-    movements = [
-        {
-            "datetime": r[0],
-            "amount": float(r[1]),
-            "type": r[2],
-            "note": r[3]
-        }
-        for r in rows
-    ]
+        movements = [
+            {
+                "datetime": r[0],
+                "amount": float(r[1] or 0),
+                "type": r[2] or "",
+                "note": r[3] or ""
+            }
+            for r in rows
+        ]
 
-    conn.close()
+        return {"movements": movements}
 
-    return {"movements": movements}
+    except Exception as e:
+        print("❌ CASH MOVEMENTS ERROR:", e)
+        return {"movements": []}
+
+    finally:
+        conn.close()
