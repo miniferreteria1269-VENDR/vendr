@@ -14,6 +14,8 @@ function MovementSummary({ storeId }) {
 
   const load = async () => {
     try {
+      console.log("🔵 FETCHING movements...", { storeId, startDate, endDate });
+
       const res = await axios.get(`${API}/cash-movements`, {
         params: {
           store_id: storeId,
@@ -22,9 +24,11 @@ function MovementSummary({ storeId }) {
         }
       });
 
+      console.log("🟢 RESPONSE:", res.data);
+
       setMovements(res.data.movements || []);
     } catch (err) {
-      console.error(err);
+      console.error("🔴 ERROR:", err);
     }
   };
 
