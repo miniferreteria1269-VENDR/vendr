@@ -2066,12 +2066,12 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
     try:
         cursor.execute("""
             SELECT
-                created_at,
-                amount,
-                direction,
-                type,
-                category,
-                note
+                created_at,   -- r[0]
+                amount,       -- r[1]
+                direction,    -- r[2]
+                type,         -- r[3]
+                category,     -- r[4]
+                note          -- r[5]
             FROM cash_events
             WHERE store_id = %s
             AND created_at::date BETWEEN %s AND %s
@@ -2081,17 +2081,26 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
 
         rows = cursor.fetchall()
 
-        movements = [
-            {
-                "datetime": r[0],  # maps to frontend field
+        movements = []
+
+        for r in rows:
+            movements.append({
+                "datetime": r[0],
                 "amount": float(r[1] or 0),
                 "direction": int(r[2] or 1),
-                "type": r[2] or "",
+                "type": str(r[3] or ""),       # 👈 force string
                 "category": r[4] or "",
-                "note": r[3] or ""
-            }
-            for r in rows
-        ]
+                "note": r[5] or ""
+            })
+
+        return {"movements": movements}
+
+    except Exception as e:
+        print("❌ CASH MOVEMENTS ERROR:", e)
+        return {"movements": []}
+
+    finally:
+        conn.close()
 
         return {"movements": movements}
 
