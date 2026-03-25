@@ -143,40 +143,74 @@ function CreateProduct({ storeId, goBack }) {
 
       <h3>Create Product</h3>
 
-      <input style={{ ...input, width: "100%", marginBottom: 8 }}
+      <label>Name</label>
+      <input
+        style={{ ...input, width: "100%", marginBottom: 6 }}
+        placeholder="Product name"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Product name"
       />
 
+      {/* ✅ SUGGESTIONS */}
       {suggestions.map(p => (
         <div key={p.product_id} style={resultCard()}>
           {p.name}
         </div>
       ))}
 
-      <input style={input} type="number" placeholder="Stock"
+      <label>Initial Stock</label>
+      <input
+        style={{ ...input, width: "100%", marginBottom: 8 }}
+        type="number"
         value={initialStock}
         onChange={(e) => setInitialStock(Number(e.target.value))}
       />
 
-      <input style={input} type="number" placeholder="Cost"
+      <label>Cost</label>
+      <input
+        style={{ ...input, width: "100%", marginBottom: 8 }}
+        type="number"
         value={cost}
         onChange={(e) => setCost(Number(e.target.value))}
       />
 
-      <input style={input} type="number" placeholder="Price"
+      <label>Price</label>
+      <input
+        style={{ ...input, width: "100%", marginBottom: 8 }}
+        type="number"
         value={price}
         onChange={(e) => setPrice(Number(e.target.value))}
       />
 
-      <input style={input} type="number" placeholder="Low stock threshold"
+      <label>Low Stock Threshold</label>
+      <input
+        style={{ ...input, width: "100%", marginBottom: 8 }}
+        type="number"
         value={threshold}
         onChange={(e) => setThreshold(Number(e.target.value))}
       />
 
+      {/* TRACKS STOCK */}
+      <div style={{ marginTop: 10, marginBottom: 10 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={tracksStock}
+            onChange={(e) => setTracksStock(e.target.checked)}
+          />
+          {" "}Tracks Stock
+        </label>
+      </div>
+
       <button style={btnPrimary} onClick={createProduct}>
         Create Product
+      </button>
+
+      <button
+        style={{ ...btnSecondary, marginLeft: 8 }}
+        onClick={goBack}
+      >
+        Cancel
       </button>
 
     </div>
@@ -224,33 +258,65 @@ function PriceChange({ storeId }) {
 
       <h3>Price Change</h3>
 
-      <input style={{ ...input, width: "100%" }}
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          if (e.target.value.length > 1) searchProducts(e.target.value);
-        }}
-      />
+      {!selected && (
+        <>
+          <input
+            style={{ ...input, width: "100%", marginBottom: 10 }}
+            placeholder="Search product..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              if (e.target.value.length > 1) searchProducts(e.target.value);
+            }}
+          />
 
-      {!selected && products.map(p => (
-        <div key={p.product_id}
-          onClick={() => {
-            setSelected(p);
-            setCost(p.cost || 0);
-            setPrice(p.price || 0);
-          }}
-          style={resultCard()}
-        >
-          {p.name}
-        </div>
-      ))}
+          {products.map(p => (
+            <div key={p.product_id}
+              onClick={() => {
+                setSelected(p);
+                setCost(p.cost || 0);
+                setPrice(p.price || 0);
+              }}
+              style={resultCard()}
+            >
+              {p.name}
+            </div>
+          ))}
+        </>
+      )}
 
       {selected && (
         <>
-          <div>{selected.name}</div>
-          <input style={input} value={cost} onChange={e => setCost(Number(e.target.value))}/>
-          <input style={input} value={price} onChange={e => setPrice(Number(e.target.value))}/>
-          <button style={btnPrimary} onClick={submit}>Save</button>
+          <div style={{ marginBottom: 10 }}>
+            <strong>{selected.name}</strong>
+          </div>
+
+          <label>Cost</label>
+          <input
+            style={{ ...input, width: "100%", marginBottom: 10 }}
+            type="number"
+            value={cost}
+            onChange={e => setCost(Number(e.target.value))}
+          />
+
+          <label>Price</label>
+          <input
+            style={{ ...input, width: "100%", marginBottom: 10 }}
+            type="number"
+            value={price}
+            onChange={e => setPrice(Number(e.target.value))}
+          />
+
+          <button style={btnPrimary} onClick={submit}>
+            Save
+          </button>
+
+          <button
+            style={{ ...btnSecondary, marginLeft: 8 }}
+            onClick={() => setSelected(null)}
+          >
+            Cancel
+          </button>
         </>
       )}
 
@@ -259,6 +325,7 @@ function PriceChange({ storeId }) {
 }
 
 // ==============================
+// ==============================
 // LOG LOSS
 // ==============================
 function LogLoss({ storeId }) {
@@ -266,6 +333,7 @@ function LogLoss({ storeId }) {
   const [search, setSearch] = useState("");
   const [products, setProducts] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [notes, setNotes] = useState("");
   const [quantity, setQuantity] = useState(1);
 
   const searchProducts = async (term) => {
@@ -284,42 +352,76 @@ function LogLoss({ storeId }) {
         params: {
           store_id: storeId,
           product_id: selected.product_id,
-          quantity
+          quantity,
+          notes
         }
       }
     );
     alert("Loss recorded");
     setSelected(null);
+    setNotes("");
+    setQuantity(1);
   };
 
   return (
     <div style={{ maxWidth: 400 }}>
       <h3>Log Loss</h3>
 
-      <input style={input}
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          if (e.target.value.length > 1) searchProducts(e.target.value);
-        }}
-      />
+      {!selected && (
+        <>
+          <input
+            style={{ ...input, width: "100%", marginBottom: 10 }}
+            placeholder="Search product..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              if (e.target.value.length > 1) searchProducts(e.target.value);
+            }}
+          />
 
-      {!selected && products.map(p => (
-        <div key={p.product_id}
-          onClick={() => setSelected(p)}
-          style={resultCard()}
-        >
-          {p.name} (Stock: {p.stock})
-        </div>
-      ))}
+          {products.map(p => (
+            <div
+              key={p.product_id}
+              onClick={() => setSelected(p)}
+              style={resultCard()}
+            >
+              {p.name} (Stock: {p.stock})
+            </div>
+          ))}
+        </>
+      )}
 
       {selected && (
         <>
-          <div>{selected.name}</div>
-          <input style={input} value={quantity}
+          <div style={{ marginBottom: 10 }}>
+            <strong>{selected.name}</strong>
+          </div>
+
+          <label>Quantity</label>
+          <input
+            style={{ ...input, width: "100%", marginBottom: 10 }}
+            type="number"
+            value={quantity}
             onChange={e => setQuantity(Number(e.target.value))}
           />
-          <button style={btnPrimary} onClick={submit}>Submit</button>
+
+          <label>Notes</label>
+          <input
+            style={{ ...input, width: "100%", marginBottom: 10 }}
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+          />
+
+          <button style={btnPrimary} onClick={submit}>
+            Submit
+          </button>
+
+          <button
+            style={{ ...btnSecondary, marginLeft: 8 }}
+            onClick={() => setSelected(null)}
+          >
+            Cancel
+          </button>
         </>
       )}
     </div>
@@ -329,10 +431,169 @@ function LogLoss({ storeId }) {
 // ==============================
 // EDIT DETAILS + ARCHIVE SAME PATTERN
 // ==============================
-// (Kept shorter for readability, logic unchanged)
+function EditDetails({ storeId }) {
 
-function EditDetails({ storeId }) { return <div>EditDetails OK</div>; }
-function ArchiveProduct({ storeId }) { return <div>Archive OK</div>; }
+  const [search, setSearch] = useState("");
+  const [products, setProducts] = useState([]);
+  const [selected, setSelected] = useState(null);
+
+  const [name, setName] = useState("");
+  const [threshold, setThreshold] = useState(0);
+  const [tracksStock, setTracksStock] = useState(true);
+
+  const searchProducts = async (term) => {
+    const res = await axios.get(
+      "https://vendr-onkr.onrender.com/products/search",
+      { params: { store_id: storeId, name: term, include_inactive: true } }
+    );
+    setProducts(res.data.products || []);
+  };
+
+  const submit = async () => {
+    await axios.post(
+      "https://vendr-onkr.onrender.com/edit-product",
+      null,
+      {
+        params: {
+          store_id: storeId,
+          product_id: selected.product_id,
+          name,
+          low_stock_threshold: threshold,
+          tracks_stock: tracksStock
+        }
+      }
+    );
+
+    alert("Updated");
+    setSelected(null);
+  };
+
+  return (
+    <div style={{ maxWidth: 400 }}>
+      <h3>Edit Product</h3>
+
+      {!selected && (
+        <>
+          <input style={input}
+            value={search}
+            onChange={(e)=>{
+              setSearch(e.target.value);
+              if (e.target.value.length > 1) searchProducts(e.target.value);
+            }}
+          />
+
+          {products.map(p => (
+            <div key={p.product_id}
+              onClick={()=>{
+                setSelected(p);
+                setName(p.name);
+                setThreshold(p.low_stock_threshold || 0);
+                setTracksStock(p.tracks_stock);
+              }}
+              style={resultCard()}
+            >
+              {p.name}
+            </div>
+          ))}
+        </>
+      )}
+
+      {selected && (
+        <>
+          <label>Name</label>
+          <input style={input} value={name}
+            onChange={e=>setName(e.target.value)}
+          />
+
+          <label>Low Stock Threshold</label>
+          <input style={input} value={threshold}
+            onChange={e=>setThreshold(Number(e.target.value))}
+          />
+
+          <label>
+            <input type="checkbox"
+              checked={tracksStock}
+              onChange={e=>setTracksStock(e.target.checked)}
+            />
+            Tracks Stock
+          </label>
+
+          <div style={{ marginTop: 10 }}>
+            <button style={btnPrimary} onClick={submit}>Save</button>
+
+            <button
+              style={{ ...btnSecondary, marginLeft: 8 }}
+              onClick={()=>setSelected(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+function ArchiveProduct({ storeId }) {
+
+  const [search, setSearch] = useState("");
+  const [products, setProducts] = useState([]);
+
+  const searchProducts = async (term) => {
+    const res = await axios.get(
+      "https://vendr-onkr.onrender.com/products/search",
+      { params: { store_id: storeId, name: term, include_inactive: true } }
+    );
+    setProducts(res.data.products || []);
+  };
+
+  const archive = async (p) => {
+    await axios.post(
+      "https://vendr-onkr.onrender.com/archive-product",
+      null,
+      {
+        params: {
+          store_id: storeId,
+          product_id: p.product_id
+        }
+      }
+    );
+
+    alert("Updated");
+    setProducts(prev => prev.filter(x => x.product_id !== p.product_id));
+  };
+
+  return (
+    <div style={{ maxWidth: 400 }}>
+      <h3>Archive Product</h3>
+
+      <input style={input}
+        value={search}
+        onChange={(e)=>{
+          setSearch(e.target.value);
+          if (e.target.value.length > 1) searchProducts(e.target.value);
+        }}
+      />
+
+      {products.map(p => (
+        <div key={p.product_id}
+          style={resultCard()}
+        >
+          <div style={{ display:"flex", justifyContent:"space-between" }}>
+            <span>{p.name}</span>
+
+            <button
+              style={btnDanger}
+              onClick={()=>archive(p)}
+            >
+              {p.is_active ? "Archive" : "Restore"}
+            </button>
+          </div>
+        </div>
+      ))}
+
+    </div>
+  );
+}
 
 // ==============================
 export default ProductManagement;
