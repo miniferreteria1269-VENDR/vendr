@@ -2073,7 +2073,7 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
             FROM cash_events
             WHERE store_id = %s
             AND event_datetime::date BETWEEN %s AND %s
-            AND type != 'sale'
+            
             ORDER BY event_datetime DESC
         """, (store_id, start_date, end_date))
 
