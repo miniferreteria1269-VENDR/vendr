@@ -67,7 +67,8 @@ function MovementSummary({ storeId }) {
 
         {movements.map((m, i) => {
 
-          const isPositive = m.amount >= 0;
+          const realAmount = (m.amount || 0) * (m.direction || 1);
+          const isPositive = realAmount >= 0;
 
           return (
             <div
@@ -102,7 +103,7 @@ function MovementSummary({ storeId }) {
                 fontWeight: "bold",
                 color: isPositive ? "#4caf50" : "#ff5252"
               }}>
-                {isPositive ? "+" : "-"}${Math.abs(m.amount).toFixed(2)}
+                {realAmount >= 0 ? "+" : "-"}${Math.abs(realAmount).toFixed(2)}
               </div>
 
             </div>

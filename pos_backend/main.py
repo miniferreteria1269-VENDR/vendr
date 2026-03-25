@@ -2067,9 +2067,10 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
         cursor.execute("""
             SELECT
                 created_at,
-                COALESCE(amount, 0),
-                COALESCE(type, ''),
-                COALESCE(note, '')
+                amount,
+                direction,
+                type,
+                note
             FROM cash_events
             WHERE store_id = %s
             AND created_at::date BETWEEN %s AND %s
@@ -2083,6 +2084,7 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
             {
                 "datetime": r[0],  # maps to frontend field
                 "amount": float(r[1] or 0),
+                "direction": int(r[2] or 1),
                 "type": r[2] or "",
                 "note": r[3] or ""
             }
