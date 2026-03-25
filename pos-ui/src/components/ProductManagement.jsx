@@ -6,6 +6,7 @@ import {
   card,
   btnPrimary,
   btnSecondary,
+  btnDanger,
   input
 } from "../uiStyles";
 
