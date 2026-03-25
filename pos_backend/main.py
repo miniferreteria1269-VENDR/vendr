@@ -2101,11 +2101,3 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
 
     finally:
         conn.close()
-        return {"movements": movements}
-
-    except Exception as e:
-        print("❌ CASH MOVEMENTS ERROR:", e)
-        return {"movements": []}
-
-    finally:
-        conn.close()
