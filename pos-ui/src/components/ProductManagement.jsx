@@ -555,13 +555,20 @@ function ArchiveProduct({ storeId }) {
       {
         params: {
           store_id: storeId,
-          product_id: p.product_id
+          product_id: p.product_id,
+          is_active: p.is_active ? false : true
         }
       }
     );
 
     alert("Updated");
-    setProducts(prev => prev.filter(x => x.product_id !== p.product_id));
+    setProducts(prev =>
+      prev.map(x =>
+        x.product_id === p.product_id
+          ? { ...x, is_active: !x.is_active }
+          : x
+      )
+    );
   };
 
   return (
