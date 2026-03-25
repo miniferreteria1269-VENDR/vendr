@@ -1,9 +1,12 @@
 import { useState } from "react";
+import { useLang } from "./useLang";
 import { COLORS, card, btnPrimary, btnSecondary, input } from "./uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
 
 export default function Signup({ onSignup, switchToLogin }) {
+
+  const { t } = useLang();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,7 +15,7 @@ export default function Signup({ onSignup, switchToLogin }) {
   const handleSignup = async () => {
 
     if (!email || !password || !storeName) {
-      alert("Please fill all fields");
+      alert(t("please_fill_all_fields"));
       return;
     }
 
@@ -37,12 +40,12 @@ export default function Signup({ onSignup, switchToLogin }) {
         localStorage.removeItem("activeTicket");
         onSignup(data);
       } else {
-        alert(data.detail || "Signup failed");
+        alert(data.detail || t("signup_failed"));
       }
 
     } catch (err) {
       console.error(err);
-      alert("Signup error");
+      alert(t("signup_error"));
     }
   };
 
@@ -57,29 +60,29 @@ export default function Signup({ onSignup, switchToLogin }) {
 
       <div style={{ ...card, width: 320 }}>
 
-        <h2 style={{ marginBottom: 16 }}>Create Account</h2>
+        <h2 style={{ marginBottom: 16 }}>{t("create_account")}</h2>
 
-        <label>Store Name</label>
+        <label>{t("store_name")}</label>
         <input
           style={{ ...input, width: "100%", marginBottom: 12 }}
-          placeholder="Store Name"
+          placeholder={t("store_name")}
           value={storeName}
           onChange={(e) => setStoreName(e.target.value)}
         />
 
-        <label>Email</label>
+        <label>{t("email")}</label>
         <input
           style={{ ...input, width: "100%", marginBottom: 12 }}
-          placeholder="Email"
+          placeholder={t("email")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
 
-        <label>Password</label>
+        <label>{t("password")}</label>
         <input
           style={{ ...input, width: "100%", marginBottom: 16 }}
           type="password"
-          placeholder="Password"
+          placeholder={t("password")}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -88,14 +91,14 @@ export default function Signup({ onSignup, switchToLogin }) {
           style={{ ...btnPrimary, width: "100%", marginBottom: 10 }}
           onClick={handleSignup}
         >
-          Sign Up
+          {t("sign_up")}
         </button>
 
         <button
           style={{ ...btnSecondary, width: "100%" }}
           onClick={switchToLogin}
         >
-          Back to Login
+          {t("back_to_login")}
         </button>
 
       </div>
