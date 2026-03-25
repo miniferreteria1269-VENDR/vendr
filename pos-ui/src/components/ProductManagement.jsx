@@ -533,6 +533,7 @@ function EditDetails({ storeId }) {
     </div>
   );
 }
+
 function ArchiveProduct({ storeId }) {
 
   const [search, setSearch] = useState("");
@@ -566,27 +567,41 @@ function ArchiveProduct({ storeId }) {
     <div style={{ maxWidth: 400 }}>
       <h3>Archive Product</h3>
 
-      <input style={input}
+      <input
+        style={{ ...input, width: "100%", marginBottom: 10 }}
+        placeholder="Search product..."
         value={search}
         onChange={(e)=>{
           setSearch(e.target.value);
-          if (e.target.value.length > 1) searchProducts(e.target.value);
+
+          if (e.target.value.length > 1) {
+            searchProducts(e.target.value);
+          } else {
+            setProducts([]);
+          }
         }}
       />
 
-      {products.map(p => (
-        <div key={p.product_id}
+      {Array.isArray(products) && products.map(p => (
+        <div
+          key={p.product_id || Math.random()}
           style={resultCard()}
         >
-          <div style={{ display:"flex", justifyContent:"space-between" }}>
-            <span>{p.name}</span>
+          <div style={{
+            display:"flex",
+            justifyContent:"space-between",
+            alignItems:"center"
+          }}>
+
+            <span>{p.name || "Unnamed Product"}</span>
 
             <button
               style={btnDanger}
               onClick={()=>archive(p)}
             >
-              {p.is_active ? "Archive" : "Restore"}
+              {p.is_active === false ? "Restore" : "Archive"}
             </button>
+
           </div>
         </div>
       ))}
