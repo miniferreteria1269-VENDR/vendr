@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLang } from "../LanguageContext";
 import axios from "axios";
 import {
   COLORS,
@@ -8,6 +9,8 @@ import {
 } from "../uiStyles";
 
 function SalesAnalysisPanel({ storeId }) {
+
+  const { t } = useLang();
 
   const today = new Date().toISOString().slice(0,10);
 
@@ -47,7 +50,7 @@ function SalesAnalysisPanel({ storeId }) {
   return (
     <div style={{ padding: 16 }}>
 
-      <h2 style={{ marginBottom: 12 }}>Sales Analysis</h2>
+      <h2 style={{ marginBottom: 12 }}>{t("sales_analysis")}</h2>
 
       {/* DATE RANGE */}
       <div style={{
@@ -68,7 +71,7 @@ function SalesAnalysisPanel({ storeId }) {
         />
 
         <button onClick={loadAnalysis} style={btnPrimary}>
-          Apply
+          {t("apply")}
         </button>
       </div>
 
@@ -80,12 +83,12 @@ function SalesAnalysisPanel({ storeId }) {
         marginBottom:20
       }}>
 
-        <Metric label="Revenue" value={`$${formatMoney(summary.revenue)}`} />
-        <Metric label="Profit" value={`$${formatMoney(summary.profit)}`} />
-        <Metric label="Tickets" value={summary.tickets || 0} />
-        <Metric label="Avg Daily Revenue" value={`$${formatMoney(summary.avg_daily_revenue)}`} />
-        <Metric label="Avg Daily Profit" value={`$${formatMoney(summary.avg_daily_profit)}`} />
-        <Metric label="Avg Ticket" value={`$${formatMoney(summary.avg_ticket_value)}`} />
+        <Metric label={t("revenue")} value={`$${formatMoney(summary.revenue)}`} />
+        <Metric label={t("profit")} value={`$${formatMoney(summary.profit)}`} />
+        <Metric label={t("tickets")} value={summary.tickets || 0} />
+        <Metric label={t("avg_daily_revenue")} value={`$${formatMoney(summary.avg_daily_revenue)}`} />
+        <Metric label={t("avg_daily_profit")} value={`$${formatMoney(summary.avg_daily_profit)}`} />
+        <Metric label={t("avg_ticket")} value={`$${formatMoney(summary.avg_ticket_value)}`} />
 
       </div>
 
@@ -96,9 +99,9 @@ function SalesAnalysisPanel({ storeId }) {
         gap:12
       }}>
 
-        <ProductList title="Top Revenue" products={topRevenue} field="revenue" />
-        <ProductList title="Top Profit" products={topProfit} field="profit" />
-        <ProductList title="Top Volume" products={topVolume} field="units" />
+        <ProductList title={t("top_revenue")} products={topRevenue} field="revenue" />
+        <ProductList title={t("top_profit")} products={topProfit} field="profit" />
+        <ProductList title={t("top_volume")} products={topVolume} field="units" />
 
       </div>
 
@@ -140,6 +143,8 @@ function Metric({ label, value }) {
 // ==============================
 function ProductList({ title, products, field }) {
 
+  const { t } = useLang();
+
   return (
     <div style={card}>
 
@@ -169,7 +174,7 @@ function ProductList({ title, products, field }) {
 
       {products.length === 0 && (
         <div style={{ color: COLORS.textDim }}>
-          No data
+          {t("no_data")}
         </div>
       )}
 

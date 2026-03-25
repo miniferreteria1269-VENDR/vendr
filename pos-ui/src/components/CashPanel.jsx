@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
+import { useLang } from "../LanguageContext";
 import axios from "axios";
 import ReturnModal from "./ReturnModal";
+import RevenueModal from "./RevenueModal";
+import ExpenseModal from "./ExpenseModal";
 import { COLORS, card, btnPrimary, btnSecondary, btnDanger } from "../uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
 
 function CashPanel({ storeId, products }) {
+
+  const { t } = useLang();
 
   const [balance, setBalance] = useState(0);
   const [showReturn, setShowReturn] = useState(false);
@@ -38,7 +43,7 @@ function CashPanel({ storeId, products }) {
         marginBottom: 16
       }}>
         <div style={{ color: COLORS.textDim }}>
-          Cash Balance
+          {t("cash_balance")}
         </div>
 
         <div style={{
@@ -58,15 +63,15 @@ function CashPanel({ storeId, products }) {
         flexWrap: "wrap"
       }}>
         <button onClick={() => setShowRevenue(true)} style={btnPrimary}>
-          + Revenue
+          + {t("revenue")}
         </button>
 
         <button onClick={() => setShowReturn(true)} style={btnSecondary}>
-          Return / Refund
+          {t("return_refund")}
         </button>
 
         <button onClick={() => setShowExpense(true)} style={btnDanger}>
-          - Expense
+          - {t("expense")}
         </button>
       </div>
 

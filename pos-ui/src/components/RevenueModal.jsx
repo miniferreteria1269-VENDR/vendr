@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLang } from "../LanguageContext";
 import axios from "axios";
 
 const API = "https://vendr-onkr.onrender.com";
@@ -13,6 +14,8 @@ const categories = [
 ];
 
 function RevenueModal({ storeId, onClose, onSuccess }) {
+
+  const { t } = useLang();
 
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState(categories[0]);
@@ -35,18 +38,18 @@ function RevenueModal({ storeId, onClose, onSuccess }) {
 
     } catch (err) {
       console.error("Revenue error:", err);
-      alert("Failed to add revenue");
+      alert(t("failed_add_revenue"));
     }
   };
 
   return (
     <div style={modalStyle}>
 
-      <h3>Add Revenue</h3>
+      <h3>{t("add_revenue")}</h3>
 
       <input
         type="number"
-        placeholder="Amount"
+        placeholder={t("amount")}
         value={amount}
         onChange={e => setAmount(e.target.value)}
       />
@@ -56,20 +59,22 @@ function RevenueModal({ storeId, onClose, onSuccess }) {
         onChange={e => setCategory(e.target.value)}
       >
         {categories.map(c => (
-          <option key={c}>{c}</option>
+          <option key={c} value={c}>
+            {t(c)}
+          </option>
         ))}
       </select>
 
       <input
-        placeholder="Note (optional)"
+        placeholder={t("note_optional")}
         value={note}
         onChange={e => setNote(e.target.value)}
       />
 
       <div style={{ marginTop: 10 }}>
-        <button onClick={submit}>Confirm</button>
+        <button onClick={submit}>{t("confirm")}</button>
         <button onClick={onClose} style={{ marginLeft: 10 }}>
-          Cancel
+          {t("cancel")}
         </button>
       </div>
 
