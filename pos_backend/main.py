@@ -1158,61 +1158,79 @@ def inventory_pareto(store_id: int):
 
 
 
-
-
 @app.get("/dead-stock")
 def dead_stock(store_id: int, days: int = 90):
 
     conn = db()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT
-            p.product_id,
-            p.name,
-            p.stock,
-            p.cost,
-            MAX(e.event_datetime::timestamp) as last_sale
-        FROM products p
-        LEFT JOIN events e
-        ON p.product_id = e.product_id
-        AND e.event_type = 'sale'
-        AND e.store_id = p.store_id
-        WHERE p.store_id = %s
-        AND p.is_active = 1
-        GROUP BY p.product_id, p.name, p.stock, p.cost
-        HAVING
-            MAX(e.event_datetime::date) IS NULL
-            OR MAX(e.event_datetime::date) <= (CURRENT_DATE - make_interval(days => %s))
-        ORDER BY p.stock * p.cost DESC
-    """, (store_id, days))
+    try:
+        cursor.execute("""
+            SELECT
+                p.product_id,
+                p.name,
+                p.stock,
+                p.cost,
+                MAX(e.event_datetime) AS last_sale
+            FROM products p
+            LEFT JOIN events e
+                ON p.product_id = e.product_id
+                AND e.event_type = 'sale'
+                AND e.store_id = p.store_id
+            WHERE p.store_id = %s
+                AND p.is_active = 1
+            GROUP BY p.product_id, p.name, p.stock, p.cost
+            HAVING
+                MAX(e.event_datetime) IS NULL
+                OR MAX(e.event_datetime) <= NOW() - (%s * INTERVAL '1 day')
+            ORDER BY (p.stock * p.cost) DESC
+        """, (store_id, days))
 
-    rows = cursor.fetchall()
-    conn.close()
+        rows = cursor.fetchall()
+
+    except Exception as e:
+        print("DEAD STOCK ERROR:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        conn.close()
 
     results = []
 
     for row in rows:
 
-        investment = (row[2] or 0) * (row[3] or 0)
+        product_id = row[0]
+        name = row[1]
+        stock = row[2] or 0
+        cost = row[3] or 0
         last_sale = row[4]
+
+        investment = stock * cost
 
         days_since_sale = None
 
         if last_sale:
+            # Ensure timezone-safe comparison
+            if last_sale.tzinfo is None:
+                last_sale = last_sale.replace(tzinfo=timezone.utc)
+
             days_since_sale = (datetime.now(timezone.utc) - last_sale).days
 
         results.append({
-            "product_id": row[0],
-            "name": row[1],
-            "stock": row[2],
-            "cost": row[3],
+            "product_id": product_id,
+            "name": name,
+            "stock": stock,
+            "cost": cost,
             "investment": investment,
             "last_sale": last_sale,
             "days_since_sale": days_since_sale
         })
 
     return {"products": results}
+
+
+
+
 @app.post("/edit-product")
 def edit_product(
     store_id: int,
