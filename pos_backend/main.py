@@ -1189,7 +1189,7 @@ def dead_stock(store_id: int, days: int = 90):
         rows = cursor.fetchall()
 
     except Exception as e:
-        print("DEAD STOCK ERROR:", e)
+        print("DEAD STOCK ERROR:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
     finally:
@@ -1210,7 +1210,6 @@ def dead_stock(store_id: int, days: int = 90):
         days_since_sale = None
 
         if last_sale:
-            # Ensure timezone-safe comparison
             if last_sale.tzinfo is None:
                 last_sale = last_sale.replace(tzinfo=timezone.utc)
 
@@ -1227,7 +1226,6 @@ def dead_stock(store_id: int, days: int = 90):
         })
 
     return {"products": results}
-
 
 
 
