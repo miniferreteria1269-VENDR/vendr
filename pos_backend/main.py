@@ -1158,7 +1158,7 @@ def inventory_pareto(store_id: int):
 
 
 
-from datetime import datetime, timezone
+
 
 @app.get("/dead-stock")
 def dead_stock(store_id: int, days: int = 90):
@@ -1183,7 +1183,7 @@ def dead_stock(store_id: int, days: int = 90):
         GROUP BY p.product_id, p.name, p.stock, p.cost
         HAVING
             MAX(e.event_datetime::date) IS NULL
-            OR MAX(e.event_datetime::date) <= CURRENT_DATE - (%s * INTERVAL '1 day')
+            OR MAX(e.event_datetime::date) <= (CURRENT_DATE - make_interval(days => %s))
         ORDER BY p.stock * p.cost DESC
     """, (store_id, days))
 
