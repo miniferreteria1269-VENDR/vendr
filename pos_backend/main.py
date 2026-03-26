@@ -1156,6 +1156,8 @@ def inventory_pareto(store_id: int):
 
     return {"products": results}
 
+
+
 @app.get("/dead-stock")
 def dead_stock(store_id: int, days: int = 90):
 
@@ -1178,8 +1180,8 @@ def dead_stock(store_id: int, days: int = 90):
         AND p.is_active = 1
         GROUP BY p.product_id, p.name, p.stock, p.cost
         HAVING
-            MAX(e.event_datetime::timestamp) IS NULL
-            OR MAX(e.event_datetime::timestamp) < NOW() - (%s * INTERVAL '1 day')
+            MAX(e.event_datetime::date) IS NULL
+            OR MAX(e.event_datetime::date) <= CURRENT_DATE - %s
         ORDER BY p.stock * p.cost DESC
     """, (store_id, days))
 
@@ -1209,7 +1211,6 @@ def dead_stock(store_id: int, days: int = 90):
         })
 
     return {"products": results}
-
 @app.post("/edit-product")
 def edit_product(
     store_id: int,
