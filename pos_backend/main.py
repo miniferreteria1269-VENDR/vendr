@@ -1165,15 +1165,20 @@ def dead_stock(store_id: int, days: int = 90):
     cursor = conn.cursor()
 
     try:
-        print("DEBUG INPUT:", store_id, days)
-
-        query = """
+        cursor.execute("""
             SELECT
                 p.product_id,
                 p.name,
                 p.stock,
                 p.cost,
-                MAX(e.event_datetime) AS last_sale
+                MAX(
+                    CASE
+                        WHEN e.event_datetime IS NOT NULL
+                        AND e.event_datetime <> ''
+                        THEN e.event_datetime::timestamp
+                        ELSE NULL
+                    END
+                ) AS last_sale
             FROM products p
             LEFT JOIN events e
                 ON p.product_id = e.product_id
@@ -1183,31 +1188,65 @@ def dead_stock(store_id: int, days: int = 90):
                 AND p.is_active = 1
             GROUP BY p.product_id, p.name, p.stock, p.cost
             HAVING
-                MAX(e.event_datetime) IS NULL
-                OR MAX(e.event_datetime) <= NOW() - (%s * INTERVAL '1 day')
+                MAX(
+                    CASE
+                        WHEN e.event_datetime IS NOT NULL
+                        AND e.event_datetime <> ''
+                        THEN e.event_datetime::timestamp
+                        ELSE NULL
+                    END
+                ) IS NULL
+                OR MAX(
+                    CASE
+                        WHEN e.event_datetime IS NOT NULL
+                        AND e.event_datetime <> ''
+                        THEN e.event_datetime::timestamp
+                        ELSE NULL
+                    END
+                ) <= NOW() - (%s * INTERVAL '1 day')
             ORDER BY (p.stock * p.cost) DESC
-        """
-
-        print("RUNNING QUERY...")
-
-        cursor.execute(query, (store_id, days))
+        """, (store_id, days))
 
         rows = cursor.fetchall()
 
-        print("ROWS RETURNED:", len(rows))
-
     except Exception as e:
-        import traceback
-        print("===== DEAD STOCK ERROR =====")
-        print(str(e))
-        traceback.print_exc()
-        print("===========================")
-        raise
+        print("DEAD STOCK ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
     finally:
         conn.close()
 
-    return {"products": rows}
+    results = []
+
+    for row in rows:
+
+        product_id = row[0]
+        name = row[1]
+        stock = row[2] or 0
+        cost = row[3] or 0
+        last_sale = row[4]
+
+        investment = stock * cost
+
+        days_since_sale = None
+
+        if last_sale:
+            if last_sale.tzinfo is None:
+                last_sale = last_sale.replace(tzinfo=timezone.utc)
+
+            days_since_sale = (datetime.now(timezone.utc) - last_sale).days
+
+        results.append({
+            "product_id": product_id,
+            "name": name,
+            "stock": stock,
+            "cost": cost,
+            "investment": investment,
+            "last_sale": last_sale,
+            "days_since_sale": days_since_sale
+        })
+
+    return {"products": results}
 
 @app.post("/edit-product")
 def edit_product(
