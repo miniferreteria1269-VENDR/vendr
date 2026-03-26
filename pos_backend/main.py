@@ -1165,7 +1165,9 @@ def dead_stock(store_id: int, days: int = 90):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        print("DEBUG INPUT:", store_id, days)
+
+        query = """
             SELECT
                 p.product_id,
                 p.name,
@@ -1184,50 +1186,28 @@ def dead_stock(store_id: int, days: int = 90):
                 MAX(e.event_datetime) IS NULL
                 OR MAX(e.event_datetime) <= NOW() - (%s * INTERVAL '1 day')
             ORDER BY (p.stock * p.cost) DESC
-        """, (store_id, days))
+        """
+
+        print("RUNNING QUERY...")
+
+        cursor.execute(query, (store_id, days))
 
         rows = cursor.fetchall()
 
+        print("ROWS RETURNED:", len(rows))
+
     except Exception as e:
-        print("DEAD STOCK ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print("===== DEAD STOCK ERROR =====")
+        print(str(e))
+        traceback.print_exc()
+        print("===========================")
+        raise
 
     finally:
         conn.close()
 
-    results = []
-
-    for row in rows:
-
-        product_id = row[0]
-        name = row[1]
-        stock = row[2] or 0
-        cost = row[3] or 0
-        last_sale = row[4]
-
-        investment = stock * cost
-
-        days_since_sale = None
-
-        if last_sale:
-            if last_sale.tzinfo is None:
-                last_sale = last_sale.replace(tzinfo=timezone.utc)
-
-            days_since_sale = (datetime.now(timezone.utc) - last_sale).days
-
-        results.append({
-            "product_id": product_id,
-            "name": name,
-            "stock": stock,
-            "cost": cost,
-            "investment": investment,
-            "last_sale": last_sale,
-            "days_since_sale": days_since_sale
-        })
-
-    return {"products": results}
-
-
+    return {"products": rows}
 
 @app.post("/edit-product")
 def edit_product(
