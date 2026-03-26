@@ -95,14 +95,12 @@ function InventoryReport({ storeId }) {
     if (inventoryView === "deadstock") loadDeadStock();
   }, [deadStockDays]);
 
-  // ✅ SERVICE TOTALS
   const serviceTotals = {
     cost: serviceItems.reduce((sum, s) => sum + (s.cost || 0), 0),
     revenue: serviceItems.reduce((sum, s) => sum + (s.revenue || 0), 0),
     profit: serviceItems.reduce((sum, s) => sum + (s.profit || 0), 0)
   };
 
-  // ✅ FRONTEND DATA FILTERS (defensive layer)
   const filteredProducts = products.filter(p =>
     p.quantity !== null && p.quantity !== undefined
   );
@@ -120,7 +118,6 @@ function InventoryReport({ storeId }) {
 
       <h2 style={{ marginBottom: 12 }}>{t("inventory")}</h2>
 
-      {/* NAV */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {["stock","pareto","lowstock","services","deadstock"].map(v => (
           <button
@@ -133,7 +130,6 @@ function InventoryReport({ storeId }) {
         ))}
       </div>
 
-      {/* SEARCH */}
       {inventoryView === "stock" && (
         <input
           placeholder={t("search_inventory")}
@@ -143,16 +139,11 @@ function InventoryReport({ storeId }) {
         />
       )}
 
-      {/* STOCK VIEW */}
+      {/* ✅ STOCK TABLE */}
       {inventoryView === "stock" && (
         <div style={card}>
 
-          <div style={{
-            display: "flex",
-            gap: 30,
-            marginBottom: 16,
-            fontWeight: "bold"
-          }}>
+          <div style={{ display: "flex", gap: 30, marginBottom: 16, fontWeight: "bold" }}>
             <div>{t("cost")}: ${formatMoney(totals.cost)}</div>
             <div>{t("value")}: ${formatMoney(totals.price)}</div>
             <div style={{ color: COLORS.primary }}>
@@ -160,37 +151,48 @@ function InventoryReport({ storeId }) {
             </div>
           </div>
 
-          <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
-            {filteredProducts.map((p, i) => (
-              <div key={i} style={{
-                background: COLORS.panelAlt,
-                padding: 10,
-                borderRadius: 8,
-                marginBottom: 6,
-                display: "flex",
-                justifyContent: "space-between"
-              }}>
-                <div>
-                  <b>{p.name}</b>
-                  <div style={{ fontSize: 12, color: COLORS.textDim }}>
-                    {t("qty")}: {p.quantity}
-                  </div>
-                </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                  <th>Name</th>
+                  <th>Qty</th>
+                  <th>Cost</th>
+                  <th>Price</th>
+                  <th>Total Cost</th>
+                  <th>Total Value</th>
+                  <th>Profit</th>
+                </tr>
+              </thead>
 
-                <div style={{ textAlign: "right" }}>
-                  <div>${formatMoney(p.price)}</div>
-                  <div style={{ fontSize: 12, color: COLORS.textDim }}>
-                    {t("inv")}: ${formatMoney(p.investment)}
-                  </div>
-                </div>
-              </div>
-            ))}
+              <tbody>
+                {filteredProducts.map((p, i) => {
+                  const totalCost = p.investment || 0;
+                  const totalValue = (p.price || 0) * (p.quantity || 0);
+                  const profit = totalValue - totalCost;
+
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                      <td>{p.name}</td>
+                      <td>{p.quantity}</td>
+                      <td>${formatMoney(p.cost)}</td>
+                      <td>${formatMoney(p.price)}</td>
+                      <td>${formatMoney(totalCost)}</td>
+                      <td>${formatMoney(totalValue)}</td>
+                      <td style={{ color: profit >= 0 ? COLORS.primary : COLORS.danger }}>
+                        ${formatMoney(profit)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
         </div>
       )}
 
-      {/* LOW STOCK */}
+      {/* LOW STOCK (UNCHANGED) */}
       {inventoryView === "lowstock" && (
         <div style={card}>
           <h3>{t("lowstock")}</h3>
@@ -200,10 +202,7 @@ function InventoryReport({ storeId }) {
           )}
 
           {filteredLowStock.map((i, idx) => (
-            <div key={idx} style={{
-              padding: 8,
-              borderBottom: `1px solid ${COLORS.border}`
-            }}>
+            <div key={idx} style={{ padding: 8, borderBottom: `1px solid ${COLORS.border}` }}>
               <b>{i.name}</b>
               <div>{t("stock")}: {i.stock} / {t("min")}: {i.threshold}</div>
             </div>
@@ -211,25 +210,20 @@ function InventoryReport({ storeId }) {
         </div>
       )}
 
-      {/* PARETO */}
+      {/* PARETO (UNCHANGED) */}
       {inventoryView === "pareto" && (
         <div style={card}>
           <h3>{t("pareto")}</h3>
 
           {paretoItems.map((p, i) => (
-            <div key={i} style={{
-              background: COLORS.panelAlt,
-              padding: 8,
-              marginBottom: 6,
-              borderRadius: 6
-            }}>
+            <div key={i} style={{ background: COLORS.panelAlt, padding: 8, marginBottom: 6, borderRadius: 6 }}>
               {p.name} — ${formatMoney(p.investment)}
             </div>
           ))}
         </div>
       )}
 
-      {/* SERVICES */}
+      {/* ✅ SERVICES TABLE */}
       {inventoryView === "services" && (
         <div style={card}>
 
@@ -243,12 +237,7 @@ function InventoryReport({ storeId }) {
             </button>
           </div>
 
-          <div style={{
-            display: "flex",
-            gap: 30,
-            marginBottom: 12,
-            fontWeight: "bold"
-          }}>
+          <div style={{ display: "flex", gap: 30, marginBottom: 12, fontWeight: "bold" }}>
             <div>{t("cost")}: ${formatMoney(serviceTotals.cost)}</div>
             <div>{t("value")}: ${formatMoney(serviceTotals.revenue)}</div>
             <div style={{ color: COLORS.primary }}>
@@ -256,39 +245,40 @@ function InventoryReport({ storeId }) {
             </div>
           </div>
 
-          {filteredServices.map((s,i)=>(
-            <div key={i} style={{
-              background: COLORS.panelAlt,
-              padding: 10,
-              borderRadius: 8,
-              marginBottom: 6
-            }}>
-              <div style={{ fontWeight: 500 }}>{s.name}</div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                  <th>Name</th>
+                  <th>Instances</th>
+                  <th>Cost</th>
+                  <th>Revenue</th>
+                  <th>Profit</th>
+                </tr>
+              </thead>
 
-              <div style={{ fontSize: 12, color: COLORS.textDim }}>
-                {t("instances") || "Instances"}: {s.instances || 0}
-              </div>
+              <tbody>
+                {filteredServices.map((s, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                    <td>{s.name}</td>
+                    <td>{s.instances || 0}</td>
+                    <td>${formatMoney(s.cost)}</td>
+                    <td>${formatMoney(s.revenue)}</td>
+                    <td style={{ color: (s.profit || 0) >= 0 ? COLORS.primary : COLORS.danger }}>
+                      ${formatMoney(s.profit)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-              <div style={{ fontSize: 12 }}>
-                {t("cost")}: ${formatMoney(s.cost)}
-              </div>
-
-              <div style={{ fontSize: 12 }}>
-                {t("revenue")}: ${formatMoney(s.revenue)}
-              </div>
-
-              <div style={{ fontSize: 12, color: COLORS.primary }}>
-                {t("profit")}: ${formatMoney(s.profit)}
-              </div>
-            </div>
-          ))}
         </div>
       )}
 
-      {/* DEAD STOCK */}
+      {/* DEAD STOCK (UNCHANGED) */}
       {inventoryView === "deadstock" && (
         <div style={card}>
-
           <div style={{ marginBottom: 12 }}>
             <input type="number" value={deadStockDays}
               onChange={(e)=>setDeadStockDays(Number(e.target.value))}
@@ -299,12 +289,7 @@ function InventoryReport({ storeId }) {
           </div>
 
           {deadStockItems.map((p,i)=>(
-            <div key={i} style={{
-              background: COLORS.panelAlt,
-              padding: 8,
-              marginBottom: 6,
-              borderRadius: 6
-            }}>
+            <div key={i} style={{ background: COLORS.panelAlt, padding: 8, marginBottom: 6, borderRadius: 6 }}>
               {p.name} — {p.days_since_sale ?? t("never")}
             </div>
           ))}
