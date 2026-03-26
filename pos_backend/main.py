@@ -979,6 +979,7 @@ def get_low_stock(store_id: int):
         FROM products
         WHERE store_id = %s
         AND is_active = 1
+        AND tracks_stock = 1
         AND stock <= low_stock_threshold
     """, (store_id,))
 
@@ -1071,6 +1072,7 @@ def stock_report(store_id: int, name: str = None):
         FROM products
         WHERE store_id = %s
         AND is_active = 1
+        AND tracks_stock = 1
     """
 
     params = [store_id]

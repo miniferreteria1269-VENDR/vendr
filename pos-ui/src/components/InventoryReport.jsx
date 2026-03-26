@@ -95,6 +95,26 @@ function InventoryReport({ storeId }) {
     if (inventoryView === "deadstock") loadDeadStock();
   }, [deadStockDays]);
 
+  // ✅ SERVICE TOTALS
+  const serviceTotals = {
+    cost: serviceItems.reduce((sum, s) => sum + (s.cost || 0), 0),
+    revenue: serviceItems.reduce((sum, s) => sum + (s.revenue || 0), 0),
+    profit: serviceItems.reduce((sum, s) => sum + (s.profit || 0), 0)
+  };
+
+  // ✅ FRONTEND DATA FILTERS (defensive layer)
+  const filteredProducts = products.filter(p =>
+    p.quantity !== null && p.quantity !== undefined
+  );
+
+  const filteredLowStock = lowStockItems.filter(i =>
+    i.stock !== null && i.stock !== undefined && i.threshold !== null
+  );
+
+  const filteredServices = serviceItems.filter(s =>
+    s.instances !== undefined
+  );
+
   return (
     <div style={{ padding: 16 }}>
 
@@ -127,7 +147,6 @@ function InventoryReport({ storeId }) {
       {inventoryView === "stock" && (
         <div style={card}>
 
-          {/* TOTALS */}
           <div style={{
             display: "flex",
             gap: 30,
@@ -141,9 +160,8 @@ function InventoryReport({ storeId }) {
             </div>
           </div>
 
-          {/* LIST */}
           <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
-            {products.map((p, i) => (
+            {filteredProducts.map((p, i) => (
               <div key={i} style={{
                 background: COLORS.panelAlt,
                 padding: 10,
@@ -177,11 +195,11 @@ function InventoryReport({ storeId }) {
         <div style={card}>
           <h3>{t("lowstock")}</h3>
 
-          {lowStockItems.length === 0 && (
+          {filteredLowStock.length === 0 && (
             <div style={{ color: COLORS.textDim }}>{t("no_issues")}</div>
           )}
 
-          {lowStockItems.map((i, idx) => (
+          {filteredLowStock.map((i, idx) => (
             <div key={idx} style={{
               padding: 8,
               borderBottom: `1px solid ${COLORS.border}`
@@ -225,14 +243,43 @@ function InventoryReport({ storeId }) {
             </button>
           </div>
 
-          {serviceItems.map((s,i)=>(
+          <div style={{
+            display: "flex",
+            gap: 30,
+            marginBottom: 12,
+            fontWeight: "bold"
+          }}>
+            <div>{t("cost")}: ${formatMoney(serviceTotals.cost)}</div>
+            <div>{t("value")}: ${formatMoney(serviceTotals.revenue)}</div>
+            <div style={{ color: COLORS.primary }}>
+              {t("profit")}: ${formatMoney(serviceTotals.profit)}
+            </div>
+          </div>
+
+          {filteredServices.map((s,i)=>(
             <div key={i} style={{
               background: COLORS.panelAlt,
-              padding: 8,
-              borderRadius: 6,
+              padding: 10,
+              borderRadius: 8,
               marginBottom: 6
             }}>
-              {s.name} — ${formatMoney(s.revenue)}
+              <div style={{ fontWeight: 500 }}>{s.name}</div>
+
+              <div style={{ fontSize: 12, color: COLORS.textDim }}>
+                {t("instances") || "Instances"}: {s.instances || 0}
+              </div>
+
+              <div style={{ fontSize: 12 }}>
+                {t("cost")}: ${formatMoney(s.cost)}
+              </div>
+
+              <div style={{ fontSize: 12 }}>
+                {t("revenue")}: ${formatMoney(s.revenue)}
+              </div>
+
+              <div style={{ fontSize: 12, color: COLORS.primary }}>
+                {t("profit")}: ${formatMoney(s.profit)}
+              </div>
             </div>
           ))}
         </div>
