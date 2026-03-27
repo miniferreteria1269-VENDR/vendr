@@ -113,7 +113,6 @@ function InventoryReport({ storeId }) {
     s.instances !== undefined
   );
 
-  // ✅ ADDED: Pareto sorting logic
   const sortedPareto = [...paretoItems].sort((a, b) => {
     const getValue = (p) =>
       paretoMode === "investment"
@@ -222,7 +221,7 @@ function InventoryReport({ storeId }) {
         </div>
       )}
 
-      {/* ✅ UPDATED PARETO ONLY */}
+      {/* PARETO UPDATED */}
       {inventoryView === "pareto" && (
         <div style={card}>
           <h3>{t("pareto")}</h3>
@@ -235,19 +234,13 @@ function InventoryReport({ storeId }) {
             fontSize: 13,
             color: COLORS.textDim
           }}>
-            <div style={{ marginBottom: 6 }}>
-              Pareto analysis helps you identify which products matter most.
-            </div>
-            <div style={{ marginBottom: 6 }}>
-              A small number of products usually account for most of your results.
-            </div>
-            <div style={{ marginBottom: 6 }}>
-              You can use this data in order to:
-            </div>
+            <div style={{ marginBottom: 6 }}>{t("pareto_desc_1")}</div>
+            <div style={{ marginBottom: 6 }}>{t("pareto_desc_2")}</div>
+            <div style={{ marginBottom: 6 }}>{t("pareto_desc_3")}</div>
             <ul style={{ paddingLeft: 18 }}>
-              <li>Focus on your most important products</li>
-              <li>Reduce money tied up in slow items</li>
-              <li>Improve profitability decisions</li>
+              <li>{t("pareto_focus")}</li>
+              <li>{t("pareto_reduce")}</li>
+              <li>{t("pareto_improve")}</li>
             </ul>
           </div>
 
@@ -258,13 +251,11 @@ function InventoryReport({ storeId }) {
                 onClick={() => setParetoMode(mode)}
                 style={paretoMode === mode ? btnPrimary : btnSecondary}
               >
-                {mode.toUpperCase()}
+                {t(mode).toUpperCase()}
               </button>
             ))}
           </div>
 
-
-          
           {sortedPareto.map((p, i) => {
 
             const value =

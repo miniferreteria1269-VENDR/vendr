@@ -44,6 +44,16 @@ export const translations = {
     top_volume: "Top Volume",
     no_data: "No data",
 
+    // 🔥 PARETO (NEW)
+    investment: "Investment",
+    sales: "Sales",
+    pareto_desc_1: "Pareto analysis helps you identify which products matter most.",
+    pareto_desc_2: "A small number of products usually account for most of your results.",
+    pareto_desc_3: "You can use this data in order to:",
+    pareto_focus: "Focus on your most important products",
+    pareto_reduce: "Reduce money tied up in slow items",
+    pareto_improve: "Improve profitability decisions",
+
     // SEARCH / INPUT
     search_product: "Search product...",
     search_inventory: "Search inventory...",
@@ -170,6 +180,16 @@ export const translations = {
     top_profit: "Top ganancia",
     top_volume: "Top volumen",
     no_data: "Sin datos",
+
+    // 🔥 PARETO (NEW)
+    investment: "Inversión",
+    sales: "Ventas",
+    pareto_desc_1: "El análisis de Pareto te ayuda a identificar qué productos son más importantes.",
+    pareto_desc_2: "Un pequeño número de productos generalmente representa la mayoría de tus resultados.",
+    pareto_desc_3: "Puedes usar estos datos para:",
+    pareto_focus: "Enfocarte en tus productos más importantes",
+    pareto_reduce: "Reducir dinero inmovilizado en productos lentos",
+    pareto_improve: "Mejorar decisiones de rentabilidad",
 
     // SEARCH / INPUT
     search_product: "Buscar producto...",
