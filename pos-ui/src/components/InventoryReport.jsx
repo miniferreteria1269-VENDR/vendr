@@ -19,7 +19,7 @@ function InventoryReport({ storeId }) {
   const [serviceStartDate, setServiceStartDate] = useState("");
   const [serviceEndDate, setServiceEndDate] = useState("");
   const [deadStockDays, setDeadStockDays] = useState(90);
-
+  const [paretoMode, setParetoMode] = useState("investment");
   const [totals, setTotals] = useState({ cost: 0, price: 0 });
 
   const formatMoney = (v) => Number(v || 0).toFixed(2);
@@ -113,6 +113,18 @@ function InventoryReport({ storeId }) {
     s.instances !== undefined
   );
 
+  // ✅ ADDED: Pareto sorting logic
+  const sortedPareto = [...paretoItems].sort((a, b) => {
+    const getValue = (p) =>
+      paretoMode === "investment"
+        ? p.investment || 0
+        : paretoMode === "sales"
+        ? p.revenue || 0
+        : p.profit || 0;
+
+    return getValue(b) - getValue(a);
+  });
+
   return (
     <div style={{ padding: 16 }}>
 
@@ -139,10 +151,9 @@ function InventoryReport({ storeId }) {
         />
       )}
 
-      {/* ✅ STOCK TABLE */}
+      {/* STOCK unchanged */}
       {inventoryView === "stock" && (
         <div style={card}>
-
           <div style={{ display: "flex", gap: 30, marginBottom: 16, fontWeight: "bold" }}>
             <div>{t("cost")}: ${formatMoney(totals.cost)}</div>
             <div>{t("value")}: ${formatMoney(totals.price)}</div>
@@ -188,11 +199,10 @@ function InventoryReport({ storeId }) {
               </tbody>
             </table>
           </div>
-
         </div>
       )}
 
-      {/* LOW STOCK (UNCHANGED) */}
+      {/* LOW STOCK unchanged */}
       {inventoryView === "lowstock" && (
         <div style={card}>
           <h3>{t("lowstock")}</h3>
@@ -210,23 +220,75 @@ function InventoryReport({ storeId }) {
         </div>
       )}
 
-      {/* PARETO (UNCHANGED) */}
+      {/* ✅ UPDATED PARETO ONLY */}
       {inventoryView === "pareto" && (
         <div style={card}>
           <h3>{t("pareto")}</h3>
 
-          {paretoItems.map((p, i) => (
-            <div key={i} style={{ background: COLORS.panelAlt, padding: 8, marginBottom: 6, borderRadius: 6 }}>
-              {p.name} — ${formatMoney(p.investment)}
+          <div style={{
+            background: COLORS.panelAlt,
+            padding: 10,
+            borderRadius: 8,
+            marginBottom: 12,
+            fontSize: 13,
+            color: COLORS.textDim
+          }}>
+            <div style={{ marginBottom: 6 }}>
+              Pareto analysis helps you identify which products matter most.
             </div>
-          ))}
+            <div style={{ marginBottom: 6 }}>
+              A small number of products usually account for most of your results.
+            </div>
+            <ul style={{ paddingLeft: 18 }}>
+              <li>Focus on your most important products</li>
+              <li>Reduce money tied up in slow items</li>
+              <li>Improve profitability decisions</li>
+            </ul>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {["investment", "sales", "profit"].map(mode => (
+              <button
+                key={mode}
+                onClick={() => setParetoMode(mode)}
+                style={paretoMode === mode ? btnPrimary : btnSecondary}
+              >
+                {mode.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {sortedPareto.map((p, i) => {
+
+            const value =
+              paretoMode === "investment"
+                ? p.investment
+                : paretoMode === "sales"
+                ? p.revenue
+                : p.profit;
+
+            return (
+              <div key={i} style={{
+                background: COLORS.panelAlt,
+                padding: 8,
+                marginBottom: 6,
+                borderRadius: 6,
+                display: "flex",
+                justifyContent: "space-between"
+              }}>
+                <div>{p.name}</div>
+                <div style={{ color: COLORS.primary }}>
+                  ${formatMoney(value)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ✅ SERVICES TABLE */}
+      {/* SERVICES unchanged */}
       {inventoryView === "services" && (
         <div style={card}>
-
           <div style={{ marginBottom: 12 }}>
             <input type="date" value={serviceStartDate}
               onChange={(e)=>setServiceStartDate(e.target.value)} style={input}/>
@@ -272,11 +334,10 @@ function InventoryReport({ storeId }) {
               </tbody>
             </table>
           </div>
-
         </div>
       )}
 
-      {/* DEAD STOCK (UNCHANGED) */}
+      {/* DEAD STOCK unchanged */}
       {inventoryView === "deadstock" && (
         <div style={card}>
           <div style={{ marginBottom: 12 }}>
