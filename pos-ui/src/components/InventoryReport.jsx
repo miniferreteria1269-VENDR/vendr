@@ -125,6 +125,8 @@ function InventoryReport({ storeId }) {
     return getValue(b) - getValue(a);
   });
 
+  const topCount = Math.ceil(sortedPareto.length * 0.2);
+
   return (
     <div style={{ padding: 16 }}>
 
@@ -239,6 +241,9 @@ function InventoryReport({ storeId }) {
             <div style={{ marginBottom: 6 }}>
               A small number of products usually account for most of your results.
             </div>
+            <div style={{ marginBottom: 6 }}>
+              You can use this data in order to:
+            </div>
             <ul style={{ paddingLeft: 18 }}>
               <li>Focus on your most important products</li>
               <li>Reduce money tied up in slow items</li>
@@ -258,6 +263,8 @@ function InventoryReport({ storeId }) {
             ))}
           </div>
 
+
+          
           {sortedPareto.map((p, i) => {
 
             const value =
@@ -269,7 +276,7 @@ function InventoryReport({ storeId }) {
 
             return (
               <div key={i} style={{
-                background: COLORS.panelAlt,
+                background: i < topCount ? COLORS.highlight : COLORS.panelAlt,
                 padding: 8,
                 marginBottom: 6,
                 borderRadius: 6,
