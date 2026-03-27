@@ -283,8 +283,10 @@ function InventoryReport({ storeId }) {
                 display: "flex",
                 justifyContent: "space-between"
               }}>
-                <div>{p.name}</div>
-                <div style={{ color: COLORS.primary }}>
+                <div style={{ color: i < topCount ? COLORS.primary : COLORS.text }}>
+                  {p.name}
+                </div>
+                <div style={{ color: i < topCount ? COLORS.primary : COLORS.text }}>
                   ${formatMoney(value)}
                 </div>
               </div>
