@@ -2174,3 +2174,8 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
 
     finally:
         conn.close()
+
+@app.post("/rebuild-products")
+def rebuild_products_endpoint(store_id: int):
+    rebuild_products(store_id)
+    return {"status": "rebuilt"}
