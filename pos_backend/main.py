@@ -1129,15 +1129,42 @@ def inventory_pareto(store_id: int):
 
     cursor.execute("""
         SELECT
-            name,
-            stock,
-            cost,
-            stock * cost as investment
-        FROM products
-        WHERE store_id = %s
-        AND is_active = 1
-        ORDER BY investment DESC
-        LIMIT 20
+            p.product_id,
+            p.name,
+            COALESCE(p.stock, 0) as stock,
+            COALESCE(p.cost, 0) as cost,
+
+            -- Investment (current stock value)
+            COALESCE(p.stock * p.cost, 0) as investment,
+
+            -- Revenue (from sales events)
+            COALESCE(SUM(
+                CASE 
+                    WHEN e.event_type = 'sale' 
+                    THEN e.quantity * e.price_at_time
+                    ELSE 0 
+                END
+            ), 0) as revenue,
+
+            -- Cost of goods sold
+            COALESCE(SUM(
+                CASE 
+                    WHEN e.event_type = 'sale' 
+                    THEN e.quantity * e.cost_at_time
+                    ELSE 0 
+                END
+            ), 0) as cost_of_sales
+
+        FROM products p
+
+        LEFT JOIN events e
+        ON p.product_id = e.product_id
+        AND e.store_id = p.store_id
+
+        WHERE p.store_id = %s
+        AND p.is_active = 1
+
+        GROUP BY p.product_id, p.name, p.stock, p.cost
     """, (store_id,))
 
     rows = cursor.fetchall()
@@ -1147,11 +1174,17 @@ def inventory_pareto(store_id: int):
 
     for row in rows:
 
+        investment = row[4] or 0
+        revenue = row[5] or 0
+        cost_of_sales = row[6] or 0
+        profit = revenue - cost_of_sales
+
         results.append({
-            "name": row[0],
-            "stock": row[1],
-            "cost": row[2],
-            "investment": row[3]
+            "product_id": row[0],
+            "name": row[1],
+            "investment": investment,
+            "revenue": revenue,
+            "profit": profit
         })
 
     return {"products": results}
