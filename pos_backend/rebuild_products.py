@@ -1,14 +1,17 @@
-import sqlite3
 from inventory_engine import InventoryEngine
+from db import db  # use your existing DB connection
 
 
 def rebuild_products(store_id):
 
-    conn = sqlite3.connect("pos.db")
+    conn = db()
     cursor = conn.cursor()
 
+    # -----------------------------
+    # Load events for this store
+    # -----------------------------
     cursor.execute(
-        "SELECT * FROM events WHERE store_id = ? ORDER BY event_id",
+        "SELECT * FROM events WHERE store_id = %s ORDER BY event_id",
         (store_id,)
     )
     events = cursor.fetchall()
@@ -16,14 +19,17 @@ def rebuild_products(store_id):
     engine = InventoryEngine()
     product_names = {}
 
+    # -----------------------------
+    # Replay events
+    # -----------------------------
     for event in events:
 
-        event_type = event[2].strip().lower()
+        event_type = (event[2] or "").strip().lower()
         product_id = event[3]
         product_name = event[4]
-        quantity = event[5]
-        cost = event[6]
-        price = event[7]
+        quantity = event[5] or 0
+        cost = event[6] or 0
+        price = event[7] or 0
 
         if product_name:
             product_names[product_id] = product_name
@@ -43,11 +49,17 @@ def rebuild_products(store_id):
         elif event_type == "price_change":
             engine.price_change(product_id, cost, price)
 
+    # -----------------------------
+    # Clear existing products
+    # -----------------------------
     cursor.execute(
-        "DELETE FROM products WHERE store_id = ?",
+        "DELETE FROM products WHERE store_id = %s",
         (store_id,)
     )
 
+    # -----------------------------
+    # Rebuild products table
+    # -----------------------------
     for product_id, p in engine.products.items():
 
         name = product_names.get(product_id, "Unknown")
@@ -64,7 +76,7 @@ def rebuild_products(store_id):
                 is_active,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """, (
             product_id,
             store_id,
