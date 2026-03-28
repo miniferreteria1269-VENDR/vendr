@@ -1,3 +1,6 @@
+import { useState, useEffect } from "react";
+import axios from "axios";
+
 const COLORS = {
   panel: "#1a1d24",
   panelAlt: "#222733",
@@ -11,14 +14,39 @@ function ProductPanel({
   products,
   searchTerm,
   setSearchTerm,
-  addItem
+  addItem,
+  storeId   // ✅ ADDED (only change to props)
 }) {
 
   // -----------------------------
-  // QUICK ITEMS LOGIC
+  // QUICK ITEMS STATE
   // -----------------------------
-  const quickItems = products.slice(0, 8);
+  const [quickItems, setQuickItems] = useState([]);
 
+  // -----------------------------
+  // FETCH QUICK ITEMS
+  // -----------------------------
+  const fetchQuickItems = async () => {
+    try {
+      const res = await axios.get(`/quick-items?store_id=${storeId}`);
+      setQuickItems(res.data.products);
+    } catch (err) {
+      console.error("Failed to fetch quick items", err);
+    }
+  };
+
+  // -----------------------------
+  // INITIAL LOAD
+  // -----------------------------
+  useEffect(() => {
+    if (storeId) {
+      fetchQuickItems();
+    }
+  }, [storeId]);   // ✅ ensures reload if store changes
+
+  // -----------------------------
+  // DISPLAY LOGIC
+  // -----------------------------
   const displayProducts =
     searchTerm.trim() === "" ? quickItems : products;
 
