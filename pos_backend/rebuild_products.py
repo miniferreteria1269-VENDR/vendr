@@ -1,4 +1,4 @@
-from inventory_engine import InventoryEngine
+from pos_backend.inventory_engine import InventoryEngine
 import psycopg2
 import os
 

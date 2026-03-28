@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from rebuild_products import rebuild_products
+from pos_backend.rebuild_products import rebuild_products
 
 from datetime import datetime, timezone
 from pydantic import BaseModel
