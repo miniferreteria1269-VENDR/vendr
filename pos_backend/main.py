@@ -213,70 +213,80 @@ def create_product(
 
     conn = db()
     cursor = conn.cursor()
-    tracks_stock_value = 1 if tracks_stock else 0
+
     # -----------------------------
-    # Reject duplicate product names
+    # Normalize name
     # -----------------------------
-
-    cursor.execute("""
-        SELECT product_id
-        FROM products
-        WHERE store_id = %s
-        AND LOWER(name) = LOWER(%s)
-    """, (store_id, name))
-
-    existing = cursor.fetchone()
-
-    if existing:
+    if not name or str(name).strip().lower() in ["", "none", "nan"]:
         conn.close()
-        raise ValueError("Product with this name already exists")
+        raise HTTPException(status_code=400, detail="Invalid product name")
+
+    name = name.strip()
+    name_key = name.lower()
 
     # -----------------------------
-    # Generate next product_id
+    # Prevent duplicates (EVENT-BASED)
     # -----------------------------
+    cursor.execute("""
+        SELECT 1
+        FROM events
+        WHERE store_id = %s
+        AND event_type = 'create'
+        AND LOWER(product_name_at_time) = LOWER(%s)
+    """, (store_id, name_key))
 
-    cursor.execute(
-        "SELECT MAX(product_id) FROM products WHERE store_id = %s",
-        (store_id,)
-    )
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Product already exists")
 
-    result = cursor.fetchone()[0]
-    product_id = 1 if result is None else result + 1
+    # -----------------------------
+    # Generate next product_id (EVENT-BASED)
+    # -----------------------------
+    cursor.execute("""
+        SELECT COALESCE(MAX(product_id), 0)
+        FROM events
+        WHERE store_id = %s
+    """, (store_id,))
+
+    product_id = cursor.fetchone()[0] + 1
 
     now = datetime.now(timezone.utc).isoformat()
 
+    # -----------------------------
+    # CREATE EVENT (NOT direct product insert)
+    # -----------------------------
     cursor.execute("""
-        INSERT INTO products
-        (
-            product_id,
+        INSERT INTO events (
             store_id,
-            name,
-            stock,
-            cost,
-            price,
-            is_active,
-            tracks_stock,
-            low_stock_threshold,
-            created_at
+            event_type,
+            product_id,
+            product_name_at_time,
+            quantity,
+            cost_at_time,
+            price_at_time,
+            event_datetime
         )
-        VALUES (%s, %s, %s, %s, %s, %s, 1, %s, %s, %s)
+        VALUES (%s, 'create', %s, %s, %s, %s, %s, %s)
     """, (
-        product_id,
         store_id,
+        product_id,
         name,
         initial_stock,
         cost,
         price,
-        tracks_stock_value,
-        low_stock_threshold,
         now
     ))
 
     conn.commit()
     conn.close()
 
-    return {"product_id": product_id}
+    # -----------------------------
+    # Rebuild products table
+    # -----------------------------
+    from pos_backend.rebuild_products import rebuild_products
+    rebuild_products(store_id)
 
+    return {"product_id": product_id}
 # -----------------------------
 # SALES
 # -----------------------------
