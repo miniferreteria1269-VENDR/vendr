@@ -1,5 +1,9 @@
 from inventory_engine import InventoryEngine
-from db import db  # use your existing DB connection
+import psycopg2
+import os
+
+def db():
+    return psycopg2.connect(os.environ.get("DATABASE_URL"))
 
 
 def rebuild_products(store_id):
