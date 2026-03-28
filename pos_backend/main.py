@@ -954,7 +954,7 @@ def quick_items(store_id: int):
         AND e.store_id = p.store_id
         WHERE e.store_id = %s
         AND e.event_type = 'sale'
-        AND e.event_datetime::timestamp >= NOW() - INTERVAL '90 days'
+        AND e.event_datetime::timestamptz >= NOW() - INTERVAL '90 days'
         GROUP BY e.product_id, p.name, p.stock, p.price
         ORDER BY sale_count DESC
         LIMIT 6
