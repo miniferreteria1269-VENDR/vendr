@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from rebuild_engine import rebuild_products
+from rebuild_products import rebuild_products
 
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -11,6 +11,20 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import psycopg2
 app = FastAPI()
+
+REQUIRED_COLUMNS = [
+    "name",
+    "initial_stock",
+    "cost",
+    "price",
+    "tracks_stock",
+    "low_stock_threshold"
+]
+
+
+
+
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -1458,7 +1472,7 @@ async def import_products(
 ):
 
     # -----------------------------
-    # Read file safely
+    # Read file
     # -----------------------------
     try:
         if file.filename.endswith(".xlsx"):
@@ -1473,6 +1487,22 @@ async def import_products(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"File read error: {str(e)}")
 
+    # -----------------------------
+    # Normalize column names
+    # -----------------------------
+    df.columns = [str(col).strip().lower() for col in df.columns]
+
+    # -----------------------------
+    # Validate structure
+    # -----------------------------
+    missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns: {missing}"
+        )
+
     conn = db()
     cursor = conn.cursor()
 
@@ -1483,12 +1513,11 @@ async def import_products(
     # Get next product_id
     # -----------------------------
     cursor.execute(
-        "SELECT MAX(product_id) FROM events WHERE store_id = %s",
+        "SELECT COALESCE(MAX(product_id), 0) FROM events WHERE store_id = %s",
         (store_id,)
     )
 
-    result = cursor.fetchone()[0]
-    next_product_id = 1 if result is None else result + 1
+    next_product_id = cursor.fetchone()[0] + 1
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -1498,17 +1527,16 @@ async def import_products(
     for i, row in df.iterrows():
 
         try:
-            name = str(row.get("name")).strip()
+            # -----------------------------
+            # NAME (required)
+            # -----------------------------
+            name = str(row["name"]).strip()
 
-            if not name or name.lower() == "nan":
-                rejected.append({
-                    "row": i + 2,
-                    "error": "Missing product name"
-                })
-                continue
+            if not name:
+                raise ValueError("Missing product name")
 
             # -----------------------------
-            # Prevent duplicates
+            # DUPLICATE CHECK
             # -----------------------------
             cursor.execute(
                 """
@@ -1520,43 +1548,46 @@ async def import_products(
             )
 
             if cursor.fetchone():
-                rejected.append({
-                    "row": i + 2,
-                    "error": "Duplicate product name"
-                })
-                continue
+                raise ValueError("Duplicate product name")
 
             # -----------------------------
-            # Safe parsing
+            # PARSE NUMBERS (STRICT)
             # -----------------------------
-            initial_stock = row.get("initial_stock", 0)
-            cost = row.get("cost", 0)
-            price = row.get("price", cost)
-
-            if pd.isna(initial_stock):
-                initial_stock = 0
-            if pd.isna(cost):
-                cost = 0
-            if pd.isna(price):
-                price = cost
+            try:
+                initial_stock = int(row["initial_stock"])
+            except:
+                raise ValueError("Invalid initial_stock")
 
             try:
-                initial_stock = int(initial_stock)
+                cost = float(row["cost"])
             except:
-                initial_stock = 0
+                raise ValueError("Invalid cost")
 
             try:
-                cost = float(cost)
+                price = float(row["price"])
             except:
-                cost = 0
-
-            try:
-                price = float(price)
-            except:
-                price = cost
+                raise ValueError("Invalid price")
 
             # -----------------------------
-            # Insert event
+            # BOOLEAN (tracks_stock)
+            # -----------------------------
+            tracks_stock_raw = str(row["tracks_stock"]).strip().lower()
+
+            if tracks_stock_raw not in ["true", "false"]:
+                raise ValueError("tracks_stock must be TRUE or FALSE")
+
+            tracks_stock = tracks_stock_raw == "true"
+
+            # -----------------------------
+            # LOW STOCK (optional)
+            # -----------------------------
+            try:
+                low_stock_threshold = int(row["low_stock_threshold"])
+            except:
+                low_stock_threshold = 0
+
+            # -----------------------------
+            # INSERT EVENT
             # -----------------------------
             cursor.execute("""
                 INSERT INTO events (
@@ -1593,9 +1624,10 @@ async def import_products(
     conn.close()
 
     # -----------------------------
-    # TEMP: disable until rebuilt for Postgres
+    # REBUILD PRODUCTS
     # -----------------------------
-    # rebuild_products(store_id)
+    
+    rebuild_products(store_id)
 
     return {
         "created": created,

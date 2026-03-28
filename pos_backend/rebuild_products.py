@@ -73,10 +73,11 @@ def rebuild_products(store_id):
                 cost,
                 price,
                 tracks_stock,
+                low_stock_threshold,
                 is_active,
                 created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """, (
             product_id,
             store_id,
@@ -85,7 +86,8 @@ def rebuild_products(store_id):
             p["cost"],
             p["price"],
             1,
-            1
+            0,
+            1,
         ))
 
     conn.commit()
