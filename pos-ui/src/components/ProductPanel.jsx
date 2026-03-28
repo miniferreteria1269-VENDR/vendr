@@ -28,7 +28,7 @@ function ProductPanel({
   // -----------------------------
   const fetchQuickItems = async () => {
     try {
-      const res = await axios.get(`/quick-items?store_id=${storeId}`);
+      const res = await axios.get(`https://vendr-onkr.onrender.com/quick-items?store_id=${storeId}`)
       setQuickItems(res.data.products);
     } catch (err) {
       console.error("Failed to fetch quick items", err);
