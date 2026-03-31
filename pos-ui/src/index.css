@@ -24,7 +24,7 @@ html, body, #root {
 /* Clean body (no centering, no flex interference) */
 body {
   min-width: 320px;
-  overflow: hidden; /* prevents weird scrolling on PWA */
+  overflow: auto; /* prevents weird scrolling on PWA */
 }
 
 /* Links (optional, safe) */

@@ -368,9 +368,11 @@ function App() {
       {view === "pos" && (
         <div style={{
           display: "flex",
-          height: "100%",
+          flex: 1,
+          overflow: "hidden",
           gap: 12,
           padding: 12
+        }}>
         }}>
           <ProductPanel
             products={products}
