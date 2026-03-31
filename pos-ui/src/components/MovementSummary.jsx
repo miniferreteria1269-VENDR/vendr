@@ -40,7 +40,14 @@ function MovementSummary({ storeId }) {
   }, [storeId]);
 
   return (
-    <div style={{ ...card, marginTop: 16 }}>
+    <div style={{
+      ...card,
+      marginTop: 16,
+      display: "flex",
+      flexDirection: "column",
+      flex: 1,
+      minHeight: 0
+    }}>
 
       <h3 style={{ marginBottom: 12 }}>{t("movement_summary")}</h3>
 
@@ -65,15 +72,21 @@ function MovementSummary({ storeId }) {
         </button>
       </div>
 
-      {/* TABLE */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {/* ✅ SCROLLABLE LIST */}
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        flex: 1,
+        overflowY: "auto",
+        minHeight: 0
+      }}>
 
         {movements.map((m, i) => {
 
           const realAmount = (m.amount || 0) * (m.direction || 1);
           const isPositive = realAmount >= 0;
 
-          // ✅ ROBUST NOTE HANDLING
           const note =
             m.note &&
             m.note !== "null" &&
@@ -105,7 +118,6 @@ function MovementSummary({ storeId }) {
                   {m.type}
                 </div>
 
-                {/* CATEGORY */}
                 {m.category && (
                   <div style={{
                     fontSize: 12,
@@ -115,7 +127,6 @@ function MovementSummary({ storeId }) {
                   </div>
                 )}
 
-                {/* NOTE */}
                 <div style={{
                   fontSize: 12,
                   color: COLORS.textDim
