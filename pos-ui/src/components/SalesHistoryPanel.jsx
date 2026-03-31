@@ -11,18 +11,13 @@ function SalesHistoryPanel({ storeId }) {
 
   const [sales, setSales] = useState([]);
 
-  // ✅ NEW: date filters
   const today = new Date().toISOString().slice(0, 10);
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
 
-  // ✅ NEW: ticket modal state
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [ticketDetails, setTicketDetails] = useState([]);
 
-  // -----------------------------
-  // LOAD SALES (UPDATED PARAMS)
-  // -----------------------------
   const loadSales = async () => {
     try {
       const res = await axios.get(`${API}/sales-history`, {
@@ -43,9 +38,6 @@ function SalesHistoryPanel({ storeId }) {
     if (storeId) loadSales();
   }, [storeId]);
 
-  // -----------------------------
-  // LOAD TICKET DETAILS
-  // -----------------------------
   const openTicket = async (ticketId) => {
     try {
       const res = await axios.get(`${API}/ticket-details`, {
@@ -63,12 +55,25 @@ function SalesHistoryPanel({ storeId }) {
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={card}>
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      flex: 1,
+      minHeight: 0
+    }}>
+      
+      {/* ✅ FIX 1: card becomes flex container */}
+      <div style={{
+        ...card,
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0
+      }}>
 
         <h2 style={{ marginBottom: 12 }}>{t("sales_history")}</h2>
 
-        {/* ✅ NEW: DATE FILTER UI */}
+        {/* FILTERS */}
         <div style={{
           display: "flex",
           gap: 8,
@@ -92,7 +97,11 @@ function SalesHistoryPanel({ storeId }) {
           </button>
         </div>
 
+        {/* ✅ FIX 2: SCROLL CONTAINER */}
         <div style={{
+          flex: 1,
+          overflowY: "auto",
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: 8
@@ -111,7 +120,6 @@ function SalesHistoryPanel({ storeId }) {
               }}
             >
 
-              {/* LEFT */}
               <div>
                 <div style={{ fontWeight: 500 }}>
                   {t("ticket")} #{sale.ticket_id ?? "—"}
@@ -125,14 +133,12 @@ function SalesHistoryPanel({ storeId }) {
                 </div>
               </div>
 
-              {/* RIGHT */}
               <div style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 10
               }}>
 
-                {/* ✅ EXISTING VALUE */}
                 <div style={{
                   fontWeight: "bold",
                   color: COLORS.primary
@@ -140,7 +146,6 @@ function SalesHistoryPanel({ storeId }) {
                   ${Number(sale.revenue || 0).toFixed(2)}
                 </div>
 
-                {/* ✅ NEW: DETAILS BUTTON */}
                 <button
                   onClick={() => openTicket(sale.ticket_id)}
                   style={{
@@ -165,7 +170,7 @@ function SalesHistoryPanel({ storeId }) {
 
       </div>
 
-      {/* ✅ NEW: MODAL */}
+      {/* MODAL (unchanged, already correct) */}
       {selectedTicket && (
         <div style={{
           position: "fixed",

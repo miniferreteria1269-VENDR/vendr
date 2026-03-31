@@ -127,7 +127,13 @@ function InventoryReport({ storeId }) {
   const topCount = Math.ceil(sortedPareto.length * 0.2);
 
   return (
-    <div style={{ padding: 16 }}>
+    <div style={{
+      padding: 16,
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      minHeight: 0
+    }}>
 
       <h2 style={{ marginBottom: 12 }}>{t("inventory")}</h2>
 
@@ -152,9 +158,10 @@ function InventoryReport({ storeId }) {
         />
       )}
 
-      {/* STOCK unchanged */}
+      {/* STOCK */}
       {inventoryView === "stock" && (
-        <div style={card}>
+        <div style={{ ...card, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+
           <div style={{ display: "flex", gap: 30, marginBottom: 16, fontWeight: "bold" }}>
             <div>{t("cost")}: ${formatMoney(totals.cost)}</div>
             <div>{t("value")}: ${formatMoney(totals.price)}</div>
@@ -163,7 +170,7 @@ function InventoryReport({ storeId }) {
             </div>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
@@ -203,27 +210,29 @@ function InventoryReport({ storeId }) {
         </div>
       )}
 
-      {/* LOW STOCK unchanged */}
+      {/* LOW STOCK */}
       {inventoryView === "lowstock" && (
-        <div style={card}>
+        <div style={{ ...card, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <h3>{t("lowstock")}</h3>
 
-          {filteredLowStock.length === 0 && (
-            <div style={{ color: COLORS.textDim }}>{t("no_issues")}</div>
-          )}
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+            {filteredLowStock.length === 0 && (
+              <div style={{ color: COLORS.textDim }}>{t("no_issues")}</div>
+            )}
 
-          {filteredLowStock.map((i, idx) => (
-            <div key={idx} style={{ padding: 8, borderBottom: `1px solid ${COLORS.border}` }}>
-              <b>{i.name}</b>
-              <div>{t("stock")}: {i.stock} / {t("min")}: {i.threshold}</div>
-            </div>
-          ))}
+            {filteredLowStock.map((i, idx) => (
+              <div key={idx} style={{ padding: 8, borderBottom: `1px solid ${COLORS.border}` }}>
+                <b>{i.name}</b>
+                <div>{t("stock")}: {i.stock} / {t("min")}: {i.threshold}</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* PARETO UPDATED */}
+      {/* PARETO */}
       {inventoryView === "pareto" && (
-        <div style={card}>
+        <div style={{ ...card, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <h3>{t("pareto")}</h3>
 
           <div style={{
@@ -256,39 +265,41 @@ function InventoryReport({ storeId }) {
             ))}
           </div>
 
-          {sortedPareto.map((p, i) => {
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+            {sortedPareto.map((p, i) => {
 
-            const value =
-              paretoMode === "investment"
-                ? p.investment
-                : paretoMode === "sales"
-                ? p.revenue
-                : p.profit;
+              const value =
+                paretoMode === "investment"
+                  ? p.investment
+                  : paretoMode === "sales"
+                  ? p.revenue
+                  : p.profit;
 
-            return (
-              <div key={i} style={{
-                background: i < topCount ? COLORS.highlight : COLORS.panelAlt,
-                padding: 8,
-                marginBottom: 6,
-                borderRadius: 6,
-                display: "flex",
-                justifyContent: "space-between"
-              }}>
-                <div style={{ color: i < topCount ? COLORS.primary : COLORS.text }}>
-                  {p.name}
+              return (
+                <div key={i} style={{
+                  background: i < topCount ? COLORS.highlight : COLORS.panelAlt,
+                  padding: 8,
+                  marginBottom: 6,
+                  borderRadius: 6,
+                  display: "flex",
+                  justifyContent: "space-between"
+                }}>
+                  <div style={{ color: i < topCount ? COLORS.primary : COLORS.text }}>
+                    {p.name}
+                  </div>
+                  <div style={{ color: i < topCount ? COLORS.primary : COLORS.text }}>
+                    ${formatMoney(value)}
+                  </div>
                 </div>
-                <div style={{ color: i < topCount ? COLORS.primary : COLORS.text }}>
-                  ${formatMoney(value)}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* SERVICES unchanged */}
+      {/* SERVICES */}
       {inventoryView === "services" && (
-        <div style={card}>
+        <div style={{ ...card, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <div style={{ marginBottom: 12 }}>
             <input type="date" value={serviceStartDate}
               onChange={(e)=>setServiceStartDate(e.target.value)} style={input}/>
@@ -307,7 +318,7 @@ function InventoryReport({ storeId }) {
             </div>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
@@ -337,9 +348,9 @@ function InventoryReport({ storeId }) {
         </div>
       )}
 
-      {/* DEAD STOCK unchanged */}
+      {/* DEAD STOCK */}
       {inventoryView === "deadstock" && (
-        <div style={card}>
+        <div style={{ ...card, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <div style={{ marginBottom: 12 }}>
             <input type="number" value={deadStockDays}
               onChange={(e)=>setDeadStockDays(Number(e.target.value))}
@@ -349,11 +360,13 @@ function InventoryReport({ storeId }) {
             </button>
           </div>
 
-          {deadStockItems.map((p,i)=>(
-            <div key={i} style={{ background: COLORS.panelAlt, padding: 8, marginBottom: 6, borderRadius: 6 }}>
-              {p.name} — {p.days_since_sale ?? t("never")}
-            </div>
-          ))}
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+            {deadStockItems.map((p,i)=>(
+              <div key={i} style={{ background: COLORS.panelAlt, padding: 8, marginBottom: 6, borderRadius: 6 }}>
+                {p.name} — {p.days_since_sale ?? t("never")}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
