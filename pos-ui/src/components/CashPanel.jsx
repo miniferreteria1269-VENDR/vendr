@@ -4,7 +4,7 @@ import axios from "axios";
 import ReturnModal from "./ReturnModal";
 import RevenueModal from "./RevenueModal";
 import ExpenseModal from "./ExpenseModal";
-import MovementSummary from "./MovementSummary"; // ✅ ADDED
+import MovementSummary from "./MovementSummary";
 import { COLORS, card, btnPrimary, btnSecondary, btnDanger } from "../uiStyles";
 
 const API = "https://vendr-onkr.onrender.com";
@@ -18,7 +18,7 @@ function CashPanel({ storeId, products }) {
   const [showRevenue, setShowRevenue] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
 
-  const [showSummary, setShowSummary] = useState(false); // ✅ ADDED
+  const [showSummary, setShowSummary] = useState(false);
 
   const loadBalance = async () => {
     try {
@@ -37,7 +37,13 @@ function CashPanel({ storeId, products }) {
   }, [storeId]);
 
   return (
-    <div style={{ padding: 16 }}>
+    <div style={{
+      padding: 16,
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      minHeight: 0
+    }}>
 
       {/* BALANCE CARD */}
       <div style={{
@@ -63,7 +69,8 @@ function CashPanel({ storeId, products }) {
       <div style={{
         display: "flex",
         gap: 10,
-        flexWrap: "wrap"
+        flexWrap: "wrap",
+        marginBottom: 12
       }}>
         <button onClick={() => setShowRevenue(true)} style={btnPrimary}>
           + {t("revenue")}
@@ -77,19 +84,24 @@ function CashPanel({ storeId, products }) {
           - {t("expense")}
         </button>
 
-        {/* ✅ ADDED BUTTON */}
         <button
           onClick={() => setShowSummary(prev => !prev)}
           style={btnSecondary}
         >
           {t("movement_summary")}
         </button>
-
       </div>
 
-      {/* ✅ ADDED SUMMARY PANEL */}
+      {/* ✅ FIXED WRAPPER */}
       {showSummary && (
-        <MovementSummary storeId={storeId} />
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0
+        }}>
+          <MovementSummary storeId={storeId} />
+        </div>
       )}
 
       {/* MODALS */}
