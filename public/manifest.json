@@ -3,8 +3,8 @@
   "short_name": "VENDR",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2e7d32",
+  "background_color": "#1a1d24",
+  "theme_color": "#1a1d24",
   "icons": [
     {
       "src": "/icon-192.png",
