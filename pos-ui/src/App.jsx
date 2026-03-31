@@ -310,7 +310,10 @@ function App() {
       fontFamily: "system-ui, -apple-system, sans-serif",
       background: COLORS.bg,
       color: COLORS.text,
-      height: "100vh",
+      width: "100vw",
+      height: "100dvh",
+      minHeight: "100dvh",
+      overflow: "hidden",
       display: "flex",
       flexDirection: "column"
     }}>
