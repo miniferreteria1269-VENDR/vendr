@@ -199,6 +199,9 @@ def get_stores():
 # -----------------------------
 # PRODUCT CREATION
 # -----------------------------
+from fastapi import Query, HTTPException
+from datetime import datetime, timezone
+
 @app.post("/create-product")
 def create_product(
     store_id: int,
@@ -206,7 +209,7 @@ def create_product(
     initial_stock: int,
     cost: float,
     price: float,
-    tracks_stock: bool | int | str = True,
+    tracks_stock: int = Query(1),  # ✅ FIXED TYPE
     low_stock_threshold: int = 0
 ):
 
