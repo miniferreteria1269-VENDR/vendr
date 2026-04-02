@@ -725,7 +725,7 @@ def get_products(store_id: int):
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT product_id, name, stock, cost, price, low_stock_threshold
+        SELECT product_id, name, stock, cost, price, tracks_stock, low_stock_threshold
         FROM products
         WHERE store_id = %s
         AND is_active = 1
@@ -744,7 +744,8 @@ def get_products(store_id: int):
             "stock": row[2],
             "cost": row[3],
             "price": row[4],
-            "low_stock_threshold": row[5]
+            "tracks_stock": row[5],
+            "low_stock_threshold": row[6]
         })
 
     return {"products": products}
