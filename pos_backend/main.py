@@ -221,6 +221,7 @@ def create_product(
         tracks_stock = tracks_stock.lower() in ["1", "true", "yes"]
     elif isinstance(tracks_stock, int):
         tracks_stock = tracks_stock == 1
+    tracks_stock = int(tracks_stock)
 
     conn = db()
     cursor = conn.cursor()
