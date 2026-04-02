@@ -131,7 +131,7 @@ function CreateProduct({ storeId, goBack }) {
           initial_stock: initialStock,
           cost,
           price,
-          tracks_stock: tracksStock,
+          tracks_stock: tracksStock ? 1 : 0,
           low_stock_threshold: threshold
         }
       }
