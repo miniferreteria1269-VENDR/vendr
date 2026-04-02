@@ -106,7 +106,7 @@ def rebuild_products(store_id):
             p["stock"],
             p["cost"],
             p["price"],
-            int(bool(p.get("tracks_stock", True)))
+            int(bool(p.get("tracks_stock", True))),
             0,
             1,
         ))
