@@ -34,12 +34,19 @@ def rebuild_products(store_id):
         quantity = event[5] or 0
         cost = event[6] or 0
         price = event[7] or 0
+        tracks_stock = event[8]  # ✅ NEW (based on your schema)
 
         if product_name:
             product_names[product_id] = product_name
 
         if event_type == "create":
-            engine.create(product_id, quantity, cost, price, True)
+            engine.create(
+                product_id,
+                quantity,
+                cost,
+                price,
+                tracks_stock if tracks_stock is not None else True  # ✅ FIX
+            )
 
         elif event_type == "intake":
             engine.intake(product_id, quantity, cost, price)
@@ -89,7 +96,7 @@ def rebuild_products(store_id):
             p["stock"],
             p["cost"],
             p["price"],
-            1,
+            p.get("tracks_stock", True),  # ✅ FIX (no more hardcoded 1)
             0,
             1,
         ))
