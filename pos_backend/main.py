@@ -264,9 +264,11 @@ def create_product(
             quantity,
             cost_at_time,
             price_at_time,
+            tracks_stock,
+            low_stock_threshold,
             event_datetime
         )
-        VALUES (%s, 'create', %s, %s, %s, %s, %s, %s)
+        VALUES (%s, 'create', %s, %s, %s, %s, %s, %s, %s, %s)
     """, (
         store_id,
         product_id,
@@ -274,6 +276,8 @@ def create_product(
         initial_stock,
         cost,
         price,
+        tracks_stock,
+        low_stock_threshold,
         now
     ))
 
