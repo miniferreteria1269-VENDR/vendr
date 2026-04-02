@@ -203,6 +203,7 @@ from fastapi import Query, HTTPException
 from datetime import datetime, timezone
 
 @app.post("/create-product")
+
 def create_product(
     store_id: int,
     name: str,
@@ -212,7 +213,7 @@ def create_product(
     tracks_stock: int = Query(1),  # ✅ FIXED TYPE
     low_stock_threshold: int = 0
 ):
-
+    print(">>> tracks_stock received:", tracks_stock, type(tracks_stock))
     # -----------------------------
     # Normalize tracks_stock (CRITICAL FIX)
     # -----------------------------
