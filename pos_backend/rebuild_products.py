@@ -12,12 +12,22 @@ def rebuild_products(store_id):
     cursor = conn.cursor()
 
     # -----------------------------
-    # Load events for this store
+    # Load events for this store (EXPLICIT COLUMNS - FIXED)
     # -----------------------------
-    cursor.execute(
-        "SELECT * FROM events WHERE store_id = %s ORDER BY event_id",
-        (store_id,)
-    )
+    cursor.execute("""
+        SELECT 
+            event_type,
+            product_id,
+            product_name_at_time,
+            quantity,
+            cost_at_time,
+            price_at_time,
+            tracks_stock
+        FROM events
+        WHERE store_id = %s
+        ORDER BY event_id
+    """, (store_id,))
+    
     events = cursor.fetchall()
 
     engine = InventoryEngine()
@@ -28,13 +38,13 @@ def rebuild_products(store_id):
     # -----------------------------
     for event in events:
 
-        event_type = (event[2] or "").strip().lower()
-        product_id = event[3]
-        product_name = event[4]
-        quantity = event[5] or 0
-        cost = event[6] or 0
-        price = event[7] or 0
-        tracks_stock = event[8]  # ✅ NEW (based on your schema)
+        event_type = (event[0] or "").strip().lower()
+        product_id = event[1]
+        product_name = event[2]
+        quantity = event[3] or 0
+        cost = event[4] or 0
+        price = event[5] or 0
+        tracks_stock = event[6]
 
         if product_name:
             product_names[product_id] = product_name
