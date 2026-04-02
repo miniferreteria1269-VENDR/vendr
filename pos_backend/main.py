@@ -199,7 +199,6 @@ def get_stores():
 # -----------------------------
 # PRODUCT CREATION
 # -----------------------------
-
 @app.post("/create-product")
 def create_product(
     store_id: int,
@@ -207,9 +206,17 @@ def create_product(
     initial_stock: int,
     cost: float,
     price: float,
-    tracks_stock: bool = True,
+    tracks_stock: bool | int | str = True,
     low_stock_threshold: int = 0
 ):
+
+    # -----------------------------
+    # Normalize tracks_stock (CRITICAL FIX)
+    # -----------------------------
+    if isinstance(tracks_stock, str):
+        tracks_stock = tracks_stock.lower() in ["1", "true", "yes"]
+    elif isinstance(tracks_stock, int):
+        tracks_stock = tracks_stock == 1
 
     conn = db()
     cursor = conn.cursor()
