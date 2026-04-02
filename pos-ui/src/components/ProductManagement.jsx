@@ -74,9 +74,6 @@ const resultCard = () => ({
   border: "1px solid transparent"
 });
 
-// ==============================
-// CREATE PRODUCT
-// ==============================
 function CreateProduct({ storeId, goBack }) {
 
   const { t } = useLang();
@@ -131,7 +128,7 @@ function CreateProduct({ storeId, goBack }) {
           initial_stock: initialStock,
           cost,
           price,
-          tracks_stock: tracksStock: 0,
+          tracks_stock: tracksStock, // ✅ FIXED (was broken)
           low_stock_threshold: threshold
         }
       }

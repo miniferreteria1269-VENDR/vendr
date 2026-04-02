@@ -203,25 +203,28 @@ from fastapi import Query, HTTPException
 from datetime import datetime, timezone
 
 @app.post("/create-product")
-
 def create_product(
     store_id: int,
     name: str,
     initial_stock: int,
     cost: float,
     price: float,
-    tracks_stock: int = Query(1),  # ✅ FIXED TYPE
+    tracks_stock: bool = Query(True),  # ✅ FIXED TYPE
     low_stock_threshold: int = 0
 ):
     print(">>> tracks_stock received:", tracks_stock, type(tracks_stock))
+
     # -----------------------------
-    # Normalize tracks_stock (CRITICAL FIX)
+    # Normalize tracks_stock (SAFE)
     # -----------------------------
     if isinstance(tracks_stock, str):
         tracks_stock = tracks_stock.lower() in ["1", "true", "yes"]
     elif isinstance(tracks_stock, int):
         tracks_stock = tracks_stock == 1
-    tracks_stock = int(tracks_stock)
+    elif isinstance(tracks_stock, bool):
+        pass
+    else:
+        tracks_stock = True
 
     conn = db()
     cursor = conn.cursor()
@@ -265,7 +268,7 @@ def create_product(
     now = datetime.now(timezone.utc).isoformat()
 
     # -----------------------------
-    # CREATE EVENT (NOT direct product insert)
+    # CREATE EVENT
     # -----------------------------
     cursor.execute("""
         INSERT INTO events (
@@ -288,7 +291,7 @@ def create_product(
         initial_stock,
         cost,
         price,
-        tracks_stock,
+        tracks_stock,  # ✅ BOOLEAN
         low_stock_threshold,
         now
     ))
