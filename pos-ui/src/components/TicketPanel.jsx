@@ -69,6 +69,7 @@ function TicketPanel({
       padding: 16,
       display: "flex",
       flexDirection: "column",
+      
       color: COLORS.text
     }}>
 
@@ -113,7 +114,7 @@ function TicketPanel({
 
       {/* CONTENT */}
       {currentTicket && (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
 
           <h3 style={{ marginBottom: 10 }}>
             {currentTicket.label ||
