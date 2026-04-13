@@ -3,6 +3,7 @@
   "short_name": "VENDR",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "landscape",
   "background_color": "#ffffff",
   "theme_color": "#2e7d32",
   "icons": [
