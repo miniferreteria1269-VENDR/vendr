@@ -14,7 +14,6 @@ const categories = [
 ];
 
 function RevenueModal({ storeId, onClose, onSuccess }) {
-
   const { t } = useLang();
 
   const [amount, setAmount] = useState("");
@@ -43,54 +42,114 @@ function RevenueModal({ storeId, onClose, onSuccess }) {
   };
 
   return (
-    <div style={modalStyle}>
+    <div style={overlayStyle}>
 
-      <h3>{t("add_revenue")}</h3>
+      <div style={modalStyle}>
+        <h3 style={{ marginBottom: 12 }}>{t("add_revenue")}</h3>
 
-      <input
-        type="number"
-        placeholder={t("amount")}
-        value={amount}
-        onChange={e => setAmount(e.target.value)}
-      />
+        <input
+          type="number"
+          placeholder={t("amount")}
+          value={amount}
+          onChange={e => setAmount(e.target.value)}
+          style={inputStyle}
+        />
 
-      <select
-        value={category}
-        onChange={e => setCategory(e.target.value)}
-      >
-        {categories.map(c => (
-          <option key={c} value={c}>
-            {t(c)}
-          </option>
-        ))}
-      </select>
+        <select
+          value={category}
+          onChange={e => setCategory(e.target.value)}
+          style={inputStyle}
+        >
+          {categories.map(c => (
+            <option key={c} value={c}>
+              {t(c)}
+            </option>
+          ))}
+        </select>
 
-      <input
-        placeholder={t("note_optional")}
-        value={note}
-        onChange={e => setNote(e.target.value)}
-      />
+        <input
+          placeholder={t("note_optional")}
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          style={inputStyle}
+        />
 
-      <div style={{ marginTop: 10 }}>
-        <button onClick={submit}>{t("confirm")}</button>
-        <button onClick={onClose} style={{ marginLeft: 10 }}>
-          {t("cancel")}
-        </button>
+        <div style={buttonRow}>
+          <button onClick={submit} style={btnPrimary}>
+            {t("confirm")}
+          </button>
+
+          <button onClick={onClose} style={btnDanger}>
+            {t("cancel")}
+          </button>
+        </div>
       </div>
 
     </div>
   );
 }
 
-const modalStyle = {
+//
+// STYLES
+//
+
+const overlayStyle = {
   position: "fixed",
-  top: "30%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  background: "white",
-  padding: 20,
-  border: "1px solid #ccc",
+  top: 0,
+  left: 0,
+  width: "100vw",
+  height: "100vh",
+  background: "rgba(0,0,0,0.6)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   zIndex: 1000
+};
+
+const modalStyle = {
+  background: "#1a1d24",
+  padding: 20,
+  borderRadius: 12,
+  border: "1px solid #2f3542",
+  color: "#e6edf3",
+  width: 320,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10
+};
+
+const inputStyle = {
+  background: "#2a2f3a",
+  border: "1px solid #3a4250",
+  borderRadius: 6,
+  color: "white",
+  padding: 8
+};
+
+const buttonRow = {
+  display: "flex",
+  gap: 10,
+  marginTop: 10
+};
+
+const btnPrimary = {
+  background: "#3aa0ff",
+  border: "none",
+  borderRadius: 8,
+  padding: "8px 12px",
+  color: "white",
+  cursor: "pointer",
+  flex: 1
+};
+
+const btnDanger = {
+  background: "#ff5c5c",
+  border: "none",
+  borderRadius: 8,
+  padding: "8px 12px",
+  color: "white",
+  cursor: "pointer",
+  flex: 1
 };
 
 export default RevenueModal;
