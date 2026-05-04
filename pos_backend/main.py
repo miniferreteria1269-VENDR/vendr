@@ -1337,6 +1337,12 @@ def edit_product(
     conn = db()
     cursor = conn.cursor()
 
+
+    if isinstance(tracks_stock, bool):
+        tracks_stock = 1 if tracks_stock else 0
+    elif isinstance(tracks_stock, str):
+        tracks_stock = 1 if tracks_stock.lower() in ["1", "true", "yes"] else 0
+
     cursor.execute("""
         UPDATE products
         SET
