@@ -404,7 +404,7 @@ function EditDetails({ storeId }) {
 
   const submit = async () => {
     await axios.post("https://vendr-onkr.onrender.com/edit-product", null, {
-      params: { store_id: storeId, product_id: selected.product_id, name, low_stock_threshold: threshold, tracks_stock: tracksStock }
+      params: { store_id: storeId, product_id: selected.product_id, name, low_stock_threshold: threshold, tracks_stock: tracksStock ? 1 : 0 }
     });
     alert(t("updated"));
     setSelected(null);
