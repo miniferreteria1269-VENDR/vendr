@@ -450,7 +450,9 @@ function EditDetails({ storeId }) {
             {" "}{t("tracks_stock")}
           </label>
 
-          <button style={btnPrimary}>{t("save")}</button>
+          <button style={btnPrimary} onClick={submit}>
+            {t("save")}
+          </button>
           <button style={btnSecondary} onClick={()=>setSelected(null)}>
             {t("cancel")}
           </button>
