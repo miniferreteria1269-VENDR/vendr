@@ -106,7 +106,13 @@ class SaleItem(BaseModel):
     quantity: int
     price: float  # 🔥 REQUIRED
 
-
+class StockAdjustmentRequest(BaseModel):
+    store_id: int
+    product_id: int
+    quantity: int
+    direction: str  # "positive" or "negative"
+    reason: Optional[str] = None
+    note: Optional[str] = None
 class SaleTicket(BaseModel):
     store_id: int
     items: List[SaleItem]
