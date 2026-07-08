@@ -113,6 +113,14 @@ class StockAdjustmentRequest(BaseModel):
     direction: str  # "positive" or "negative"
     reason: Optional[str] = None
     note: Optional[str] = None
+
+class StockTransferRequest(BaseModel):
+    store_id: int
+    product_id: int
+    quantity: int
+    direction: str  # "in" or "out"
+    note: Optional[str] = None
+
 class SaleTicket(BaseModel):
     store_id: int
     items: List[SaleItem]
@@ -931,6 +939,89 @@ def stock_adjustment(data: StockAdjustmentRequest):
         "quantity": data.quantity,
         "stock_delta": stock_delta
     }
+
+@app.post("/stock-transfer")
+def stock_transfer(data: StockTransferRequest):
+    if data.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
+
+    if data.direction not in ["in", "out"]:
+        raise HTTPException(status_code=400, detail="Direction must be 'in' or 'out'")
+
+    conn = db()
+    cursor = conn.cursor()
+    now = datetime.now(timezone.utc).isoformat()
+
+    cursor.execute("""
+        SELECT name, stock, cost, price, tracks_stock
+        FROM products
+        WHERE product_id = %s
+          AND store_id = %s
+          AND is_active = 1
+    """, (data.product_id, data.store_id))
+
+    product = cursor.fetchone()
+
+    if not product:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    name, stock, cost, price, tracks_stock = product
+
+    if tracks_stock != 1:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Product does not track stock")
+
+    if data.direction == "out" and stock < data.quantity:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Not enough stock to transfer out")
+
+    event_type = "transfer_in" if data.direction == "in" else "transfer_out"
+    stock_delta = data.quantity if data.direction == "in" else -data.quantity
+
+    cursor.execute("""
+        INSERT INTO events (
+            store_id,
+            event_type,
+            product_id,
+            product_name_at_time,
+            quantity,
+            cost_at_time,
+            price_at_time,
+            event_datetime
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        data.store_id,
+        event_type,
+        data.product_id,
+        name,
+        data.quantity,
+        cost,
+        price,
+        now
+    ))
+
+    cursor.execute("""
+        UPDATE products
+        SET stock = COALESCE(stock, 0) + %s
+        WHERE product_id = %s
+          AND store_id = %s
+          AND tracks_stock = 1
+    """, (stock_delta, data.product_id, data.store_id))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "message": "Stock transfer recorded",
+        "event_type": event_type,
+        "product_id": data.product_id,
+        "product_name": name,
+        "quantity": data.quantity,
+        "stock_delta": stock_delta
+    }
+
 @app.get("/inventory-value")
 def inventory_value(store_id: int):
 
