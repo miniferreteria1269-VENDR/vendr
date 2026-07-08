@@ -841,7 +841,96 @@ def get_product(store_id: int, product_id: int):
         "cost": row[3],
         "price": row[4]
     }
+@app.post("/stock-adjustment")
+def stock_adjustment(data: StockAdjustmentRequest):
+    if data.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
 
+    if data.direction not in ["positive", "negative"]:
+        raise HTTPException(status_code=400, detail="Direction must be 'positive' or 'negative'")
+
+    conn = db()
+    cursor = conn.cursor()
+    now = datetime.now(timezone.utc).isoformat()
+
+    cursor.execute("""
+        SELECT name, cost, price, tracks_stock
+        FROM products
+        WHERE product_id = %s
+          AND store_id = %s
+          AND is_active = 1
+    """, (data.product_id, data.store_id))
+
+    product = cursor.fetchone()
+
+    if not product:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    name, cost, price, tracks_stock = product
+
+    if tracks_stock != 1:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Product does not track stock")
+
+    event_type = (
+        "stock_adjustment_positive"
+        if data.direction == "positive"
+        else "stock_adjustment_negative"
+    )
+
+    stock_delta = data.quantity if data.direction == "positive" else -data.quantity
+
+    note_parts = []
+    if data.reason:
+        note_parts.append(f"Reason: {data.reason}")
+    if data.note:
+        note_parts.append(f"Note: {data.note}")
+
+    adjustment_note = " | ".join(note_parts) if note_parts else None
+
+    cursor.execute("""
+        INSERT INTO events (
+            store_id,
+            event_type,
+            product_id,
+            product_name_at_time,
+            quantity,
+            cost_at_time,
+            price_at_time,
+            event_datetime
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        data.store_id,
+        event_type,
+        data.product_id,
+        name,
+        data.quantity,
+        cost,
+        price,
+        now
+    ))
+
+    cursor.execute("""
+        UPDATE products
+        SET stock = COALESCE(stock, 0) + %s
+        WHERE product_id = %s
+          AND store_id = %s
+          AND tracks_stock = 1
+    """, (stock_delta, data.product_id, data.store_id))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "message": "Stock adjustment recorded",
+        "event_type": event_type,
+        "product_id": data.product_id,
+        "product_name": name,
+        "quantity": data.quantity,
+        "stock_delta": stock_delta
+    }
 @app.get("/inventory-value")
 def inventory_value(store_id: int):
 
