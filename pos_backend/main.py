@@ -918,7 +918,8 @@ def stock_adjustment(data: StockAdjustmentRequest):
         data.quantity,
         cost,
         price,
-        now
+        now,
+        data.note
     ))
 
     cursor.execute("""
@@ -1001,7 +1002,8 @@ def stock_transfer(data: StockTransferRequest):
         data.quantity,
         cost,
         price,
-        now
+        now,
+        data.note
     ))
 
     cursor.execute("""
