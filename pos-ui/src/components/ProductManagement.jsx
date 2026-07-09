@@ -373,7 +373,12 @@ function LogLoss({ storeId }) {
           <input style={input} value={notes}
             onChange={e=>setNotes(e.target.value)}/>
 
-          <button style={btnPrimary}>{t("submit")}</button>
+          <button
+            style={btnPrimary}
+            onClick={submit}
+          >
+            {t("submit")}
+          </button>
           <button style={btnSecondary} onClick={()=>setSelected(null)}>
             {t("cancel")}
           </button>
