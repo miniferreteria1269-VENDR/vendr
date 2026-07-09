@@ -909,7 +909,7 @@ def stock_adjustment(data: StockAdjustmentRequest):
             event_datetime,
             note
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %)
     """, (
         data.store_id,
         event_type,
@@ -992,7 +992,7 @@ def stock_transfer(data: StockTransferRequest):
             event_datetime,
             note
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %)
     """, (
         data.store_id,
         event_type,
@@ -1230,7 +1230,105 @@ def get_low_stock(store_id: int):
 
     return {"low_stock": low_stock}
 
+@app.get("/product-movement-summary")
+def product_movement_summary(store_id: int, start_date: str, end_date: str):
+    conn = db()
+    cursor = conn.cursor()
 
+    cursor.execute("""
+        WITH movement AS (
+            SELECT
+                product_id,
+                product_name_at_time,
+                SUM(CASE WHEN event_type = 'intake' THEN quantity ELSE 0 END) AS purchase,
+                SUM(CASE WHEN event_type = 'sale' THEN quantity ELSE 0 END) AS sale,
+                SUM(CASE WHEN event_type = 'loss' THEN quantity ELSE 0 END) AS loss,
+                SUM(CASE WHEN event_type = 'transfer_in' THEN quantity ELSE 0 END) AS transfer_in,
+                SUM(CASE WHEN event_type = 'transfer_out' THEN quantity ELSE 0 END) AS transfer_out,
+                SUM(CASE WHEN event_type = 'stock_adjustment_positive' THEN quantity ELSE 0 END) AS adjustment_positive,
+                SUM(CASE WHEN event_type = 'stock_adjustment_negative' THEN quantity ELSE 0 END) AS adjustment_negative
+            FROM events
+            WHERE store_id = %s
+              AND event_datetime >= %s
+              AND event_datetime < %s
+              AND product_id IS NOT NULL
+              AND event_type IN (
+                'intake',
+                'sale',
+                'loss',
+                'transfer_in',
+                'transfer_out',
+                'stock_adjustment_positive',
+                'stock_adjustment_negative'
+              )
+            GROUP BY product_id, product_name_at_time
+        )
+        SELECT
+            p.product_id,
+            COALESCE(m.product_name_at_time, p.name) AS product_name,
+            p.stock,
+            m.purchase,
+            m.sale,
+            m.loss,
+            m.transfer_in,
+            m.transfer_out,
+            m.adjustment_positive,
+            m.adjustment_negative
+        FROM movement m
+        JOIN products p
+          ON p.product_id = m.product_id
+         AND p.store_id = %s
+        WHERE p.tracks_stock = 1
+        ORDER BY product_name
+    """, (store_id, start_date, end_date, store_id))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    summary = []
+
+    for row in rows:
+        (
+            product_id,
+            product_name,
+            current_stock,
+            purchase,
+            sale,
+            loss,
+            transfer_in,
+            transfer_out,
+            adjustment_positive,
+            adjustment_negative
+        ) = row
+
+        net_movement = (
+            purchase
+            - sale
+            - loss
+            + transfer_in
+            - transfer_out
+            + adjustment_positive
+            - adjustment_negative
+        )
+
+        final_stock = current_stock
+        initial_stock = current_stock - net_movement
+
+        summary.append({
+            "product_id": product_id,
+            "product": product_name,
+            "initial_stock": initial_stock,
+            "purchase": purchase,
+            "sale": sale,
+            "loss": loss,
+            "transfer_in": transfer_in,
+            "transfer_out": transfer_out,
+            "adjustment_positive": adjustment_positive,
+            "adjustment_negative": adjustment_negative,
+            "final_stock": final_stock
+        })
+
+    return {"summary": summary}
 @app.get("/sales-history")
 def sales_history(store_id: int, start_date: str = None, end_date: str = None):
 
