@@ -37,6 +37,8 @@ function ProductManagement({ storeId }) {
           ["price", "price"],
           ["edit", "edit"],
           ["loss", "loss"],
+          ["adjustment", "adjustment"],
+          ["transfer", "transfer"],
           ["archive", "archive"],
           ["import", "import"]
         ].map(([key, label]) => (
@@ -56,6 +58,8 @@ function ProductManagement({ storeId }) {
         {pmView === "price" && <PriceChange storeId={storeId} />}
         {pmView === "edit" && <EditDetails storeId={storeId} />}
         {pmView === "loss" && <LogLoss storeId={storeId} />}
+        {pmView === "adjustment" && <StockAdjustment storeId={storeId} />}
+        {pmView === "transfer" && <StockTransfer storeId={storeId} />}
         {pmView === "archive" && <ArchiveProduct storeId={storeId} />}
         {pmView === "import" && <ProductImporter storeId={storeId} />}
       </div>
@@ -524,5 +528,158 @@ function ArchiveProduct({ storeId }) {
     </div>
   );
 }
+function StockAdjustment({ storeId }) {
+  const { t } = useLang();
+  const [search, setSearch] = useState("");
+  const [products, setProducts] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [direction, setDirection] = useState("positive");
+  const [note, setNote] = useState("");
 
+  const searchProducts = async (term) => {
+    const res = await axios.get("https://vendr-onkr.onrender.com/products/search", {
+      params: { store_id: storeId, name: term }
+    });
+    setProducts(res.data.products || []);
+  };
+
+  const submit = async () => {
+    await axios.post("https://vendr-onkr.onrender.com/stock-adjustment", {
+      store_id: storeId,
+      product_id: selected.product_id,
+      quantity,
+      direction,
+      reason: "",
+      note
+    });
+
+    alert("Stock adjustment recorded.");
+    setSelected(null);
+    setQuantity(1);
+    setDirection("positive");
+    setNote("");
+  };
+
+  return (
+    <div style={card}>
+      <h3>Stock Adjustment</h3>
+
+      {!selected && (
+        <>
+          <input
+            placeholder={t("search")}
+            value={search}
+            onChange={e => {
+              setSearch(e.target.value);
+              if (e.target.value.length > 1) searchProducts(e.target.value);
+              else setProducts([]);
+            }}
+            style={input}
+          />
+
+          {products.map(p => (
+            <div key={p.product_id} onClick={() => setSelected(p)} style={resultCard()}>
+              {p.name} ({t("stock")}: {p.stock})
+            </div>
+          ))}
+        </>
+      )}
+
+      {selected && (
+        <>
+          <p><strong>{selected.name}</strong></p>
+
+          <select value={direction} onChange={e => setDirection(e.target.value)} style={input}>
+            <option value="positive">Adjustment +</option>
+            <option value="negative">Adjustment -</option>
+          </select>
+
+          <input type="number" value={quantity} min="1" onChange={e => setQuantity(Number(e.target.value))} style={input} />
+          <input placeholder="Note" value={note} onChange={e => setNote(e.target.value)} style={input} />
+
+          <button onClick={submit} style={btnPrimary}>Submit</button>
+          <button onClick={() => setSelected(null)} style={btnSecondary}>Cancel</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StockTransfer({ storeId }) {
+  const { t } = useLang();
+  const [search, setSearch] = useState("");
+  const [products, setProducts] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [direction, setDirection] = useState("out");
+  const [note, setNote] = useState("");
+
+  const searchProducts = async (term) => {
+    const res = await axios.get("https://vendr-onkr.onrender.com/products/search", {
+      params: { store_id: storeId, name: term }
+    });
+    setProducts(res.data.products || []);
+  };
+
+  const submit = async () => {
+    await axios.post("https://vendr-onkr.onrender.com/stock-transfer", {
+      store_id: storeId,
+      product_id: selected.product_id,
+      quantity,
+      direction,
+      note
+    });
+
+    alert("Stock transfer recorded.");
+    setSelected(null);
+    setQuantity(1);
+    setDirection("out");
+    setNote("");
+  };
+
+  return (
+    <div style={card}>
+      <h3>Stock Transfer</h3>
+
+      {!selected && (
+        <>
+          <input
+            placeholder={t("search")}
+            value={search}
+            onChange={e => {
+              setSearch(e.target.value);
+              if (e.target.value.length > 1) searchProducts(e.target.value);
+              else setProducts([]);
+            }}
+            style={input}
+          />
+
+          {products.map(p => (
+            <div key={p.product_id} onClick={() => setSelected(p)} style={resultCard()}>
+              {p.name} ({t("stock")}: {p.stock})
+            </div>
+          ))}
+        </>
+      )}
+
+      {selected && (
+        <>
+          <p><strong>{selected.name}</strong></p>
+
+          <select value={direction} onChange={e => setDirection(e.target.value)} style={input}>
+            <option value="out">Transfer Out</option>
+            <option value="in">Transfer In</option>
+          </select>
+
+          <input type="number" value={quantity} min="1" onChange={e => setQuantity(Number(e.target.value))} style={input} />
+          <input placeholder="Note" value={note} onChange={e => setNote(e.target.value)} style={input} />
+
+          <button onClick={submit} style={btnPrimary}>Submit</button>
+          <button onClick={() => setSelected(null)} style={btnSecondary}>Cancel</button>
+        </>
+      )}
+    </div>
+  );
+}
 export default ProductManagement;
