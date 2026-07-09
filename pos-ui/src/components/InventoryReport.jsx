@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLang } from "../LanguageContext";
+import ProductMovementSummary from "./ProductMovementSummary";
 import axios from "axios";
 import { COLORS, card, btnPrimary, btnSecondary, input } from "../uiStyles";
 
@@ -138,7 +139,7 @@ function InventoryReport({ storeId }) {
       <h2 style={{ marginBottom: 12 }}>{t("inventory")}</h2>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {["stock","pareto","lowstock","services","deadstock"].map(v => (
+        {["stock","movement","pareto","lowstock","services","deadstock"].map(v => (
           <button
             key={v}
             onClick={() => setInventoryView(v)}
@@ -297,6 +298,10 @@ function InventoryReport({ storeId }) {
         </div>
       )}
 
+      {inventoryView === "movement" && (
+        <ProductMovementSummary storeId={storeId} />
+      )}
+      
       {/* SERVICES */}
       {inventoryView === "services" && (
         <div style={{ ...card, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
