@@ -906,7 +906,8 @@ def stock_adjustment(data: StockAdjustmentRequest):
             quantity,
             cost_at_time,
             price_at_time,
-            event_datetime
+            event_datetime,
+            note
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """, (
@@ -988,7 +989,8 @@ def stock_transfer(data: StockTransferRequest):
             quantity,
             cost_at_time,
             price_at_time,
-            event_datetime
+            event_datetime,
+            note
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """, (
