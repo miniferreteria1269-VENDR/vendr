@@ -909,7 +909,7 @@ def stock_adjustment(data: StockAdjustmentRequest):
             event_datetime,
             note
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (
         data.store_id,
         event_type,
@@ -992,7 +992,7 @@ def stock_transfer(data: StockTransferRequest):
             event_datetime,
             note
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (
         data.store_id,
         event_type,
