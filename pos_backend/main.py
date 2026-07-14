@@ -789,22 +789,36 @@ def search_products(store_id: int, name: str, include_inactive: bool = False):
     cursor = conn.cursor()
 
     if include_inactive:
-
         cursor.execute("""
-            SELECT product_id, name, stock, cost, price, is_active
+            SELECT
+                product_id,
+                name,
+                stock,
+                cost,
+                price,
+                is_active,
+                tracks_stock,
+                low_stock_threshold
             FROM products
             WHERE store_id = %s
-            AND LOWER(name) LIKE %s
+              AND LOWER(name) LIKE %s
         """, (store_id, '%' + name.lower() + '%'))
 
     else:
-
         cursor.execute("""
-            SELECT product_id, name, stock, cost, price, is_active
+            SELECT
+                product_id,
+                name,
+                stock,
+                cost,
+                price,
+                is_active,
+                tracks_stock,
+                low_stock_threshold
             FROM products
             WHERE store_id = %s
-            AND is_active = 1
-            AND LOWER(name) LIKE %s
+              AND is_active = 1
+              AND LOWER(name) LIKE %s
         """, (store_id, '%' + name.lower() + '%'))
 
     rows = cursor.fetchall()
@@ -817,9 +831,11 @@ def search_products(store_id: int, name: str, include_inactive: bool = False):
             "product_id": row[0],
             "name": row[1],
             "stock": row[2],
-            "cost": row[3],   # ✅ now correct
+            "cost": row[3],
             "price": row[4],
-            "is_active": row[5]
+            "is_active": row[5],
+            "tracks_stock": row[6],
+            "low_stock_threshold": row[7]
         })
 
     return {"products": results}
