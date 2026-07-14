@@ -298,7 +298,12 @@ function PriceChange({ storeId }) {
           <input style={input} type="number" value={price}
             onChange={e=>setPrice(Number(e.target.value))}/>
 
-          <button style={btnPrimary}>{t("save")}</button>
+          <button
+              style={btnPrimary}
+              onClick={submit}
+          >
+              {t("save")}
+          </button>
           <button style={btnSecondary} onClick={()=>setSelected(null)}>
             {t("cancel")}
           </button>
