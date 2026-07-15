@@ -320,6 +320,61 @@ def create_product(
     rebuild_products(store_id)
 
     return {"product_id": product_id}
+
+@app.get("/users")
+def get_users(store_id: int | None = None):
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        if store_id is None:
+            cursor.execute("""
+                SELECT
+                    u.user_id,
+                    u.email,
+                    u.store_id,
+                    s.name,
+                    u.created_at
+                FROM users u
+                LEFT JOIN stores s
+                    ON s.store_id = u.store_id
+                ORDER BY u.store_id, LOWER(u.email)
+            """)
+        else:
+            cursor.execute("""
+                SELECT
+                    u.user_id,
+                    u.email,
+                    u.store_id,
+                    s.name,
+                    u.created_at
+                FROM users u
+                LEFT JOIN stores s
+                    ON s.store_id = u.store_id
+                WHERE u.store_id = %s
+                ORDER BY LOWER(u.email)
+            """, (store_id,))
+
+        rows = cursor.fetchall()
+
+        return {
+            "users": [
+                {
+                    "user_id": row[0],
+                    "email": row[1],
+                    "store_id": row[2],
+                    "store_name": row[3],
+                    "created_at": row[4],
+                }
+                for row in rows
+            ]
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
 # -----------------------------
 # SALES
 # -----------------------------
