@@ -618,7 +618,7 @@ def intake_history(
         cursor.execute("""
             SELECT
                 ticket_id,
-                MIN(event_datetime) AS intake_datetime,
+                MIN(event_datetime::timestamptz) AS intake_datetime,
                 COUNT(*) AS product_lines,
                 SUM(quantity) AS total_units,
                 SUM(quantity * cost_at_time) AS total_cost
@@ -626,8 +626,8 @@ def intake_history(
             WHERE store_id = %s
               AND event_type = 'intake'
               AND ticket_id IS NOT NULL
-              AND event_datetime >= %s::date
-              AND event_datetime < (%s::date + INTERVAL '1 day')
+              AND event_datetime::timestamptz >= %s::date
+              AND event_datetime::timestamptz < (%s::date + INTERVAL '1 day')
             GROUP BY ticket_id
             ORDER BY intake_datetime DESC, ticket_id DESC
         """, (
@@ -638,28 +638,29 @@ def intake_history(
 
         rows = cursor.fetchall()
 
-        history = []
-
-        for row in rows:
-            history.append({
-                "ticket_id": row[0],
-                "datetime": row[1],
-                "product_lines": row[2],
-                "total_units": row[3],
-                "total_cost": float(row[4] or 0)
-            })
-
         return {
             "store_id": store_id,
             "start_date": start_date,
             "end_date": end_date,
-            "intakes": history
+            "intakes": [
+                {
+                    "ticket_id": row[0],
+                    "datetime": row[1].isoformat() if row[1] else None,
+                    "product_lines": row[2],
+                    "total_units": row[3],
+                    "total_cost": round(float(row[4] or 0), 2)
+                }
+                for row in rows
+            ]
         }
+
+    except Exception as e:
+        print("INTAKE HISTORY ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
     finally:
         cursor.close()
         conn.close()
-
 
 # -----------------------------
 # LOSS
