@@ -605,6 +605,61 @@ def intake_product(store_id:int,product_id:int,quantity:int,cost:float,price:flo
 
     return {"message":"Inventory updated"}
 
+@app.get("/intake-history")
+def intake_history(
+    store_id: int,
+    start_date: str,
+    end_date: str
+):
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT
+                ticket_id,
+                MIN(event_datetime) AS intake_datetime,
+                COUNT(*) AS product_lines,
+                SUM(quantity) AS total_units,
+                SUM(quantity * cost_at_time) AS total_cost
+            FROM events
+            WHERE store_id = %s
+              AND event_type = 'intake'
+              AND ticket_id IS NOT NULL
+              AND event_datetime >= %s::date
+              AND event_datetime < (%s::date + INTERVAL '1 day')
+            GROUP BY ticket_id
+            ORDER BY intake_datetime DESC, ticket_id DESC
+        """, (
+            store_id,
+            start_date,
+            end_date
+        ))
+
+        rows = cursor.fetchall()
+
+        history = []
+
+        for row in rows:
+            history.append({
+                "ticket_id": row[0],
+                "datetime": row[1],
+                "product_lines": row[2],
+                "total_units": row[3],
+                "total_cost": float(row[4] or 0)
+            })
+
+        return {
+            "store_id": store_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "intakes": history
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
+
 
 # -----------------------------
 # LOSS
