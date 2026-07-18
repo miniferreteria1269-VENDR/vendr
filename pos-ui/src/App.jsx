@@ -360,7 +360,7 @@ function App() {
               cursor: "pointer"
             }}
           >
-            {t(v).toUpperCase()}
+            {t(v === "sales" ? "history" : v).toUpperCase()}
           </button>
         ))}
       </div>
