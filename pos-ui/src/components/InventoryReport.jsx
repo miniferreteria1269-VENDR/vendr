@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLang } from "../LanguageContext";
 import ProductMovementSummary from "./ProductMovementSummary";
+import { StockAdjustment } from "./ProductManagement";
 import axios from "axios";
 import { COLORS, card, btnPrimary, btnSecondary, input } from "../uiStyles";
 
