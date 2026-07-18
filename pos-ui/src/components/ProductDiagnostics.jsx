@@ -13,11 +13,11 @@ import {
 const API = "https://vendr-onkr.onrender.com";
 
 const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "price_below_cost", label: "Price < Cost" },
-  { key: "zero_cost", label: "Cost = 0" },
-  { key: "zero_price", label: "Price = 0" },
-  { key: "negative_stock", label: "Negative Stock" },
+  { key: "all", labelKey: "all" },
+  { key: "price_below_cost", labelKey: "price_less_than_cost" },
+  { key: "zero_cost", labelKey: "cost_equals_zero" },
+  { key: "zero_price", labelKey: "price_equals_zero" },
+  { key: "negative_stock", labelKey: "negative_stock" },
 ];
 
 function ProductDiagnostics({ storeId }) {
@@ -61,7 +61,7 @@ function ProductDiagnostics({ storeId }) {
         err.response?.data?.detail ||
         err.response?.data?.error ||
         err.message ||
-        "Could not load product diagnostics.";
+        t("could_not_load_diagnostics");
 
       setErrorMessage(String(detail));
       setProducts([]);
@@ -136,13 +136,13 @@ function ProductDiagnostics({ storeId }) {
   const issueLabel = (type) => {
     switch (type) {
       case "price_below_cost":
-        return "Price below cost";
+        return t("price_below_cost");
       case "zero_cost":
-        return "Cost is zero";
+        return t("cost_is_zero");
       case "zero_price":
-        return "Price is zero";
+        return t("price_is_zero");
       case "negative_stock":
-        return "Stock is negative";
+        return t("stock_is_negative");
       default:
         return type;
     }
@@ -151,15 +151,15 @@ function ProductDiagnostics({ storeId }) {
   const recommendedActionLabel = (issueType) => {
     switch (issueType) {
       case "price_below_cost":
-        return "Review cost and sale price";
+        return t("review_cost_and_sale_price");
       case "zero_cost":
-        return "Enter product cost";
+        return t("enter_product_cost");
       case "zero_price":
-        return "Enter sale price";
+        return t("enter_sale_price");
       case "negative_stock":
-        return "Verify physical stock";
+        return t("verify_physical_stock");
       default:
-        return "Review product";
+        return t("review_product");
     }
   };
 
@@ -175,28 +175,28 @@ function ProductDiagnostics({ storeId }) {
 
     if (issue.recommended_action === "stock_adjustment") {
       setCorrectStock(0);
-      setNote("Diagnostic correction: physical stock verification.");
+      setNote(t("verify_physical_stock"));
     }
   };
 
   const exportAllIssues = () => {
     if (products.length === 0) {
-      alert("There are no diagnostic issues to export.");
+      alert(t("no_issues_to_export"));
       return;
     }
 
     // Create one spreadsheet row for every individual issue.
     const exportRows = products.flatMap((product) =>
       (product.issues || []).map((issue) => ({
-        "Product ID": product.product_id,
-        Product: product.name,
-        Issue: issueLabel(issue.type),
-        Stock: Number(product.stock || 0),
-        Cost: Number(product.cost || 0),
-        Price: Number(product.price || 0),
-        "Recommended Action": recommendedActionLabel(issue.type),
-        Verified: "",
-        Notes: "",
+        [t("product_id")]: product.product_id,
+        [t("product")]: product.name,
+        [t("issue")]: issueLabel(issue.type),
+        [t("stock")]: Number(product.stock || 0),
+        [t("cost")]: Number(product.cost || 0),
+        [t("price")]: Number(product.price || 0),
+        [t("recommended_action")]: recommendedActionLabel(issue.type),
+        [t("reviewed")]: "",
+        [t("notes")]: "",
       }))
     );
 
@@ -205,11 +205,11 @@ function ProductDiagnostics({ storeId }) {
 
     // Create the summary section at the top of the sheet.
     const worksheet = XLSX.utils.aoa_to_sheet([
-      ["VENDR Product Diagnostics"],
-      ["Store ID", storeId],
-      ["Exported", exportedAt.toLocaleString()],
-      ["Products Requiring Attention", products.length],
-      ["Total Issues", exportRows.length],
+      [t("vendr_product_diagnostics")],
+      [t("store_id"), storeId],
+      [t("exported"), exportedAt.toLocaleString()],
+      [t("products_requiring_attention"), products.length],
+      [t("total_issues"), exportRows.length],
       [],
     ]);
 
@@ -256,7 +256,7 @@ function ProductDiagnostics({ storeId }) {
     XLSX.utils.book_append_sheet(
       workbook,
       worksheet,
-      "Product Diagnostics"
+      t("product_diagnostics").slice(0, 31)
     );
 
     XLSX.writeFile(
@@ -276,7 +276,7 @@ function ProductDiagnostics({ storeId }) {
   };
 
   const showSuccess = () => {
-    setSuccessMessage("Issue Fixed!");
+    setSuccessMessage(t("issue_fixed"));
 
     window.setTimeout(() => {
       setSuccessMessage("");
@@ -294,7 +294,7 @@ function ProductDiagnostics({ storeId }) {
       parsedPrice < 0
     ) {
       setErrorMessage(
-        "Cost and price must be valid numbers equal to or greater than zero."
+        t("invalid_cost_price")
       );
       return;
     }
@@ -324,7 +324,7 @@ function ProductDiagnostics({ storeId }) {
         err.response?.data?.detail ||
         err.response?.data?.error ||
         err.message ||
-        "Could not apply the price correction.";
+        t("could_not_apply_price_correction");
 
       setErrorMessage(String(detail));
     } finally {
@@ -341,7 +341,7 @@ function ProductDiagnostics({ storeId }) {
       parsedCorrectStock < 0
     ) {
       setErrorMessage(
-        "Correct stock must be a valid number equal to or greater than zero."
+        t("invalid_correct_stock")
       );
       return;
     }
@@ -350,7 +350,7 @@ function ProductDiagnostics({ storeId }) {
 
     if (difference === 0) {
       setErrorMessage(
-        "The corrected stock is the same as the current stock."
+        t("same_stock_value")
       );
       return;
     }
@@ -370,7 +370,7 @@ function ProductDiagnostics({ storeId }) {
         reason: "diagnostic_correction",
         note:
           note.trim() ||
-          `Diagnostic correction. Stock changed from ${currentStock} to ${parsedCorrectStock}.`,
+          `${t("verify_physical_stock")}: ${currentStock} → ${parsedCorrectStock}.`,
       });
 
       closeModal(true);
@@ -385,7 +385,7 @@ function ProductDiagnostics({ storeId }) {
         err.response?.data?.detail ||
         err.response?.data?.error ||
         err.message ||
-        "Could not apply the stock correction.";
+        t("could_not_apply_stock_correction");
 
       setErrorMessage(String(detail));
     } finally {
@@ -473,8 +473,8 @@ function ProductDiagnostics({ storeId }) {
               fontSize: 13,
             }}
           >
-            {products.length} products need attention ·{" "}
-            {issueCounts.all} total issues
+            {products.length} {t("products_need_attention")} ·{" "}
+            {issueCounts.all} {t("total_issues")}
           </div>
         </div>
 
@@ -491,7 +491,7 @@ function ProductDiagnostics({ storeId }) {
             style={btnPrimary}
             disabled={loading || products.length === 0}
           >
-            Export All Issues
+            {t("export_all_issues")}
           </button>
 
           <button
@@ -500,7 +500,7 @@ function ProductDiagnostics({ storeId }) {
             style={btnSecondary}
             disabled={loading}
           >
-            {loading ? "Loading..." : "Refresh"}
+            {loading ? t("loading") : t("refresh")}
           </button>
         </div>
       </div>
@@ -540,7 +540,7 @@ function ProductDiagnostics({ storeId }) {
         onChange={(event) =>
           setSearchTerm(event.target.value)
         }
-        placeholder="Search product name or ID..."
+        placeholder={t("search_product_or_id")}
         style={{
           ...input,
           width: "100%",
@@ -564,7 +564,7 @@ function ProductDiagnostics({ storeId }) {
             onClick={() => setActiveFilter(filter.key)}
             style={filterButton(filter.key)}
           >
-            <span>{filter.label}</span>
+            <span>{t(filter.labelKey)}</span>
 
             <span style={badge}>
               {issueCounts[filter.key] || 0}
@@ -580,8 +580,9 @@ function ProductDiagnostics({ storeId }) {
           marginBottom: 10,
         }}
       >
-        Showing {visibleProducts.length} products with{" "}
-        {visibleIssueCount} matching issues
+        {t("showing_products_with_issues")
+          .replace("{products}", visibleProducts.length)
+          .replace("{issues}", visibleIssueCount)}
       </div>
 
       <div
@@ -600,7 +601,7 @@ function ProductDiagnostics({ storeId }) {
               color: COLORS.textDim,
             }}
           >
-            No diagnostic issues match this view.
+            {t("no_diagnostic_issues")}
           </div>
         )}
 
@@ -644,7 +645,7 @@ function ProductDiagnostics({ storeId }) {
                       marginTop: 3,
                     }}
                   >
-                    Product ID: {product.product_id}
+                    {t("product_id")}: {product.product_id}
                   </div>
                 </div>
 
@@ -658,21 +659,21 @@ function ProductDiagnostics({ storeId }) {
                   }}
                 >
                   <span>
-                    Stock:{" "}
+                    {t("stock")}:{" "}
                     <strong style={{ color: COLORS.text }}>
                       {product.stock}
                     </strong>
                   </span>
 
                   <span>
-                    Cost:{" "}
+                    {t("cost")}:{" "}
                     <strong style={{ color: COLORS.text }}>
                       ${Number(product.cost || 0).toFixed(2)}
                     </strong>
                   </span>
 
                   <span>
-                    Price:{" "}
+                    {t("price")}:{" "}
                     <strong style={{ color: COLORS.text }}>
                       ${Number(product.price || 0).toFixed(2)}
                     </strong>
@@ -715,7 +716,7 @@ function ProductDiagnostics({ storeId }) {
                     }
                     style={btnPrimary}
                   >
-                    Review
+                    {t("review")}
                   </button>
                 </div>
               ))}
@@ -728,7 +729,7 @@ function ProductDiagnostics({ storeId }) {
         <div style={modalOverlay}>
           <div style={modalCard}>
             <h3 style={{ marginTop: 0 }}>
-              Review Diagnostic Issue
+              {t("review_diagnostic_issue")}
             </h3>
 
             <div
@@ -753,7 +754,7 @@ function ProductDiagnostics({ storeId }) {
                   marginTop: 4,
                 }}
               >
-                Product ID: {selectedProduct.product_id}
+                {t("product_id")}: {selectedProduct.product_id}
               </div>
 
               <div
@@ -791,7 +792,7 @@ function ProductDiagnostics({ storeId }) {
                     color: COLORS.textDim,
                   }}
                 >
-                  Cost
+                  {t("cost")}
                 </label>
 
                 <input
@@ -817,7 +818,7 @@ function ProductDiagnostics({ storeId }) {
                     color: COLORS.textDim,
                   }}
                 >
-                  Price
+                  {t("price")}
                 </label>
 
                 <input
@@ -844,8 +845,7 @@ function ProductDiagnostics({ storeId }) {
                       fontSize: 13,
                     }}
                   >
-                    Warning: the entered price is still below
-                    cost.
+                    {t("price_still_below_cost")}
                   </div>
                 )}
 
@@ -863,7 +863,7 @@ function ProductDiagnostics({ storeId }) {
                     style={btnSecondary}
                     disabled={saving}
                   >
-                    Cancel
+                    {t("cancel")}
                   </button>
 
                   <button
@@ -873,8 +873,8 @@ function ProductDiagnostics({ storeId }) {
                     disabled={saving}
                   >
                     {saving
-                      ? "Saving..."
-                      : "Apply Price Change"}
+                      ? t("saving")
+                      : t("apply_price_change")}
                   </button>
                 </div>
               </>
@@ -891,7 +891,7 @@ function ProductDiagnostics({ storeId }) {
                     background: COLORS.panelAlt,
                   }}
                 >
-                  Current stock:{" "}
+                  {t("current_stock")}:{" "}
                   <strong>{selectedProduct.stock}</strong>
                 </div>
 
@@ -902,7 +902,7 @@ function ProductDiagnostics({ storeId }) {
                     color: COLORS.textDim,
                   }}
                 >
-                  Correct physical stock
+                  {t("correct_physical_stock")}
                 </label>
 
                 <input
@@ -928,7 +928,7 @@ function ProductDiagnostics({ storeId }) {
                     color: COLORS.textDim,
                   }}
                 >
-                  Note
+                  {t("note")}
                 </label>
 
                 <textarea
@@ -953,7 +953,7 @@ function ProductDiagnostics({ storeId }) {
                     marginBottom: 14,
                   }}
                 >
-                  Adjustment:{" "}
+                  {t("adjustment")}:{" "}
                   {Number(correctStock) -
                     Number(selectedProduct.stock || 0) >
                   0
@@ -977,7 +977,7 @@ function ProductDiagnostics({ storeId }) {
                     style={btnSecondary}
                     disabled={saving}
                   >
-                    Cancel
+                    {t("cancel")}
                   </button>
 
                   <button
@@ -987,8 +987,8 @@ function ProductDiagnostics({ storeId }) {
                     disabled={saving}
                   >
                     {saving
-                      ? "Saving..."
-                      : "Apply Stock Adjustment"}
+                      ? t("saving")
+                      : t("apply_stock_adjustment")}
                   </button>
                 </div>
               </>
