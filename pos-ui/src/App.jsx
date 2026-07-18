@@ -5,7 +5,7 @@ import Login from "./Login";
 import Signup from "./Signup";
 import ProductPanel from "./components/ProductPanel";
 import TicketPanel from "./components/TicketPanel";
-import SalesHistoryPanel from "./components/SalesHistoryPanel";
+import HistoryPanel from "./components/HistoryPanel";
 import InventoryReport from "./components/InventoryReport";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
@@ -404,7 +404,9 @@ function App() {
         </div>
       )}
 
-      {view === "sales" && <SalesHistoryPanel storeId={storeId} />}
+      {view === "sales" && (
+        <HistoryPanel storeId={storeId} />
+      )}
       {view === "inventory" && <InventoryReport storeId={storeId} />}
       {view === "products" && <ProductManagement storeId={storeId} />}
       {view === "analysis" && <SalesAnalysisPanel storeId={storeId} />}
