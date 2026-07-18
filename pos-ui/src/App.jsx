@@ -7,6 +7,7 @@ import ProductPanel from "./components/ProductPanel";
 import TicketPanel from "./components/TicketPanel";
 import HistoryPanel from "./components/HistoryPanel";
 import InventoryReport from "./components/InventoryReport";
+import ProductDiagnostics from "./components/ProductDiagnostics";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
@@ -347,7 +348,7 @@ function App() {
         gap: 8,
         borderBottom: `1px solid ${COLORS.border}`
       }}>
-        {["pos", "sales", "inventory", "products", "analysis", "cash"].map(v => (
+        {["pos", "sales", "inventory", "products", "analysis", "diagnostics", "cash"].map(v => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -408,6 +409,9 @@ function App() {
         <HistoryPanel storeId={storeId} />
       )}
       {view === "inventory" && <InventoryReport storeId={storeId} />}
+      {view === "diagnostics" && (
+        <ProductDiagnostics storeId={storeId} />
+      )}
       {view === "products" && <ProductManagement storeId={storeId} />}
       {view === "analysis" && <SalesAnalysisPanel storeId={storeId} />}
       {view === "cash" && <CashPanel storeId={storeId} products={products} />}
