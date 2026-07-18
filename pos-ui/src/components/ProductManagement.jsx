@@ -37,7 +37,6 @@ function ProductManagement({ storeId }) {
           ["price", "price"],
           ["edit", "edit"],
           ["loss", "loss"],
-          ["adjustment", "adjustment"],
           ["transfer", "transfer"],
           ["archive", "archive"],
           ["import", "import"]
@@ -58,7 +57,6 @@ function ProductManagement({ storeId }) {
         {pmView === "price" && <PriceChange storeId={storeId} />}
         {pmView === "edit" && <EditDetails storeId={storeId} />}
         {pmView === "loss" && <LogLoss storeId={storeId} />}
-        {pmView === "adjustment" && <StockAdjustment storeId={storeId} />}
         {pmView === "transfer" && <StockTransfer storeId={storeId} />}
         {pmView === "archive" && <ArchiveProduct storeId={storeId} />}
         {pmView === "import" && <ProductImporter storeId={storeId} />}
@@ -538,7 +536,7 @@ function ArchiveProduct({ storeId }) {
     </div>
   );
 }
-function StockAdjustment({ storeId }) {
+export function StockAdjustment({ storeId }) {
   const { t } = useLang();
   const [search, setSearch] = useState("");
   const [products, setProducts] = useState([]);
