@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import * as XLSX from "xlsx";
 import { useLang } from "../LanguageContext";
 import {
   COLORS,
@@ -387,6 +388,11 @@ function ProductDiagnostics({ storeId }) {
         </button>
       </div>
 
+      <button
+          onClick={() => console.log(XLSX.version)}
+      >
+          Test XLSX
+      </button>
       {successMessage && (
         <div
           style={{
