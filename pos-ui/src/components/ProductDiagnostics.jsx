@@ -148,6 +148,21 @@ function ProductDiagnostics({ storeId }) {
     }
   };
 
+  const recommendedActionLabel = (issueType) => {
+    switch (issueType) {
+      case "price_below_cost":
+        return "Review cost and sale price";
+      case "zero_cost":
+        return "Enter product cost";
+      case "zero_price":
+        return "Enter sale price";
+      case "negative_stock":
+        return "Verify physical stock";
+      default:
+        return "Review product";
+    }
+  };
+
   const openReview = (product, issue) => {
     setSelectedProduct(product);
     setSelectedIssue(issue);
@@ -164,8 +179,93 @@ function ProductDiagnostics({ storeId }) {
     }
   };
 
-  const closeModal = () => {
-    if (saving) return;
+  const exportAllIssues = () => {
+    if (products.length === 0) {
+      alert("There are no diagnostic issues to export.");
+      return;
+    }
+
+    // Create one spreadsheet row for every individual issue.
+    const exportRows = products.flatMap((product) =>
+      (product.issues || []).map((issue) => ({
+        "Product ID": product.product_id,
+        Product: product.name,
+        Issue: issueLabel(issue.type),
+        Stock: Number(product.stock || 0),
+        Cost: Number(product.cost || 0),
+        Price: Number(product.price || 0),
+        "Recommended Action": recommendedActionLabel(issue.type),
+        Verified: "",
+        Notes: "",
+      }))
+    );
+
+    const exportedAt = new Date();
+    const dateStamp = exportedAt.toISOString().slice(0, 10);
+
+    // Create the summary section at the top of the sheet.
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["VENDR Product Diagnostics"],
+      ["Store ID", storeId],
+      ["Exported", exportedAt.toLocaleString()],
+      ["Products Requiring Attention", products.length],
+      ["Total Issues", exportRows.length],
+      [],
+    ]);
+
+    // Add the diagnostic table beginning on row 7.
+    XLSX.utils.sheet_add_json(worksheet, exportRows, {
+      origin: "A7",
+      skipHeader: false,
+    });
+
+    // Set practical column widths for Excel and printing.
+    worksheet["!cols"] = [
+      { wch: 12 }, // Product ID
+      { wch: 42 }, // Product
+      { wch: 22 }, // Issue
+      { wch: 10 }, // Stock
+      { wch: 12 }, // Cost
+      { wch: 12 }, // Price
+      { wch: 28 }, // Recommended Action
+      { wch: 12 }, // Verified
+      { wch: 36 }, // Notes
+    ];
+
+    // Enable Excel filtering on the exported table.
+    worksheet["!autofilter"] = {
+      ref: `A7:I${exportRows.length + 7}`,
+    };
+
+    // Format Cost and Price as currency.
+    for (let row = 8; row <= exportRows.length + 7; row += 1) {
+      const costCell = worksheet[`E${row}`];
+      const priceCell = worksheet[`F${row}`];
+
+      if (costCell) {
+        costCell.z = "$0.00";
+      }
+
+      if (priceCell) {
+        priceCell.z = "$0.00";
+      }
+    }
+
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      "Product Diagnostics"
+    );
+
+    XLSX.writeFile(
+      workbook,
+      `VENDR_Diagnostics_Store_${storeId}_${dateStamp}.xlsx`
+    );
+  };  
+  const closeModal = (force = false) => {
+    if (saving && !force) return;
 
     setSelectedProduct(null);
     setSelectedIssue(null);
@@ -212,7 +312,7 @@ function ProductDiagnostics({ storeId }) {
         },
       });
 
-      closeModal();
+      closeModal(true);
       showSuccess();
 
       // Refresh while preserving the current filter and search.
@@ -273,7 +373,7 @@ function ProductDiagnostics({ storeId }) {
           `Diagnostic correction. Stock changed from ${currentStock} to ${parsedCorrectStock}.`,
       });
 
-      closeModal();
+      closeModal(true);
       showSuccess();
 
       // Refresh while preserving the current filter and search.
@@ -378,30 +478,32 @@ function ProductDiagnostics({ storeId }) {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={loadDiagnostics}
-          style={btnSecondary}
-          disabled={loading}
-        >
-          {loading ? "Loading..." : "Refresh"}
-        </button>
-      </div>
-
-     <button
-          type="button"
-          onClick={() => {
-              console.log("XLSX Version:", XLSX.version);
-              alert(`XLSX ${XLSX.version} loaded successfully!`);
-          }}
+        <div
           style={{
-              ...btnPrimary,
-              padding: "8px 16px",
-              minWidth: "160px",
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
           }}
-      >
-          TEST XLSX
-      </button>
+        >
+          <button
+            type="button"
+            onClick={exportAllIssues}
+            style={btnPrimary}
+            disabled={loading || products.length === 0}
+          >
+            Export All Issues
+          </button>
+
+          <button
+            type="button"
+            onClick={loadDiagnostics}
+            style={btnSecondary}
+            disabled={loading}
+          >
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+        </div>
+      </div>
       {successMessage && (
         <div
           style={{
