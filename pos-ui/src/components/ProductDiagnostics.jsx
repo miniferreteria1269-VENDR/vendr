@@ -388,10 +388,19 @@ function ProductDiagnostics({ storeId }) {
         </button>
       </div>
 
-      <button
-          onClick={() => console.log(XLSX.version)}
+     <button
+          type="button"
+          onClick={() => {
+              console.log("XLSX Version:", XLSX.version);
+              alert(`XLSX ${XLSX.version} loaded successfully!`);
+          }}
+          style={{
+              ...btnPrimary,
+              padding: "8px 16px",
+              minWidth: "160px",
+          }}
       >
-          Test XLSX
+          TEST XLSX
       </button>
       {successMessage && (
         <div
