@@ -1516,6 +1516,76 @@ def sales_history(store_id: int, start_date: str = None, end_date: str = None):
 
     return {"sales": history}
 
+@app.get("/intake-ticket-details")
+def intake_ticket_details(store_id: int, ticket_id: int):
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT
+                event_id,
+                product_id,
+                product_name_at_time,
+                quantity,
+                cost_at_time,
+                price_at_time,
+                event_datetime,
+                note
+            FROM events
+            WHERE store_id = %s
+              AND ticket_id = %s
+              AND event_type = 'intake'
+            ORDER BY event_id ASC
+        """, (store_id, ticket_id))
+
+        rows = cursor.fetchall()
+
+        if not rows:
+            raise HTTPException(
+                status_code=404,
+                detail="Intake ticket not found"
+            )
+
+        items = []
+        total_units = 0
+        total_cost = 0.0
+
+        for row in rows:
+            quantity = row[3] or 0
+            unit_cost = float(row[4] or 0)
+            line_cost = quantity * unit_cost
+
+            total_units += quantity
+            total_cost += line_cost
+
+            items.append({
+                "event_id": row[0],
+                "product_id": row[1],
+                "product_name": row[2],
+                "quantity": quantity,
+                "unit_cost": unit_cost,
+                "price_at_time": float(row[5] or 0),
+                "line_cost": round(line_cost, 2),
+                "datetime": row[6],
+                "note": row[7]
+            })
+
+        return {
+            "ticket_id": ticket_id,
+            "store_id": store_id,
+            "datetime": rows[0][6],
+            "product_lines": len(items),
+            "total_units": total_units,
+            "total_cost": round(total_cost, 2),
+            "items": items
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.get("/stock-report")
 def stock_report(store_id: int, name: str = None):
 
