@@ -374,7 +374,6 @@ function App() {
           gap: 12,
           padding: 12
         }}>
-        }}>
           <ProductPanel
             products={products}
             searchTerm={searchTerm}
