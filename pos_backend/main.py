@@ -1585,6 +1585,103 @@ def intake_ticket_details(store_id: int, ticket_id: int):
         cursor.close()
         conn.close()
 
+@app.get("/product-diagnostics")
+def product_diagnostics(store_id: int):
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT
+                product_id,
+                name,
+                stock,
+                cost,
+                price,
+                is_active,
+                tracks_stock,
+                low_stock_threshold
+            FROM products
+            WHERE store_id = %s
+              AND is_active = 1
+              AND (
+                    price < cost
+                 OR cost = 0
+                 OR price = 0
+                 OR stock < 0
+              )
+            ORDER BY LOWER(name)
+        """, (store_id,))
+
+        rows = cursor.fetchall()
+
+        products = []
+
+        for row in rows:
+            product_id = row[0]
+            name = row[1]
+            stock = row[2] or 0
+            cost = float(row[3] or 0)
+            price = float(row[4] or 0)
+            is_active = row[5]
+            tracks_stock = row[6]
+            low_stock_threshold = row[7] or 0
+
+            issues = []
+
+            if price < cost:
+                issues.append({
+                    "type": "price_below_cost",
+                    "label": "Price below cost",
+                    "recommended_action": "price_change"
+                })
+
+            if cost == 0:
+                issues.append({
+                    "type": "zero_cost",
+                    "label": "Cost is zero",
+                    "recommended_action": "price_change"
+                })
+
+            if price == 0:
+                issues.append({
+                    "type": "zero_price",
+                    "label": "Price is zero",
+                    "recommended_action": "price_change"
+                })
+
+            if stock < 0:
+                issues.append({
+                    "type": "negative_stock",
+                    "label": "Stock is negative",
+                    "recommended_action": "stock_adjustment"
+                })
+
+            products.append({
+                "product_id": product_id,
+                "name": name,
+                "stock": stock,
+                "cost": cost,
+                "price": price,
+                "is_active": is_active,
+                "tracks_stock": tracks_stock,
+                "low_stock_threshold": low_stock_threshold,
+                "issues": issues
+            })
+
+        return {
+            "store_id": store_id,
+            "product_count": len(products),
+            "issue_count": sum(
+                len(product["issues"])
+                for product in products
+            ),
+            "products": products
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.get("/stock-report")
 def stock_report(store_id: int, name: str = None):
