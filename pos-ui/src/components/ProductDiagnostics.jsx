@@ -18,6 +18,7 @@ const FILTERS = [
   { key: "zero_cost", labelKey: "cost_equals_zero" },
   { key: "zero_price", labelKey: "price_equals_zero" },
   { key: "negative_stock", labelKey: "negative_stock" },
+  { key: "lst_unreviewed", labelKey: "lst_review_filter" },
 ];
 
 function ProductDiagnostics({ storeId }) {
@@ -33,6 +34,7 @@ function ProductDiagnostics({ storeId }) {
   const [newCost, setNewCost] = useState("");
   const [newPrice, setNewPrice] = useState("");
   const [correctStock, setCorrectStock] = useState(0);
+  const [newLST, setNewLST] = useState(0);
   const [note, setNote] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -81,6 +83,7 @@ function ProductDiagnostics({ storeId }) {
       zero_cost: 0,
       zero_price: 0,
       negative_stock: 0,
+      lst_unreviewed: 0,
     };
 
     products.forEach((product) => {
@@ -143,6 +146,8 @@ function ProductDiagnostics({ storeId }) {
         return t("price_is_zero");
       case "negative_stock":
         return t("stock_is_negative");
+      case "lst_unreviewed":
+        return t("lst_requires_review");
       default:
         return type;
     }
@@ -158,6 +163,8 @@ function ProductDiagnostics({ storeId }) {
         return t("enter_sale_price");
       case "negative_stock":
         return t("verify_physical_stock");
+      case "lst_unreviewed":
+        return t("review_reorder_threshold");
       default:
         return t("review_product");
     }
@@ -176,6 +183,10 @@ function ProductDiagnostics({ storeId }) {
     if (issue.recommended_action === "stock_adjustment") {
       setCorrectStock(0);
       setNote(t("verify_physical_stock"));
+    }
+
+    if (issue.recommended_action === "review_lst") {
+      setNewLST(Number(product.low_stock_threshold ?? 0));
     }
   };
 
@@ -272,6 +283,7 @@ function ProductDiagnostics({ storeId }) {
     setNewCost("");
     setNewPrice("");
     setCorrectStock(0);
+    setNewLST(0);
     setNote("");
   };
 
@@ -386,6 +398,48 @@ function ProductDiagnostics({ storeId }) {
         err.response?.data?.error ||
         err.message ||
         t("could_not_apply_stock_correction");
+
+      setErrorMessage(String(detail));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitLSTReview = async () => {
+    const parsedLST = Number(newLST);
+
+    if (
+      !Number.isFinite(parsedLST) ||
+      parsedLST < 0 ||
+      !Number.isInteger(parsedLST)
+    ) {
+      setErrorMessage(t("invalid_lst"));
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage("");
+
+    try {
+      await axios.post(`${API}/review-lst`, {
+        store_id: storeId,
+        product_id: selectedProduct.product_id,
+        low_stock_threshold: parsedLST,
+      });
+
+      closeModal(true);
+      showSuccess();
+
+      // Refresh while preserving the current filter and search.
+      await loadDiagnostics();
+    } catch (err) {
+      console.error("Could not review low stock threshold:", err);
+
+      const detail =
+        err.response?.data?.detail ||
+        err.response?.data?.error ||
+        err.message ||
+        t("could_not_apply_lst_review");
 
       setErrorMessage(String(detail));
     } finally {
@@ -676,6 +730,13 @@ function ProductDiagnostics({ storeId }) {
                     {t("price")}:{" "}
                     <strong style={{ color: COLORS.text }}>
                       ${Number(product.price || 0).toFixed(2)}
+                    </strong>
+                  </span>
+
+                  <span>
+                    {t("low_stock")}:{" "}
+                    <strong style={{ color: COLORS.text }}>
+                      {Number(product.low_stock_threshold || 0)}
                     </strong>
                   </span>
                 </div>
@@ -989,6 +1050,90 @@ function ProductDiagnostics({ storeId }) {
                     {saving
                       ? t("saving")
                       : t("apply_stock_adjustment")}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {selectedIssue.recommended_action ===
+              "review_lst" && (
+              <>
+                <div
+                  style={{
+                    padding: 10,
+                    marginBottom: 12,
+                    borderRadius: 7,
+                    background: COLORS.panelAlt,
+                  }}
+                >
+                  {t("current_lst")}:{" "}
+                  <strong>
+                    {Number(selectedProduct.low_stock_threshold || 0)}
+                  </strong>
+                </div>
+
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: 5,
+                    color: COLORS.textDim,
+                  }}
+                >
+                  {t("confirmed_lst")}
+                </label>
+
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={newLST}
+                  onChange={(event) =>
+                    setNewLST(event.target.value)
+                  }
+                  style={{
+                    ...input,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    marginBottom: 14,
+                  }}
+                />
+
+                <div
+                  style={{
+                    color: COLORS.textDim,
+                    fontSize: 13,
+                    marginBottom: 14,
+                  }}
+                >
+                  {t("review_reorder_threshold")}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    style={btnSecondary}
+                    disabled={saving}
+                  >
+                    {t("cancel")}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={submitLSTReview}
+                    style={btnPrimary}
+                    disabled={saving}
+                  >
+                    {saving
+                      ? t("saving")
+                      : t("confirm_lst")}
                   </button>
                 </div>
               </>
