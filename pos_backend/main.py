@@ -7,7 +7,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 import pandas as pd
 from fastapi import UploadFile, File, HTTPException, Form
-from fastapi.middleware.cors import CORSMiddleware
 import os
 import psycopg2
 app = FastAPI()
@@ -75,6 +74,7 @@ def init_db():
         tracks_stock INTEGER,
         is_active INTEGER,
         low_stock_threshold INTEGER DEFAULT 0,
+        lst_reviewed BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TEXT
     )
     """)
@@ -97,6 +97,7 @@ def init_db():
 
     conn.commit()
     conn.close()
+    
 @app.on_event("startup")
 def startup():
     init_db()
@@ -151,6 +152,10 @@ class ReturnItem(BaseModel):
     cost: float
     price: float
 
+class ReviewLSTRequest(BaseModel):
+    store_id: int
+    product_id: int
+    low_stock_threshold: int
 
 class ReturnRequest(BaseModel):
     store_id: int
@@ -1312,22 +1317,66 @@ def quick_items(store_id: int):
 
     return {"products": products}
 @app.post("/set-low-stock")
-def set_low_stock(store_id:int, product_id:int, threshold:int):
+def set_low_stock(
+    store_id: int,
+    product_id: int,
+    threshold: int
+):
+    if threshold < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Low stock threshold cannot be negative"
+        )
 
     conn = db()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE products
-        SET low_stock_threshold = %s
-        WHERE product_id = %s
-        AND store_id = %s
-    """, (threshold, product_id, store_id))
+    try:
+        cursor.execute("""
+            UPDATE products
+            SET
+                low_stock_threshold = %s,
+                lst_reviewed = CASE
+                    WHEN %s > 0 THEN TRUE
+                    ELSE FALSE
+                END
+            WHERE product_id = %s
+              AND store_id = %s
+            RETURNING
+                product_id,
+                low_stock_threshold,
+                lst_reviewed
+        """, (
+            threshold,
+            threshold,
+            product_id,
+            store_id
+        ))
 
-    conn.commit()
-    conn.close()
+        row = cursor.fetchone()
 
-    return {"message":"Threshold updated"}
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found"
+            )
+
+        conn.commit()
+
+        return {
+            "message": "Threshold updated",
+            "product_id": row[0],
+            "low_stock_threshold": row[1],
+            "lst_reviewed": row[2]
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.get("/low-stock")
 def get_low_stock(store_id: int):
@@ -1600,7 +1649,8 @@ def product_diagnostics(store_id: int):
                 price,
                 is_active,
                 tracks_stock,
-                low_stock_threshold
+                low_stock_threshold,
+                lst_reviewed
             FROM products
             WHERE store_id = %s
               AND is_active = 1
@@ -1609,12 +1659,15 @@ def product_diagnostics(store_id: int):
                  OR cost = 0
                  OR price = 0
                  OR stock < 0
+                 OR (
+                        low_stock_threshold = 0
+                    AND lst_reviewed = FALSE
+                 )
               )
             ORDER BY LOWER(name)
         """, (store_id,))
 
         rows = cursor.fetchall()
-
         products = []
 
         for row in rows:
@@ -1626,6 +1679,7 @@ def product_diagnostics(store_id: int):
             is_active = row[5]
             tracks_stock = row[6]
             low_stock_threshold = row[7] or 0
+            lst_reviewed = bool(row[8])
 
             issues = []
 
@@ -1657,6 +1711,13 @@ def product_diagnostics(store_id: int):
                     "recommended_action": "stock_adjustment"
                 })
 
+            if low_stock_threshold == 0 and not lst_reviewed:
+                issues.append({
+                    "type": "lst_unreviewed",
+                    "label": "Low stock threshold requires review",
+                    "recommended_action": "review_lst"
+                })
+
             products.append({
                 "product_id": product_id,
                 "name": name,
@@ -1666,6 +1727,7 @@ def product_diagnostics(store_id: int):
                 "is_active": is_active,
                 "tracks_stock": tracks_stock,
                 "low_stock_threshold": low_stock_threshold,
+                "lst_reviewed": lst_reviewed,
                 "issues": issues
             })
 
@@ -1682,7 +1744,6 @@ def product_diagnostics(store_id: int):
     finally:
         cursor.close()
         conn.close()
-
 @app.get("/stock-report")
 def stock_report(store_id: int, name: str = None):
 
@@ -1915,36 +1976,86 @@ def edit_product(
     low_stock_threshold: int,
     tracks_stock: bool
 ):
+    if low_stock_threshold < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Low stock threshold cannot be negative"
+        )
+
+    if not name or not name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Product name is required"
+        )
+
+    if isinstance(tracks_stock, bool):
+        tracks_stock_value = 1 if tracks_stock else 0
+    elif isinstance(tracks_stock, str):
+        tracks_stock_value = (
+            1
+            if tracks_stock.lower() in ["1", "true", "yes"]
+            else 0
+        )
+    else:
+        tracks_stock_value = 1 if tracks_stock else 0
 
     conn = db()
     cursor = conn.cursor()
 
+    try:
+        cursor.execute("""
+            UPDATE products
+            SET
+                name = %s,
+                low_stock_threshold = %s,
+                lst_reviewed = CASE
+                    WHEN %s > 0 THEN TRUE
+                    ELSE FALSE
+                END,
+                tracks_stock = %s
+            WHERE product_id = %s
+              AND store_id = %s
+            RETURNING
+                product_id,
+                name,
+                low_stock_threshold,
+                lst_reviewed,
+                tracks_stock
+        """, (
+            name.strip(),
+            low_stock_threshold,
+            low_stock_threshold,
+            tracks_stock_value,
+            product_id,
+            store_id
+        ))
 
-    if isinstance(tracks_stock, bool):
-        tracks_stock = 1 if tracks_stock else 0
-    elif isinstance(tracks_stock, str):
-        tracks_stock = 1 if tracks_stock.lower() in ["1", "true", "yes"] else 0
+        row = cursor.fetchone()
 
-    cursor.execute("""
-        UPDATE products
-        SET
-            name = %s,
-            low_stock_threshold = %s,
-            tracks_stock = %s
-        WHERE product_id = %s
-        AND store_id = %s
-    """, (
-        name,
-        low_stock_threshold,
-        tracks_stock,
-        product_id,
-        store_id
-    ))
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found"
+            )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
-    return {"message": "Product updated"}
+        return {
+            "message": "Product updated",
+            "product_id": row[0],
+            "name": row[1],
+            "low_stock_threshold": row[2],
+            "lst_reviewed": row[3],
+            "tracks_stock": row[4]
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.post("/archive-product")
 def archive_product(store_id: int, product_id: int, is_active: bool):
@@ -1968,7 +2079,60 @@ def archive_product(store_id: int, product_id: int, is_active: bool):
 
     return {"message": "Product status updated"}
 
+@app.post("/review-lst")
+def review_lst(data: ReviewLSTRequest):
+    if data.low_stock_threshold < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Low stock threshold cannot be negative"
+        )
 
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            UPDATE products
+            SET
+                low_stock_threshold = %s,
+                lst_reviewed = TRUE
+            WHERE store_id = %s
+              AND product_id = %s
+              AND is_active = 1
+            RETURNING
+                product_id,
+                low_stock_threshold,
+                lst_reviewed
+        """, (
+            data.low_stock_threshold,
+            data.store_id,
+            data.product_id
+        ))
+
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Active product not found"
+            )
+
+        conn.commit()
+
+        return {
+            "message": "Low stock threshold reviewed",
+            "product_id": row[0],
+            "low_stock_threshold": row[1],
+            "lst_reviewed": row[2]
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        cursor.close()
+        conn.close()
 @app.get("/sales-analysis")
 def sales_analysis(store_id: int, start_date: str, end_date: str):
 
