@@ -13,6 +13,16 @@ import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
 
 const API = "https://vendr-onkr.onrender.com";
+const getOrCreateDeviceId = () => {
+  let deviceId = localStorage.getItem("vendr_device_id");
+
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem("vendr_device_id", deviceId);
+  }
+
+  return deviceId;
+};
 
 // 🎨 GLOBAL COLOR SYSTEM (Halo + Toast hybrid)
 const COLORS = {
@@ -56,7 +66,9 @@ function App() {
   const [discountType, setDiscountType] = useState("percent");
 
   const handleLogout = () => {
-    localStorage.clear();
+    localStorage.removeItem("user");
+    localStorage.removeItem("tickets");
+    localStorage.removeItem("activeTicket");
     setUser(null);
   };
 
@@ -75,6 +87,8 @@ function App() {
   useEffect(() => {
     if (activeTicket !== null) {
       localStorage.setItem("activeTicket", activeTicket);
+    } else {
+      localStorage.removeItem("activeTicket");
     }
   }, [activeTicket]);
 
@@ -234,64 +248,112 @@ function App() {
   const finalizeSale = async () => {
     if (!currentTicket || currentTicket.items.length === 0) return;
 
+    const subtotal = currentTicket.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+
+    const discountAmount =
+      discountType === "percent"
+        ? subtotal * (discountValue / 100)
+        : discountValue;
+
+    const ratio =
+      subtotal > 0
+        ? (subtotal - discountAmount) / subtotal
+        : 1;
+
+    const items = currentTicket.items.map(item => ({
+      product_id: item.product_id,
+      quantity: item.quantity,
+      price: item.price * ratio
+    }));
+
+    const clientEventId =
+      currentTicket.client_event_id || crypto.randomUUID();
+
+    const clientCreatedAt =
+      currentTicket.client_created_at || new Date().toISOString();
+
+    // Preserve the same transaction identity before sending.
+    // A retry after a network failure will reuse these values.
+    setTickets(prev =>
+      prev.map(ticket =>
+        ticket.id === activeTicket
+          ? {
+              ...ticket,
+              client_event_id: clientEventId,
+              client_created_at: clientCreatedAt
+            }
+          : ticket
+      )
+    );
+
     try {
-      const subtotal = currentTicket.items.reduce(
-        (sum, i) => sum + i.price * i.quantity,
-        0
-      );
-
-      const discountAmount =
-        discountType === "percent"
-          ? subtotal * (discountValue / 100)
-          : discountValue;
-
-      const ratio = subtotal > 0 ? (subtotal - discountAmount) / subtotal : 1;
-
-      const items = currentTicket.items.map(i => ({
-        product_id: i.product_id,
-        quantity: i.quantity,
-        price: i.price * ratio
-      }));
-
-      await axios.post(`${API}/sale-ticket`, {
+      const response = await axios.post(`${API}/sale-ticket`, {
         store_id: storeId,
-        items
+        items,
+        client_event_id: clientEventId,
+        device_id: getOrCreateDeviceId(),
+        client_created_at: clientCreatedAt
       });
 
-      setTickets(prev => prev.filter(t => t.id !== activeTicket));
-      setActiveTicket(null);
+      if (
+        response.data.status !== "accepted" &&
+        response.data.status !== "already_processed"
+      ) {
+        throw new Error(
+          `Unexpected sale status: ${response.data.status}`
+        );
+      }
 
+      setTickets(prev =>
+        prev.filter(ticket => ticket.id !== activeTicket)
+      );
+
+      setActiveTicket(null);
       setDiscountValue(0);
       setDiscountType("percent");
 
       loadProducts();
 
     } catch (err) {
-      console.error(err);
+      console.error("SALE ERROR:", err);
       alert(t("sale_failed"));
     }
   };
-
+  
   const finalizeIntake = async () => {
-    if (!currentTicket || currentTicket.items.length === 0) return;
+   if (!currentTicket || currentTicket.items.length === 0) return;
 
     try {
+      const items = currentTicket.items.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        cost: item.cost,
+        price: item.price
+      }));
+
       await axios.post(`${API}/intake-ticket`, {
         store_id: storeId,
-        paid: intakePaid,
-        items: currentTicket.items
+        items,
+        paid: intakePaid
       });
 
-      setTickets(prev => prev.filter(t => t.id !== activeTicket));
+      setTickets(prev =>
+        prev.filter(ticket => ticket.id !== activeTicket)
+      );
+
       setActiveTicket(null);
+      setIntakePaid(false);
+
       loadProducts();
 
     } catch (err) {
-      console.error(err);
+      console.error("INTAKE ERROR:", err);
       alert(t("intake_failed"));
     }
   };
-
   // -----------------------------
   // AUTH
   // -----------------------------
