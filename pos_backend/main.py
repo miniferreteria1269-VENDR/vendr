@@ -125,6 +125,9 @@ class StockTransferRequest(BaseModel):
 class SaleTicket(BaseModel):
     store_id: int
     items: List[SaleItem]
+    client_event_id: Optional[str] = None
+    device_id: Optional[str] = None
+    client_created_at: Optional[str] = None
 
 
 class IntakeItem(BaseModel):
@@ -464,113 +467,271 @@ def sale_product(store_id: int, product_id: int, quantity: int):
 
 @app.post("/sale-ticket")
 def sale_ticket(ticket: SaleTicket):
-
     conn = db()
     cursor = conn.cursor()
 
-    print("🔥 SALE ENDPOINT HIT")
+    try:
+        print("🔥 SALE ENDPOINT HIT")
 
-    cursor.execute("SELECT MAX(ticket_id) FROM events")
-    result = cursor.fetchone()[0]
-    ticket_id = 1 if result is None else result + 1
+        # -------------------------------------------------
+        # IDEMPOTENCY CHECK
+        # -------------------------------------------------
+        if ticket.client_event_id:
+            cursor.execute("""
+                SELECT ticket_id
+                FROM events
+                WHERE store_id = %s
+                  AND client_event_id = %s
+                LIMIT 1
+            """, (
+                ticket.store_id,
+                ticket.client_event_id
+            ))
 
-    now = datetime.now(timezone.utc).isoformat()
+            existing = cursor.fetchone()
 
-    total_revenue = 0.0
+            if existing:
+                return {
+                    "message": "Sale already recorded",
+                    "status": "already_processed",
+                    "ticket_id": existing[0],
+                    "client_event_id": ticket.client_event_id
+                }
 
-    for item in ticket.items:
+        # -------------------------------------------------
+        # VALIDATE TICKET
+        # -------------------------------------------------
+        if not ticket.items:
+            raise HTTPException(
+                status_code=400,
+                detail="Sale ticket must contain at least one item"
+            )
+
+        for item in ticket.items:
+            if item.quantity <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Item quantity must be greater than zero"
+                )
+
+            if item.price < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Item price cannot be negative"
+                )
+
+        # -------------------------------------------------
+        # SERIALIZE TICKET NUMBER GENERATION
+        #
+        # This prevents two simultaneous requests from
+        # calculating the same MAX(ticket_id) + 1.
+        # The lock is released automatically on commit
+        # or rollback.
+        # -------------------------------------------------
+        cursor.execute("""
+            SELECT pg_advisory_xact_lock(%s)
+        """, (1269001,))
 
         cursor.execute("""
-            SELECT name, cost
-            FROM products
-            WHERE product_id = %s AND store_id = %s
-        """, (item.product_id, ticket.store_id))
+            SELECT COALESCE(MAX(ticket_id), 0)
+            FROM events
+        """)
 
-        product = cursor.fetchone()
+        ticket_id = cursor.fetchone()[0] + 1
 
-        if not product:
-            raise ValueError("Product not found")
+        now = datetime.now(timezone.utc).isoformat()
+        total_revenue = 0.0
 
-        name, cost = product
+        # -------------------------------------------------
+        # PROCESS SALE ITEMS
+        # -------------------------------------------------
+        for item in ticket.items:
+            cursor.execute("""
+                SELECT
+                    name,
+                    cost
+                FROM products
+                WHERE product_id = %s
+                  AND store_id = %s
+                  AND is_active = 1
+            """, (
+                item.product_id,
+                ticket.store_id
+            ))
 
-        # 🔥 USE DISCOUNTED PRICE FROM FRONTEND (ROUNDED)
-        price = round(float(item.price), 2)
+            product = cursor.fetchone()
 
-        line_total = round(price * item.quantity, 2)
+            if not product:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Product {item.product_id} not found"
+                )
 
-        # INSERT EVENT
+            name, cost = product
+
+            cost = round(float(cost or 0), 2)
+            price = round(float(item.price), 2)
+            line_total = round(price * item.quantity, 2)
+
+            cursor.execute("""
+                INSERT INTO events (
+                    store_id,
+                    event_type,
+                    product_id,
+                    product_name_at_time,
+                    quantity,
+                    cost_at_time,
+                    price_at_time,
+                    event_datetime,
+                    ticket_id,
+                    client_event_id,
+                    device_id,
+                    client_created_at
+                )
+                VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s
+                )
+            """, (
+                ticket.store_id,
+                "sale",
+                item.product_id,
+                name,
+                item.quantity,
+                cost,
+                price,
+                now,
+                ticket_id,
+                ticket.client_event_id,
+                ticket.device_id,
+                ticket.client_created_at
+            ))
+
+            total_revenue += line_total
+
+            # Stock is reduced only for tracked products.
+            # Negative stock remains allowed.
+            cursor.execute("""
+                UPDATE products
+                SET stock = COALESCE(stock, 0) - %s
+                WHERE product_id = %s
+                  AND store_id = %s
+                  AND tracks_stock = 1
+            """, (
+                item.quantity,
+                item.product_id,
+                ticket.store_id
+            ))
+
+        total_revenue = round(total_revenue, 2)
+
+        # -------------------------------------------------
+        # GET ORGANIZATION
+        # -------------------------------------------------
         cursor.execute("""
-            INSERT INTO events
-            (store_id, event_type, product_id, product_name_at_time,
-            quantity, cost_at_time, price_at_time, event_datetime, ticket_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            SELECT organization_id
+            FROM stores
+            WHERE store_id = %s
+        """, (ticket.store_id,))
+
+        store = cursor.fetchone()
+
+        if not store:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        organization_id = (
+            store[0]
+            if store[0] is not None
+            else None
+        )
+
+        # -------------------------------------------------
+        # RECORD CASH EVENT
+        # -------------------------------------------------
+        print("💰 INSERTING CASH EVENT:", total_revenue)
+
+        cursor.execute("""
+            INSERT INTO cash_events (
+                organization_id,
+                store_id,
+                type,
+                direction,
+                amount,
+                note,
+                reference_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
+            organization_id,
             ticket.store_id,
             "sale",
-            item.product_id,
-            name,
-            item.quantity,
-            cost,
-            price,
-            now,
+            1,
+            total_revenue,
+            "POS sale",
             ticket_id
         ))
 
-        # ACCUMULATE TOTAL SAFELY
-        total_revenue += line_total
+        conn.commit()
 
-        # UPDATE STOCK
-        cursor.execute("""
-            UPDATE products
-            SET stock = stock - %s
-            WHERE product_id = %s
-            AND store_id = %s
-            AND tracks_stock = 1
-        """, (item.quantity, item.product_id, ticket.store_id))
+        return {
+            "message": "Sale recorded",
+            "status": "accepted",
+            "ticket_id": ticket_id,
+            "client_event_id": ticket.client_event_id
+        }
 
-    # 🔥 FINAL ROUNDING (CRITICAL)
-    total_revenue = round(total_revenue, 2)
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
 
-    # -----------------------------
-    # INSERT CASH EVENT
-    # -----------------------------
+        # A concurrent request may have recorded the same
+        # client_event_id after the initial duplicate check.
+        if ticket.client_event_id:
+            cursor.execute("""
+                SELECT ticket_id
+                FROM events
+                WHERE store_id = %s
+                  AND client_event_id = %s
+                LIMIT 1
+            """, (
+                ticket.store_id,
+                ticket.client_event_id
+            ))
 
-    print("💰 INSERTING CASH EVENT:", total_revenue)
+            existing = cursor.fetchone()
 
-    cursor.execute("""
-        SELECT organization_id
-        FROM stores
-        WHERE store_id = %s
-    """, (ticket.store_id,))
+            if existing:
+                return {
+                    "message": "Sale already recorded",
+                    "status": "already_processed",
+                    "ticket_id": existing[0],
+                    "client_event_id": ticket.client_event_id
+                }
 
-    result = cursor.fetchone()
-    org_id = result[0] if result and result[0] is not None else None
-
-    cursor.execute("""
-        INSERT INTO cash_events (
-            organization_id,
-            store_id,
-            type,
-            direction,
-            amount,
-            note,
-            reference_id
+        raise HTTPException(
+            status_code=409,
+            detail="Duplicate sale event"
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """, (
-        org_id,
-        ticket.store_id,
-        "sale",
-        1,
-        total_revenue,
-        "POS sale",
-        ticket_id
-    ))
 
-    conn.commit()
-    conn.close()
+    except HTTPException:
+        conn.rollback()
+        raise
 
-    return {"ticket_id": ticket_id}
+    except Exception as e:
+        conn.rollback()
+        print("🔥 SALE TICKET ERROR:", str(e))
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+    finally:
+        cursor.close()
+        conn.close()
 # -----------------------------
 # INTAKE
 # -----------------------------
