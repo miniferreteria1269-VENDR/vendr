@@ -10,6 +10,10 @@ import InventoryReport from "./components/InventoryReport";
 import ProductDiagnostics from "./components/ProductDiagnostics";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
+import {
+  savePendingSale,
+  submitPendingSale
+} from "./offlineSales";
 import CashPanel from "./components/CashPanel";
 
 const API = "https://vendr-onkr.onrender.com";
@@ -263,6 +267,13 @@ function App() {
         ? (subtotal - discountAmount) / subtotal
         : 1;
 
+    const salePayload = {
+      store_id: storeId,
+      items,
+      client_event_id: clientEventId,
+      device_id: getOrCreateDeviceId(),
+      client_created_at: clientCreatedAt
+    };
     const items = currentTicket.items.map(item => ({
       product_id: item.product_id,
       quantity: item.quantity,
