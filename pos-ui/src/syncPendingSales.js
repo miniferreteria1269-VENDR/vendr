@@ -10,7 +10,8 @@ export const syncPendingSales = async () => {
   const results = {
     attempted: 0,
     synced: 0,
-    failed: 0
+    failed: 0,
+    syncedClientEventIds: []
   };
 
   for (const sale of pendingSales) {
@@ -18,7 +19,11 @@ export const syncPendingSales = async () => {
 
     try {
       await submitPendingSale(sale);
+
       results.synced += 1;
+      results.syncedClientEventIds.push(
+        sale.client_event_id
+      );
     } catch (error) {
       results.failed += 1;
 
@@ -28,8 +33,6 @@ export const syncPendingSales = async () => {
         error
       );
 
-      // Stop here if connectivity is still unavailable.
-      // This avoids repeatedly attempting every remaining sale.
       if (!navigator.onLine) {
         break;
       }
