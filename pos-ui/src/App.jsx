@@ -13,6 +13,12 @@ import ProductDiagnostics from "./components/ProductDiagnostics";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
+import {
+  cacheProducts,
+  getCachedProducts,
+  searchCachedProducts,
+  applyLocalSaleToCatalog
+} from "./offlineCatalog";
 
 import {
   savePendingSale,
@@ -157,22 +163,42 @@ function App() {
         response.data ??
         [];
 
-      const sorted = [...data].sort((a, b) =>
-        a.name.localeCompare(
-          b.name,
-          undefined,
-          {
-            sensitivity: "base"
-          }
-        )
+      const sorted = [...data].sort(
+        (a, b) =>
+          a.name.localeCompare(
+            b.name,
+            undefined,
+            {
+              sensitivity: "base"
+            }
+          )
       );
 
       setProducts(sorted);
+
+      await cacheProducts(
+        storeId,
+        sorted
+      );
     } catch (error) {
       console.error(
         "PRODUCT LOAD ERROR:",
         error
       );
+
+      try {
+        const cached =
+          await getCachedProducts(
+            storeId
+          );
+
+        setProducts(cached);
+      } catch (cacheError) {
+        console.error(
+          "CACHED PRODUCT LOAD ERROR:",
+          cacheError
+        );
+      }
     }
   };
 
@@ -187,22 +213,37 @@ function App() {
             store_id: storeId,
             name: term
           }
-        }
+       }
       );
 
-      setProducts(
+      const data =
         response.data.products ??
         response.data ??
-        []
-      );
+        [];
+
+      setProducts(data);
     } catch (error) {
       console.error(
         "PRODUCT SEARCH ERROR:",
         error
       );
+
+      try {
+        const cachedResults =
+          await searchCachedProducts(
+            storeId,
+            term
+          );
+
+        setProducts(cachedResults);
+      } catch (cacheError) {
+        console.error(
+          "CACHED PRODUCT SEARCH ERROR:",
+          cacheError
+        );
+      }
     }
   };
-
   useEffect(() => {
     loadProducts();
   }, [storeId]);
@@ -552,10 +593,40 @@ function App() {
         salePayload
       );
 
-      const responseData =
-        await submitPendingSale(
-          salePayload
-        );
+      await applyLocalSaleToCatalog(
+        storeId,
+        items
+      );
+     
+      setProducts(previousProducts =>
+        previousProducts.map(product => {
+          const soldItem = items.find(
+            item =>
+              item.product_id ===
+              product.product_id
+          );
+
+          if (
+            !soldItem ||
+            product.tracks_stock !== 1
+          ) {
+            return product;
+          }
+
+          return {
+            ...product,
+            stock:
+              Number(product.stock || 0) -
+              Number(soldItem.quantity || 0)
+          };
+        })
+      );
+      
+
+            const responseData =
+              await submitPendingSale(
+                salePayload
+              );
 
       if (
         responseData.status !==
