@@ -242,6 +242,40 @@ function App() {
             `Synced ${results.synced} pending sale(s).`
           );
 
+          const syncedIds = new Set(
+            results.syncedClientEventIds
+          );
+
+          setTickets(previousTickets => {
+            const remainingTickets =
+              previousTickets.filter(
+                ticket =>
+                  !ticket.client_event_id ||
+                  !syncedIds.has(
+                    ticket.client_event_id
+                  )
+              );
+
+            setActiveTicket(previousActiveTicket => {
+              const activeStillExists =
+                remainingTickets.some(
+                  ticket =>
+                    ticket.id ===
+                    previousActiveTicket
+                );
+
+              if (activeStillExists) {
+                return previousActiveTicket;
+              }
+
+              return remainingTickets.length > 0
+                ? remainingTickets[0].id
+                : null;
+            });
+
+            return remainingTickets;
+          });
+
           await loadProducts();
         }
 
