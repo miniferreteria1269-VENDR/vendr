@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
-import { useLang } from "./LanguageContext";
+import { useEffect, useState } from "react";
 import axios from "axios";
+
+import { useLang } from "./LanguageContext";
 import Login from "./Login";
 import Signup from "./Signup";
+
 import ProductPanel from "./components/ProductPanel";
 import TicketPanel from "./components/TicketPanel";
 import HistoryPanel from "./components/HistoryPanel";
@@ -10,13 +12,17 @@ import InventoryReport from "./components/InventoryReport";
 import ProductDiagnostics from "./components/ProductDiagnostics";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
+import CashPanel from "./components/CashPanel";
+
 import {
   savePendingSale,
   submitPendingSale
 } from "./offlineSales";
-import CashPanel from "./components/CashPanel";
+
+import { syncPendingSales } from "./syncPendingSales";
 
 const API = "https://vendr-onkr.onrender.com";
+
 const getOrCreateDeviceId = () => {
   let deviceId = localStorage.getItem("vendr_device_id");
 
@@ -28,7 +34,7 @@ const getOrCreateDeviceId = () => {
   return deviceId;
 };
 
-// 🎨 GLOBAL COLOR SYSTEM (Halo + Toast hybrid)
+// Global color system
 const COLORS = {
   bg: "#0f1115",
   panel: "#1a1d24",
@@ -45,7 +51,6 @@ const COLORS = {
 };
 
 function App() {
-
   const { t } = useLang();
 
   const [user, setUser] = useState(null);
@@ -54,7 +59,13 @@ function App() {
 
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
-    return saved ? JSON.parse(saved) : [];
+
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error("Unable to load saved tickets:", error);
+      return [];
+    }
   });
 
   const [activeTicket, setActiveTicket] = useState(() => {
@@ -69,54 +80,126 @@ function App() {
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState("percent");
 
+  const storeId = user?.store_id;
+
+  const currentTicket = tickets.find(
+    ticket => ticket.id === activeTicket
+  );
+
+  // -------------------------------------------------
+  // AUTHENTICATION
+  // -------------------------------------------------
+
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("tickets");
     localStorage.removeItem("activeTicket");
+
     setUser(null);
+    setTickets([]);
+    setActiveTicket(null);
   };
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
-    if (stored) setUser(JSON.parse(stored));
+
+    if (!stored) return;
+
+    try {
+      setUser(JSON.parse(stored));
+    } catch (error) {
+      console.error("Unable to load saved user:", error);
+      localStorage.removeItem("user");
+    }
   }, []);
 
-  const storeId = user?.store_id;
-  const currentTicket = tickets.find(t => t.id === activeTicket);
+  // -------------------------------------------------
+  // LOCAL TICKET PERSISTENCE
+  // -------------------------------------------------
 
   useEffect(() => {
-    localStorage.setItem("tickets", JSON.stringify(tickets));
+    localStorage.setItem(
+      "tickets",
+      JSON.stringify(tickets)
+    );
   }, [tickets]);
 
   useEffect(() => {
     if (activeTicket !== null) {
-      localStorage.setItem("activeTicket", activeTicket);
+      localStorage.setItem(
+        "activeTicket",
+        String(activeTicket)
+      );
     } else {
       localStorage.removeItem("activeTicket");
     }
   }, [activeTicket]);
 
-  // -----------------------------
+  // -------------------------------------------------
   // PRODUCTS
-  // -----------------------------
+  // -------------------------------------------------
+
   const loadProducts = async () => {
     if (!storeId) return;
 
     try {
-      const res = await axios.get(`${API}/products`, {
-        params: { store_id: storeId }
-      });
+      const response = await axios.get(
+        `${API}/products`,
+        {
+          params: {
+            store_id: storeId
+          }
+        }
+      );
 
-      const data = res.data.products ?? res.data;
+      const data =
+        response.data.products ??
+        response.data ??
+        [];
 
-      const sorted = data.sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      const sorted = [...data].sort((a, b) =>
+        a.name.localeCompare(
+          b.name,
+          undefined,
+          {
+            sensitivity: "base"
+          }
+        )
       );
 
       setProducts(sorted);
+    } catch (error) {
+      console.error(
+        "PRODUCT LOAD ERROR:",
+        error
+      );
+    }
+  };
 
-    } catch (err) {
-      console.error(err);
+  const searchProducts = async term => {
+    if (!storeId) return;
+
+    try {
+      const response = await axios.get(
+        `${API}/products/search`,
+        {
+          params: {
+            store_id: storeId,
+            name: term
+          }
+        }
+      );
+
+      setProducts(
+        response.data.products ??
+        response.data ??
+        []
+      );
+    } catch (error) {
+      console.error(
+        "PRODUCT SEARCH ERROR:",
+        error
+      );
     }
   };
 
@@ -128,30 +211,75 @@ function App() {
     const delay = setTimeout(() => {
       if (!storeId) return;
 
-      if (!searchTerm.trim()) loadProducts();
-      else searchProducts(searchTerm);
+      if (!searchTerm.trim()) {
+        loadProducts();
+      } else {
+        searchProducts(searchTerm);
+      }
     }, 300);
 
-    return () => clearTimeout(delay);
-  }, [searchTerm]);
+    return () => {
+      clearTimeout(delay);
+    };
+  }, [searchTerm, storeId]);
 
-  const searchProducts = async (term) => {
-    try {
-      const res = await axios.get(`${API}/products/search`, {
-        params: { store_id: storeId, name: term }
-      });
+  // -------------------------------------------------
+  // PENDING-SALE SYNCHRONIZATION
+  // -------------------------------------------------
 
-      setProducts(res.data.products ?? res.data);
+  useEffect(() => {
+    const runSync = async () => {
+      if (!navigator.onLine || !storeId) {
+        return;
+      }
 
-    } catch (err) {
-      console.error(err);
-    }
-  };
+      try {
+        const results =
+          await syncPendingSales();
 
-  // -----------------------------
-  // TICKETS (UNCHANGED)
-  // -----------------------------
-  const createTicket = (type) => {
+        if (results.synced > 0) {
+          console.log(
+            `Synced ${results.synced} pending sale(s).`
+          );
+
+          await loadProducts();
+        }
+
+        if (results.failed > 0) {
+          console.warn(
+            `${results.failed} pending sale(s) could not be synchronized.`
+          );
+        }
+      } catch (error) {
+        console.error(
+          "PENDING SALES SYNC ERROR:",
+          error
+        );
+      }
+    };
+
+    // Attempt synchronization when the user/store loads.
+    runSync();
+
+    // Attempt synchronization whenever connectivity returns.
+    window.addEventListener(
+      "online",
+      runSync
+    );
+
+    return () => {
+      window.removeEventListener(
+        "online",
+        runSync
+      );
+    };
+  }, [storeId]);
+
+  // -------------------------------------------------
+  // TICKETS
+  // -------------------------------------------------
+
+  const createTicket = type => {
     const ticket = {
       id: Date.now(),
       type,
@@ -159,28 +287,48 @@ function App() {
       items: []
     };
 
-    setTickets(prev => [...prev, ticket]);
+    setTickets(previous => [
+      ...previous,
+      ticket
+    ]);
+
     setActiveTicket(ticket.id);
   };
 
-  const removeItem = (index) => {
-    setTickets(prev =>
-      prev.map(ticket =>
+  const removeItem = index => {
+    setTickets(previous =>
+      previous.map(ticket =>
         ticket.id === activeTicket
-          ? { ...ticket, items: ticket.items.filter((_, i) => i !== index) }
+          ? {
+              ...ticket,
+              items: ticket.items.filter(
+                (_, itemIndex) =>
+                  itemIndex !== index
+              )
+            }
           : ticket
       )
     );
   };
 
-  const updateItemField = (index, field, value) => {
-    setTickets(prev =>
-      prev.map(ticket =>
+  const updateItemField = (
+    index,
+    field,
+    value
+  ) => {
+    setTickets(previous =>
+      previous.map(ticket =>
         ticket.id === activeTicket
           ? {
               ...ticket,
-              items: ticket.items.map((item, i) =>
-                i === index ? { ...item, [field]: value } : item
+              items: ticket.items.map(
+                (item, itemIndex) =>
+                  itemIndex === index
+                    ? {
+                        ...item,
+                        [field]: value
+                      }
+                    : item
               )
             }
           : ticket
@@ -189,43 +337,73 @@ function App() {
   };
 
   const cancelTicket = () => {
-    const remaining = tickets.filter(t => t.id !== activeTicket);
+    const remaining = tickets.filter(
+      ticket =>
+        ticket.id !== activeTicket
+    );
+
     setTickets(remaining);
-    setActiveTicket(remaining.length ? remaining[0].id : null);
+
+    setActiveTicket(
+      remaining.length
+        ? remaining[0].id
+        : null
+    );
   };
 
-  const renameTicket = (ticketId) => {
-    const newLabel = prompt(t("ticket_name_prompt"));
+  const renameTicket = ticketId => {
+    const newLabel = prompt(
+      t("ticket_name_prompt")
+    );
+
     if (!newLabel) return;
 
-    setTickets(prev =>
-      prev.map(t =>
-        t.id === ticketId ? { ...t, label: newLabel } : t
+    setTickets(previous =>
+      previous.map(ticket =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              label: newLabel
+            }
+          : ticket
       )
     );
   };
 
-  const addItem = (product) => {
+  const addItem = product => {
     if (!currentTicket) return;
 
-    const fullProduct = products.find(
-      p => p.product_id === product.product_id
-    ) || product;
+    const fullProduct =
+      products.find(
+        item =>
+          item.product_id ===
+          product.product_id
+      ) || product;
 
     const updated = tickets.map(ticket => {
-      if (ticket.id !== activeTicket) return ticket;
+      if (ticket.id !== activeTicket) {
+        return ticket;
+      }
 
-      const existing = ticket.items.find(
-        i => i.product_id === fullProduct.product_id
-      );
+      const existing =
+        ticket.items.find(
+          item =>
+            item.product_id ===
+            fullProduct.product_id
+        );
 
       if (existing) {
         return {
           ...ticket,
-          items: ticket.items.map(i =>
-            i.product_id === fullProduct.product_id
-              ? { ...i, quantity: i.quantity + 1 }
-              : i
+          items: ticket.items.map(item =>
+            item.product_id ===
+            fullProduct.product_id
+              ? {
+                  ...item,
+                  quantity:
+                    item.quantity + 1
+                }
+              : item
           )
         };
       }
@@ -235,10 +413,12 @@ function App() {
         items: [
           ...ticket.items,
           {
-            product_id: fullProduct.product_id,
+            product_id:
+              fullProduct.product_id,
             name: fullProduct.name,
             quantity: 1,
-            cost: fullProduct.cost ?? 0,
+            cost:
+              fullProduct.cost ?? 0,
             price: fullProduct.price
           }
         ]
@@ -249,180 +429,304 @@ function App() {
     setSearchTerm("");
   };
 
-  const finalizeSale = async () => {
-    if (!currentTicket || currentTicket.items.length === 0) return;
+  // -------------------------------------------------
+  // FINALIZE SALE
+  // -------------------------------------------------
 
-    const subtotal = currentTicket.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
+  const finalizeSale = async () => {
+    if (
+      !currentTicket ||
+      currentTicket.items.length === 0
+    ) {
+      return;
+    }
+
+    const subtotal =
+      currentTicket.items.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.price) *
+            Number(item.quantity),
+        0
+      );
+
+    const numericDiscount =
+      Number(discountValue) || 0;
 
     const discountAmount =
       discountType === "percent"
-        ? subtotal * (discountValue / 100)
-        : discountValue;
+        ? subtotal *
+          (numericDiscount / 100)
+        : numericDiscount;
+
+    const discountedTotal = Math.max(
+      subtotal - discountAmount,
+      0
+    );
 
     const ratio =
       subtotal > 0
-        ? (subtotal - discountAmount) / subtotal
+        ? discountedTotal / subtotal
         : 1;
 
-    const items = currentTicket.items.map(item => ({
-      product_id: item.product_id,
-      quantity: item.quantity,
-      price: item.price * ratio
-    }));
+    const items =
+      currentTicket.items.map(item => ({
+        product_id: item.product_id,
+        quantity: Number(item.quantity),
+        price:
+          Number(item.price) * ratio
+      }));
 
     const clientEventId =
-      currentTicket.client_event_id || crypto.randomUUID();
+      currentTicket.client_event_id ||
+      crypto.randomUUID();
 
     const clientCreatedAt =
-      currentTicket.client_created_at || new Date().toISOString();
+      currentTicket.client_created_at ||
+      new Date().toISOString();
 
     const salePayload = {
       store_id: storeId,
       items,
-      client_event_id: clientEventId,
-      device_id: getOrCreateDeviceId(),
-      client_created_at: clientCreatedAt
+      client_event_id:
+        clientEventId,
+      device_id:
+        getOrCreateDeviceId(),
+      client_created_at:
+        clientCreatedAt
     };
 
-    // Preserve the same transaction identity before sending.
-    setTickets(prev =>
-      prev.map(ticket =>
+    // Preserve the transaction identity before
+    // performing local or network operations.
+    setTickets(previous =>
+      previous.map(ticket =>
         ticket.id === activeTicket
           ? {
               ...ticket,
-              client_event_id: clientEventId,
-              client_created_at: clientCreatedAt
+              client_event_id:
+                clientEventId,
+              client_created_at:
+                clientCreatedAt
             }
           : ticket
       )
     );
 
     try {
-      await savePendingSale(salePayload);
+      // The local write happens before the network request.
+      await savePendingSale(
+        salePayload
+      );
 
-      const responseData = await submitPendingSale(salePayload);
+      const responseData =
+        await submitPendingSale(
+          salePayload
+        );
 
       if (
-        responseData.status !== "accepted" &&
-        responseData.status !== "already_processed"
+        responseData.status !==
+          "accepted" &&
+        responseData.status !==
+          "already_processed"
       ) {
         throw new Error(
           `Unexpected sale status: ${responseData.status}`
         );
       }
 
-      setTickets(prev =>
-        prev.filter(ticket => ticket.id !== activeTicket)
+      setTickets(previous =>
+        previous.filter(
+          ticket =>
+            ticket.id !==
+            activeTicket
+        )
       );
 
       setActiveTicket(null);
       setDiscountValue(0);
       setDiscountType("percent");
 
-      loadProducts();
+      await loadProducts();
+    } catch (error) {
+      console.error(
+        "SALE ERROR:",
+        error
+      );
 
-    } catch (err) {
-      console.error("SALE ERROR:", err);
       alert(t("sale_failed"));
     }
   };
-  
+
+  // -------------------------------------------------
+  // FINALIZE INTAKE
+  // -------------------------------------------------
+
   const finalizeIntake = async () => {
-   if (!currentTicket || currentTicket.items.length === 0) return;
+    if (
+      !currentTicket ||
+      currentTicket.items.length === 0
+    ) {
+      return;
+    }
 
     try {
-      const items = currentTicket.items.map(item => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        cost: item.cost,
-        price: item.price
-      }));
+      const items =
+        currentTicket.items.map(item => ({
+          product_id:
+            item.product_id,
+          quantity:
+            Number(item.quantity),
+          cost:
+            Number(item.cost),
+          price:
+            Number(item.price)
+        }));
 
-      await axios.post(`${API}/intake-ticket`, {
-        store_id: storeId,
-        items,
-        paid: intakePaid
-      });
+      await axios.post(
+        `${API}/intake-ticket`,
+        {
+          store_id: storeId,
+          items,
+          paid: intakePaid
+        }
+      );
 
-      setTickets(prev =>
-        prev.filter(ticket => ticket.id !== activeTicket)
+      setTickets(previous =>
+        previous.filter(
+          ticket =>
+            ticket.id !==
+            activeTicket
+        )
       );
 
       setActiveTicket(null);
       setIntakePaid(false);
 
-      loadProducts();
+      await loadProducts();
+    } catch (error) {
+      console.error(
+        "INTAKE ERROR:",
+        error
+      );
 
-    } catch (err) {
-      console.error("INTAKE ERROR:", err);
       alert(t("intake_failed"));
     }
   };
-  // -----------------------------
-  // AUTH
-  // -----------------------------
+
+  // -------------------------------------------------
+  // AUTHENTICATION VIEW
+  // -------------------------------------------------
+
   if (!user) {
-    return authMode === "login"
-      ? <Login onLogin={setUser} switchToSignup={() => setAuthMode("signup")} />
-      : <Signup onSignup={setUser} switchToLogin={() => setAuthMode("login")} />;
+    return authMode === "login" ? (
+      <Login
+        onLogin={setUser}
+        switchToSignup={() =>
+          setAuthMode("signup")
+        }
+      />
+    ) : (
+      <Signup
+        onSignup={setUser}
+        switchToLogin={() =>
+          setAuthMode("login")
+        }
+      />
+    );
   }
 
-  if (!storeId) return <div style={{ color: COLORS.text }}>{t("loading")}</div>;
+  if (!storeId) {
+    return (
+      <div
+        style={{
+          color: COLORS.text
+        }}
+      >
+        {t("loading")}
+      </div>
+    );
+  }
 
-  // -----------------------------
+  // -------------------------------------------------
   // UI
-  // -----------------------------
-  return (
-    <div style={{
-      fontFamily: "system-ui, -apple-system, sans-serif",
-      background: COLORS.bg,
-      color: COLORS.text,
-      width: "100vw",
-      height: "100dvh",
-      minHeight: "100dvh",
-      overflow: "hidden",
-      display: "flex",
-      flexDirection: "column"
-    }}>
+  // -------------------------------------------------
 
-      {/* HEADER */}
-      <div style={{
-        padding: 12,
+  return (
+    <div
+      style={{
+        fontFamily:
+          "system-ui, -apple-system, sans-serif",
+        background: COLORS.bg,
+        color: COLORS.text,
+        width: "100vw",
+        height: "100dvh",
+        minHeight: "100dvh",
+        overflow: "hidden",
         display: "flex",
-        justifyContent: "space-between",
-        borderBottom: `1px solid ${COLORS.border}`
-      }}>
-        <div>{user.store_name || `${t("store")} ${storeId}`}</div>
+        flexDirection: "column"
+      }}
+    >
+      {/* HEADER */}
+      <div
+        style={{
+          padding: 12,
+          display: "flex",
+          justifyContent:
+            "space-between",
+          borderBottom:
+            `1px solid ${COLORS.border}`
+        }}
+      >
+        <div>
+          {user.store_name ||
+            `${t("store")} ${storeId}`}
+        </div>
+
         <button
           onClick={handleLogout}
           style={{
-            background: COLORS.panelAlt,
+            background:
+              COLORS.panelAlt,
             border: "none",
             color: COLORS.text,
             padding: "6px 10px",
-            borderRadius: 6
+            borderRadius: 6,
+            cursor: "pointer"
           }}
         >
           {t("logout")}
         </button>
       </div>
 
-      {/* NAV */}
-      <div style={{
-        padding: 10,
-        display: "flex",
-        gap: 8,
-        borderBottom: `1px solid ${COLORS.border}`
-      }}>
-        {["pos", "sales", "inventory", "products", "analysis", "diagnostics", "cash"].map(v => (
+      {/* NAVIGATION */}
+      <div
+        style={{
+          padding: 10,
+          display: "flex",
+          gap: 8,
+          borderBottom:
+            `1px solid ${COLORS.border}`
+        }}
+      >
+        {[
+          "pos",
+          "sales",
+          "inventory",
+          "products",
+          "analysis",
+          "diagnostics",
+          "cash"
+        ].map(navView => (
           <button
-            key={v}
-            onClick={() => setView(v)}
+            key={navView}
+            onClick={() =>
+              setView(navView)
+            }
             style={{
-              background: view === v ? COLORS.primary : COLORS.panelAlt,
+              background:
+                view === navView
+                  ? COLORS.primary
+                  : COLORS.panelAlt,
               color: "white",
               border: "none",
               borderRadius: 8,
@@ -430,60 +734,128 @@ function App() {
               cursor: "pointer"
             }}
           >
-            {t(v === "sales" ? "history" : v).toUpperCase()}
+            {t(
+              navView === "sales"
+                ? "history"
+                : navView
+            ).toUpperCase()}
           </button>
         ))}
       </div>
 
+      {/* POS */}
       {view === "pos" && (
-        <div style={{
-          display: "flex",
-          flex: 1,
-          overflow: "hidden",
-          gap: 12,
-          padding: 12
-        }}>
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            overflow: "hidden",
+            gap: 12,
+            padding: 12
+          }}
+        >
           <ProductPanel
             products={products}
             searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
+            setSearchTerm={
+              setSearchTerm
+            }
             addItem={addItem}
             storeId={storeId}
           />
 
           <TicketPanel
             tickets={tickets}
-            activeTicket={activeTicket}
-            setActiveTicket={setActiveTicket}
-            currentTicket={currentTicket}
-            createTicket={createTicket}
+            activeTicket={
+              activeTicket
+            }
+            setActiveTicket={
+              setActiveTicket
+            }
+            currentTicket={
+              currentTicket
+            }
+            createTicket={
+              createTicket
+            }
             removeItem={removeItem}
-            updateItemField={updateItemField}
-            cancelTicket={cancelTicket}
-            renameTicket={renameTicket}
-            finalizeSale={finalizeSale}
-            finalizeIntake={finalizeIntake}
+            updateItemField={
+              updateItemField
+            }
+            cancelTicket={
+              cancelTicket
+            }
+            renameTicket={
+              renameTicket
+            }
+            finalizeSale={
+              finalizeSale
+            }
+            finalizeIntake={
+              finalizeIntake
+            }
             intakePaid={intakePaid}
-            setIntakePaid={setIntakePaid}
-            discountValue={discountValue}
-            setDiscountValue={setDiscountValue}
-            discountType={discountType}
-            setDiscountType={setDiscountType}
+            setIntakePaid={
+              setIntakePaid
+            }
+            discountValue={
+              discountValue
+            }
+            setDiscountValue={
+              setDiscountValue
+            }
+            discountType={
+              discountType
+            }
+            setDiscountType={
+              setDiscountType
+            }
           />
         </div>
       )}
 
+      {/* HISTORY */}
       {view === "sales" && (
-        <HistoryPanel storeId={storeId} />
+        <HistoryPanel
+          storeId={storeId}
+        />
       )}
-      {view === "inventory" && <InventoryReport storeId={storeId} />}
-      {view === "diagnostics" && (
-        <ProductDiagnostics storeId={storeId} />
-      )}
-      {view === "products" && <ProductManagement storeId={storeId} />}
-      {view === "analysis" && <SalesAnalysisPanel storeId={storeId} />}
-      {view === "cash" && <CashPanel storeId={storeId} products={products} />}
 
+      {/* INVENTORY */}
+      {view === "inventory" && (
+        <InventoryReport
+          storeId={storeId}
+        />
+      )}
+
+      {/* DIAGNOSTICS */}
+      {view === "diagnostics" && (
+        <ProductDiagnostics
+          storeId={storeId}
+        />
+      )}
+
+      {/* PRODUCT MANAGEMENT */}
+      {view === "products" && (
+        <ProductManagement
+          storeId={storeId}
+        />
+      )}
+
+      {/* ANALYSIS */}
+      {view === "analysis" && (
+        <SalesAnalysisPanel
+          storeId={storeId}
+        />
+      )}
+
+      {/* CASH */}
+      {view === "cash" && (
+        <CashPanel
+          storeId={storeId}
+          products={products}
+        />
+      )}
     </div>
   );
 }
