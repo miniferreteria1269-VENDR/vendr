@@ -267,13 +267,6 @@ function App() {
         ? (subtotal - discountAmount) / subtotal
         : 1;
 
-    const salePayload = {
-      store_id: storeId,
-      items,
-      client_event_id: clientEventId,
-      device_id: getOrCreateDeviceId(),
-      client_created_at: clientCreatedAt
-    };
     const items = currentTicket.items.map(item => ({
       product_id: item.product_id,
       quantity: item.quantity,
@@ -286,8 +279,15 @@ function App() {
     const clientCreatedAt =
       currentTicket.client_created_at || new Date().toISOString();
 
+    const salePayload = {
+      store_id: storeId,
+      items,
+      client_event_id: clientEventId,
+      device_id: getOrCreateDeviceId(),
+      client_created_at: clientCreatedAt
+    };
+
     // Preserve the same transaction identity before sending.
-    // A retry after a network failure will reuse these values.
     setTickets(prev =>
       prev.map(ticket =>
         ticket.id === activeTicket
@@ -301,20 +301,16 @@ function App() {
     );
 
     try {
-      const response = await axios.post(`${API}/sale-ticket`, {
-        store_id: storeId,
-        items,
-        client_event_id: clientEventId,
-        device_id: getOrCreateDeviceId(),
-        client_created_at: clientCreatedAt
-      });
+      await savePendingSale(salePayload);
+
+      const responseData = await submitPendingSale(salePayload);
 
       if (
-        response.data.status !== "accepted" &&
-        response.data.status !== "already_processed"
+        responseData.status !== "accepted" &&
+        responseData.status !== "already_processed"
       ) {
         throw new Error(
-          `Unexpected sale status: ${response.data.status}`
+          `Unexpected sale status: ${responseData.status}`
         );
       }
 
