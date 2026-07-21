@@ -539,7 +539,7 @@ function App() {
       0
     );
 
-    const ratio =
+   const ratio =
       subtotal > 0
         ? discountedTotal / subtotal
         : 1;
@@ -558,17 +558,14 @@ function App() {
 
     const clientCreatedAt =
       currentTicket.client_created_at ||
-      new Date().toISOString();
+     new Date().toISOString();
 
     const salePayload = {
       store_id: storeId,
       items,
-      client_event_id:
-        clientEventId,
-      device_id:
-        getOrCreateDeviceId(),
-      client_created_at:
-        clientCreatedAt
+      client_event_id: clientEventId,
+      device_id: getOrCreateDeviceId(),
+      client_created_at: clientCreatedAt
     };
 
     // Preserve the transaction identity before
@@ -587,17 +584,18 @@ function App() {
       )
     );
 
+    let saleSavedLocally = false;
+
     try {
       // The local write happens before the network request.
-      await savePendingSale(
-        salePayload
-      );
+      await savePendingSale(salePayload);
+      saleSavedLocally = true;
 
       await applyLocalSaleToCatalog(
         storeId,
         items
       );
-     
+
       setProducts(previousProducts =>
         previousProducts.map(product => {
           const soldItem = items.find(
@@ -621,12 +619,11 @@ function App() {
           };
         })
       );
-      
 
-            const responseData =
-              await submitPendingSale(
-                salePayload
-              );
+      const responseData =
+        await submitPendingSale(
+          salePayload
+        );
 
       if (
         responseData.status !==
@@ -642,8 +639,7 @@ function App() {
       setTickets(previous =>
         previous.filter(
           ticket =>
-            ticket.id !==
-            activeTicket
+            ticket.id !== activeTicket
         )
       );
 
@@ -652,16 +648,24 @@ function App() {
       setDiscountType("percent");
 
       await loadProducts();
+
     } catch (error) {
       console.error(
         "SALE ERROR:",
         error
       );
 
-      alert(t("sale_failed"));
+      if (saleSavedLocally) {
+        alert(
+          t("sale_saved_pending")
+        );
+      } else {
+        alert(
+          t("sale_save_failed")
+        );
+      }
     }
   };
-
   // -------------------------------------------------
   // FINALIZE INTAKE
   // -------------------------------------------------
