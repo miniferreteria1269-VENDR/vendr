@@ -11,15 +11,11 @@ export const savePendingSale = async (salePayload) => {
   });
 };
 
-export const markSaleSynced = async (clientEventId) => {
-  await offlineDb.pendingSales.update(clientEventId, {
-    status: "synced",
-    synced_at: new Date().toISOString()
-  });
-};
-
 export const submitPendingSale = async (salePayload) => {
-  const response = await axios.post(`${API}/sale-ticket`, salePayload);
+  const response = await axios.post(
+    `${API}/sale-ticket`,
+    salePayload
+  );
 
   if (
     response.data.status !== "accepted" &&
@@ -30,7 +26,9 @@ export const submitPendingSale = async (salePayload) => {
     );
   }
 
-  await markSaleSynced(salePayload.client_event_id);
+  await offlineDb.pendingSales.delete(
+    salePayload.client_event_id
+  );
 
   return response.data;
 };
