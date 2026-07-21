@@ -9,9 +9,8 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
 
-      includeAssets: [
-        "favicon.ico"
-      ],
+      // Let the plugin register the generated service worker automatically.
+      injectRegister: "auto",
 
       manifest: {
         name: "VENDR",
@@ -26,12 +25,11 @@ export default defineConfig({
       },
 
       workbox: {
-        navigateFallback: "/index.html",
-
         globPatterns: [
           "**/*.{js,css,html,ico,png,svg,webmanifest}"
         ],
 
+        navigateFallback: "index.html",
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true
