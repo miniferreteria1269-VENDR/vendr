@@ -117,6 +117,11 @@ export const translations = {
     intake_ticket: "Intake Ticket",
     discount: "Discount",
     loss_on_sale: "Loss on this sale",
+    sale_saved_pending:
+      "Sale saved locally. It will synchronize automatically when the connection returns. Do not submit it again.",
+
+    sale_save_failed:
+      "The sale could not be saved. Please try again.",
 
     // HISTORY / TICKET DETAILS
     ticket: "Ticket",
@@ -359,6 +364,11 @@ export const translations = {
     intake_ticket: "Ticket de ingreso",
     discount: "Descuento",
     loss_on_sale: "Pérdida en esta venta",
+    sale_saved_pending:
+      "Venta guardada localmente. Se sincronizará automáticamente cuando vuelva la conexión. No es necesario volver a registrarla.",
+
+    sale_save_failed:
+      "No se pudo guardar la venta. Inténtelo nuevamente.",
 
     // HISTORY / TICKET DETAILS
     ticket: "Ticket",
