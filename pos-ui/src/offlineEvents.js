@@ -101,6 +101,24 @@ const submitReturnEvent = async event => {
   return response.data;
 };
 
+const submitCashEvent = async event => {
+  const response = await axios.post(
+    `${API}/cash-event`,
+    event.payload
+  );
+
+  if (
+    response.data.status !== "accepted" &&
+    response.data.status !== "already_processed"
+  ) {
+    throw new Error(
+      `Unexpected cash event status: ${response.data.status}`
+    );
+  }
+
+  return response.data;
+};
+
 /**
  * Routes a local event to the correct backend endpoint.
  */
@@ -118,12 +136,22 @@ export const submitPendingEvent = async event => {
         await submitReturnEvent(event);
       break;
 
+    case "revenue":
+    case "expense":
+      responseData =
+        await submitCashEvent(event);
+      break;
+
     default:
       throw new Error(
         `Unsupported pending event type: ${event.event_type}`
       );
   }
 
+  /*
+   * Delete the local queue entry only after the backend
+   * accepts the event or confirms it was already processed.
+   */
   await offlineDb.pendingEvents.delete(
     event.client_event_id
   );
@@ -166,8 +194,10 @@ export const migratePendingSalesToEvents =
           payload: salePayload
         });
 
-      // Whether newly created or already present,
-      // the generic queue now owns this event.
+      /*
+       * Whether newly created or already present,
+       * the generic queue now owns this event.
+       */
       if (
         result.created ||
         await offlineDb.pendingEvents.get(
