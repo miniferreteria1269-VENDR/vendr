@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { useLang } from "../LanguageContext";
-import axios from "axios";
 
-const API = "https://vendr-onkr.onrender.com";
+import { useLang } from "../LanguageContext";
+
+import {
+  savePendingEvent,
+  submitPendingEvent
+} from "../offlineEvents";
 
 const categories = [
   "Aporte Dueño",
@@ -13,56 +16,189 @@ const categories = [
   "Otros"
 ];
 
-function RevenueModal({ storeId, onClose, onSuccess }) {
+const getDeviceId = () => {
+  const storageKey = "vendr_device_id";
+
+  let deviceId =
+    localStorage.getItem(storageKey);
+
+  if (!deviceId) {
+    deviceId =
+      crypto.randomUUID?.() ||
+      `device-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+    localStorage.setItem(
+      storageKey,
+      deviceId
+    );
+  }
+
+  return deviceId;
+};
+
+const createClientEventId = () =>
+  crypto.randomUUID?.() ||
+  `revenue-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+
+function RevenueModal({
+  storeId,
+  onClose,
+  onSuccess
+}) {
   const { t } = useLang();
 
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState(categories[0]);
+  const [category, setCategory] =
+    useState(categories[0]);
   const [note, setNote] = useState("");
+  const [submitting, setSubmitting] =
+    useState(false);
 
   const submit = async () => {
-    if (!amount || Number(amount) <= 0) return;
+    const numericAmount = Number(amount);
+
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0
+    ) {
+      alert(t("enter_valid_amount"));
+      return;
+    }
+
+    const clientEventId =
+      createClientEventId();
+
+    const deviceId = getDeviceId();
+
+    const clientCreatedAt =
+      new Date().toISOString();
+
+    const payload = {
+      store_id: storeId,
+      amount: numericAmount,
+      type: "revenue",
+      category,
+      note: note.trim(),
+      client_event_id: clientEventId,
+      device_id: deviceId,
+      client_created_at: clientCreatedAt
+    };
+
+    const pendingEvent = {
+      client_event_id: clientEventId,
+      event_type: "revenue",
+      store_id: storeId,
+      device_id: deviceId,
+      client_created_at: clientCreatedAt,
+      payload
+    };
+
+    setSubmitting(true);
+
+    let savedLocally = false;
 
     try {
-      await axios.post(`${API}/cash-event`, {
-        store_id: storeId,
-        amount: Number(amount),
-        type: "revenue",
-        category,
-        note
-      });
+      await savePendingEvent(
+        pendingEvent
+      );
 
-      onSuccess();
+      savedLocally = true;
+
+      /*
+       * Refresh the cash screen immediately.
+       * The revenue is now safely stored locally,
+       * even when the device is offline.
+       */
+      try {
+        await onSuccess?.({
+          type: "revenue",
+          amount: numericAmount,
+          local: true,
+          synced: false
+        });
+      } catch (refreshError) {
+        console.warn(
+          "LOCAL REVENUE REFRESH ERROR:",
+          refreshError
+        );
+      }
+
+      /*
+       * Attempt immediate synchronization.
+       * A network failure leaves the event queued.
+       */
+      try {
+        await submitPendingEvent(
+          pendingEvent
+        );
+
+        alert(t("revenue_completed"));
+      } catch (syncError) {
+        console.warn(
+          "REVENUE SAVED PENDING SYNC:",
+          syncError
+        );
+
+        alert(
+          t("revenue_saved_pending")
+        );
+      }
+
       onClose();
+    } catch (error) {
+      console.error(
+        "REVENUE LOCAL SAVE ERROR:",
+        error
+      );
 
-    } catch (err) {
-      console.error("Revenue error:", err);
-      alert(t("failed_add_revenue"));
+      alert(
+        savedLocally
+          ? t("revenue_saved_pending")
+          : t("failed_add_revenue")
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <div style={overlayStyle}>
-
       <div style={modalStyle}>
-        <h3 style={{ marginBottom: 12 }}>{t("add_revenue")}</h3>
+        <h3 style={{ marginBottom: 12 }}>
+          {t("add_revenue")}
+        </h3>
 
         <input
           type="number"
+          min="0"
+          step="0.01"
           placeholder={t("amount")}
           value={amount}
-          onChange={e => setAmount(e.target.value)}
+          onChange={event =>
+            setAmount(event.target.value)
+          }
+          disabled={submitting}
           style={inputStyle}
         />
 
         <select
           value={category}
-          onChange={e => setCategory(e.target.value)}
+          onChange={event =>
+            setCategory(event.target.value)
+          }
+          disabled={submitting}
           style={inputStyle}
         >
-          {categories.map(c => (
-            <option key={c} value={c}>
-              {t(c)}
+          {categories.map(item => (
+            <option
+              key={item}
+              value={item}
+            >
+              {t(item)}
             </option>
           ))}
         </select>
@@ -70,33 +206,48 @@ function RevenueModal({ storeId, onClose, onSuccess }) {
         <input
           placeholder={t("note_optional")}
           value={note}
-          onChange={e => setNote(e.target.value)}
+          onChange={event =>
+            setNote(event.target.value)
+          }
+          disabled={submitting}
           style={inputStyle}
         />
 
         <div style={buttonRow}>
-          <button onClick={submit} style={btnPrimary}>
-            {t("confirm")}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            style={{
+              ...btnPrimary,
+              opacity: submitting ? 0.6 : 1
+            }}
+          >
+            {submitting
+              ? t("loading")
+              : t("confirm")}
           </button>
 
-          <button onClick={onClose} style={btnDanger}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            style={{
+              ...btnDanger,
+              opacity: submitting ? 0.6 : 1
+            }}
+          >
             {t("cancel")}
           </button>
         </div>
       </div>
-
     </div>
   );
 }
 
-//
-// STYLES
-//
-
 const overlayStyle = {
   position: "fixed",
-  top: 0,
-  left: 0,
+  inset: 0,
   width: "100vw",
   height: "100vh",
   background: "rgba(0,0,0,0.6)",
