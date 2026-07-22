@@ -21,11 +21,16 @@ import {
 } from "./offlineCatalog";
 
 import {
-  savePendingSale,
-  submitPendingSale
-} from "./offlineSales";
+  savePendingEvent,
+  submitPendingEvent,
+  migratePendingSalesToEvents
+} from "./offlineEvents";
 
-import { syncPendingSales } from "./syncPendingSales";
+import {
+  syncPendingEvents
+} from "./syncPendingEvents";
+
+
 
 const API = "https://vendr-onkr.onrender.com";
 
@@ -275,44 +280,60 @@ function App() {
       }
 
       try {
+        // Move any legacy pendingSales records into
+        // the new generic pendingEvents queue.
+        const migrated =
+          await migratePendingSalesToEvents();
+
+        if (migrated > 0) {
+          console.log(
+            `Migrated ${migrated} legacy pending sale(s).`
+          );
+        }
+
         const results =
-          await syncPendingSales();
+          await syncPendingEvents();
 
         if (results.synced > 0) {
           console.log(
-            `Synced ${results.synced} pending sale(s).`
+            `Synced ${results.synced} pending event(s).`
           );
 
           const syncedIds = new Set(
             results.syncedClientEventIds
           );
 
+          // At this stage, every generic event being synced
+          // is still a sale, so matching open sale tickets
+          // can be safely removed.
           setTickets(previousTickets => {
             const remainingTickets =
               previousTickets.filter(
                 ticket =>
                   !ticket.client_event_id ||
-                  !syncedIds.has(
+                 !syncedIds.has(
                     ticket.client_event_id
                   )
               );
 
-            setActiveTicket(previousActiveTicket => {
-              const activeStillExists =
-                remainingTickets.some(
-                  ticket =>
-                    ticket.id ===
-                    previousActiveTicket
-                );
+            setActiveTicket(
+              previousActiveTicket => {
+                const activeStillExists =
+                  remainingTickets.some(
+                    ticket =>
+                      ticket.id ===
+                      previousActiveTicket
+                  );
 
-              if (activeStillExists) {
-                return previousActiveTicket;
+                if (activeStillExists) {
+                  return previousActiveTicket;
+                }
+
+                return remainingTickets.length > 0
+                  ? remainingTickets[0].id
+                  : null;
               }
-
-              return remainingTickets.length > 0
-                ? remainingTickets[0].id
-                : null;
-            });
+            );
 
             return remainingTickets;
           });
@@ -322,21 +343,19 @@ function App() {
 
         if (results.failed > 0) {
           console.warn(
-            `${results.failed} pending sale(s) could not be synchronized.`
+            `${results.failed} pending event(s) could not be synchronized.`
           );
         }
       } catch (error) {
         console.error(
-          "PENDING SALES SYNC ERROR:",
+          "PENDING EVENTS SYNC ERROR:",
           error
         );
       }
     };
 
-    // Attempt synchronization when the user/store loads.
     runSync();
 
-    // Attempt synchronization whenever connectivity returns.
     window.addEventListener(
       "online",
       runSync
@@ -539,7 +558,7 @@ function App() {
       0
     );
 
-   const ratio =
+    const ratio =
       subtotal > 0
         ? discountedTotal / subtotal
         : 1;
@@ -558,7 +577,7 @@ function App() {
 
     const clientCreatedAt =
       currentTicket.client_created_at ||
-     new Date().toISOString();
+      new Date().toISOString();
 
     const salePayload = {
       store_id: storeId,
@@ -566,6 +585,17 @@ function App() {
       client_event_id: clientEventId,
       device_id: getOrCreateDeviceId(),
       client_created_at: clientCreatedAt
+    };
+
+    const pendingEvent = {
+      client_event_id: clientEventId,
+      event_type: "sale",
+      store_id: storeId,
+      device_id:
+        salePayload.device_id,
+      client_created_at:
+        clientCreatedAt,
+      payload: salePayload
     };
 
     // Preserve the transaction identity before
@@ -587,42 +617,57 @@ function App() {
     let saleSavedLocally = false;
 
     try {
-      // The local write happens before the network request.
-      await savePendingSale(salePayload);
+      const saveResult =
+        await savePendingEvent(
+          pendingEvent
+        );
+
       saleSavedLocally = true;
 
-      await applyLocalSaleToCatalog(
-        storeId,
-        items
-      );
+      /*
+       * Apply the local inventory change only when
+       * this event was newly inserted.
+       *
+       * If the same ticket is retried or double-clicked,
+       * saveResult.created is false and stock must not
+       * be reduced locally a second time.
+       */
+      if (saveResult.created) {
+        await applyLocalSaleToCatalog(
+          storeId,
+          items
+        );
 
-      setProducts(previousProducts =>
-        previousProducts.map(product => {
-          const soldItem = items.find(
-            item =>
-              item.product_id ===
-              product.product_id
-          );
+        setProducts(previousProducts =>
+          previousProducts.map(product => {
+            const soldItem = items.find(
+              item =>
+                item.product_id ===
+                product.product_id
+            );
 
-          if (
-            !soldItem ||
-            product.tracks_stock !== 1
-          ) {
-            return product;
-          }
+            if (
+              !soldItem ||
+              product.tracks_stock !== 1
+            ) {
+              return product;
+            }
 
-          return {
-            ...product,
-            stock:
-              Number(product.stock || 0) -
-              Number(soldItem.quantity || 0)
-          };
-        })
-      );
+            return {
+              ...product,
+              stock:
+                Number(product.stock || 0) -
+                Number(
+                  soldItem.quantity || 0
+                )
+            };
+          })
+        );
+      }
 
       const responseData =
-        await submitPendingSale(
-          salePayload
+        await submitPendingEvent(
+          pendingEvent
         );
 
       if (
@@ -666,6 +711,8 @@ function App() {
       }
     }
   };
+
+  
   // -------------------------------------------------
   // FINALIZE INTAKE
   // -------------------------------------------------
