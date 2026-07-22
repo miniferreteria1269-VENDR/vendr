@@ -10,7 +10,7 @@ const API = "https://vendr-onkr.onrender.com";
  *
  * Returns created: false when this client_event_id is
  * already in the queue. This prevents retries or double
- * clicks from applying the local stock movement twice.
+ * clicks from applying local inventory changes twice.
  */
 export const savePendingEvent = async ({
   client_event_id,
@@ -83,11 +83,26 @@ const submitSaleEvent = async event => {
   return response.data;
 };
 
+const submitReturnEvent = async event => {
+  const response = await axios.post(
+    `${API}/returns`,
+    event.payload
+  );
+
+  if (
+    response.data.status !== "accepted" &&
+    response.data.status !== "already_processed"
+  ) {
+    throw new Error(
+      `Unexpected return/refund status: ${response.data.status}`
+    );
+  }
+
+  return response.data;
+};
+
 /**
  * Routes a local event to the correct backend endpoint.
- *
- * At first, only sale is supported. Returns, intakes,
- * adjustments, and other event types will be added here.
  */
 export const submitPendingEvent = async event => {
   let responseData;
@@ -96,6 +111,11 @@ export const submitPendingEvent = async event => {
     case "sale":
       responseData =
         await submitSaleEvent(event);
+      break;
+
+    case "return":
+      responseData =
+        await submitReturnEvent(event);
       break;
 
     default:
