@@ -67,31 +67,16 @@ function CashPanel({
         confirmedBalance
       );
 
-      /*
-       * When the server responds successfully,
-       * use its confirmed balance directly.
-       */
-      setBalance(confirmedBalance);
-    } catch (error) {
-      console.warn(
-        "USING OFFLINE CASH BALANCE:",
-        error
+      const displayedBalance =
+        await getDisplayedCashBalance(
+          storeId
+        );
+
+      setBalance(
+        displayedBalance !== null
+          ? displayedBalance
+          : confirmedBalance
       );
-
-      try {
-        /*
-         * Offline balance =
-         * last confirmed server balance
-         * + all pending local cash effects.
-         */
-        const displayedBalance =
-          await getDisplayedCashBalance(
-            storeId
-          );
-
-        if (displayedBalance !== null) {
-          setBalance(displayedBalance);
-        }
       } catch (offlineError) {
         console.error(
           "FAILED TO LOAD OFFLINE CASH BALANCE:",
