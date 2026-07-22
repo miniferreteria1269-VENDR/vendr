@@ -51,15 +51,32 @@ function RevenueModal({
 }) {
   const { t } = useLang();
 
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] =
+    useState("");
+
   const [category, setCategory] =
     useState(categories[0]);
-  const [note, setNote] = useState("");
+
+  const [note, setNote] =
+    useState("");
+
   const [submitting, setSubmitting] =
     useState(false);
 
+  const refreshCashPanel = async () => {
+    try {
+      await onSuccess?.();
+    } catch (refreshError) {
+      console.warn(
+        "REVENUE BALANCE REFRESH ERROR:",
+        refreshError
+      );
+    }
+  };
+
   const submit = async () => {
-    const numericAmount = Number(amount);
+    const numericAmount =
+      Number(amount);
 
     if (
       !Number.isFinite(numericAmount) ||
@@ -69,10 +86,16 @@ function RevenueModal({
       return;
     }
 
+    if (!storeId) {
+      alert(t("failed_add_revenue"));
+      return;
+    }
+
     const clientEventId =
       createClientEventId();
 
-    const deviceId = getDeviceId();
+    const deviceId =
+      getDeviceId();
 
     const clientCreatedAt =
       new Date().toISOString();
@@ -99,49 +122,51 @@ function RevenueModal({
 
     setSubmitting(true);
 
-    let savedLocally = false;
-
     try {
+      /*
+       * Save the event locally before making any
+       * network request.
+       */
       await savePendingEvent(
         pendingEvent
       );
 
-      savedLocally = true;
-
-      /*
-       * Refresh the cash screen immediately.
-       * The revenue is now safely stored locally,
-       * even when the device is offline.
-       */
       try {
-        await onSuccess?.({
-          type: "revenue",
-          amount: numericAmount,
-          local: true,
-          synced: false
-        });
-      } catch (refreshError) {
-        console.warn(
-          "LOCAL REVENUE REFRESH ERROR:",
-          refreshError
-        );
-      }
-
-      /*
-       * Attempt immediate synchronization.
-       * A network failure leaves the event queued.
-       */
-      try {
+        /*
+         * Online path:
+         *
+         * The backend accepts the revenue and
+         * submitPendingEvent removes it from the queue.
+         */
         await submitPendingEvent(
           pendingEvent
         );
 
-        alert(t("revenue_completed"));
+        /*
+         * Refresh after synchronization so the backend
+         * balance already includes this revenue.
+         */
+        await refreshCashPanel();
+
+        alert(
+          t("revenue_completed")
+        );
       } catch (syncError) {
+        /*
+         * Offline path:
+         *
+         * The event remains in pendingEvents.
+         * CashPanel will calculate:
+         *
+         * cached confirmed balance
+         * + pending revenue
+         */
         console.warn(
           "REVENUE SAVED PENDING SYNC:",
           syncError
         );
+
+        await refreshCashPanel();
 
         alert(
           t("revenue_saved_pending")
@@ -149,16 +174,14 @@ function RevenueModal({
       }
 
       onClose();
-    } catch (error) {
+    } catch (saveError) {
       console.error(
         "REVENUE LOCAL SAVE ERROR:",
-        error
+        saveError
       );
 
       alert(
-        savedLocally
-          ? t("revenue_saved_pending")
-          : t("failed_add_revenue")
+        t("failed_add_revenue")
       );
     } finally {
       setSubmitting(false);
@@ -168,7 +191,7 @@ function RevenueModal({
   return (
     <div style={overlayStyle}>
       <div style={modalStyle}>
-        <h3 style={{ marginBottom: 12 }}>
+        <h3 style={titleStyle}>
           {t("add_revenue")}
         </h3>
 
@@ -176,10 +199,13 @@ function RevenueModal({
           type="number"
           min="0"
           step="0.01"
+          inputMode="decimal"
           placeholder={t("amount")}
           value={amount}
           onChange={event =>
-            setAmount(event.target.value)
+            setAmount(
+              event.target.value
+            )
           }
           disabled={submitting}
           style={inputStyle}
@@ -188,7 +214,9 @@ function RevenueModal({
         <select
           value={category}
           onChange={event =>
-            setCategory(event.target.value)
+            setCategory(
+              event.target.value
+            )
           }
           disabled={submitting}
           style={inputStyle}
@@ -204,10 +232,13 @@ function RevenueModal({
         </select>
 
         <input
+          type="text"
           placeholder={t("note_optional")}
           value={note}
           onChange={event =>
-            setNote(event.target.value)
+            setNote(
+              event.target.value
+            )
           }
           disabled={submitting}
           style={inputStyle}
@@ -220,7 +251,12 @@ function RevenueModal({
             disabled={submitting}
             style={{
               ...btnPrimary,
-              opacity: submitting ? 0.6 : 1
+              opacity:
+                submitting ? 0.6 : 1,
+              cursor:
+                submitting
+                  ? "default"
+                  : "pointer"
             }}
           >
             {submitting
@@ -234,7 +270,12 @@ function RevenueModal({
             disabled={submitting}
             style={{
               ...btnDanger,
-              opacity: submitting ? 0.6 : 1
+              opacity:
+                submitting ? 0.6 : 1,
+              cursor:
+                submitting
+                  ? "default"
+                  : "pointer"
             }}
           >
             {t("cancel")}
@@ -250,10 +291,12 @@ const overlayStyle = {
   inset: 0,
   width: "100vw",
   height: "100vh",
-  background: "rgba(0,0,0,0.6)",
+  background: "rgba(0, 0, 0, 0.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  padding: 16,
+  boxSizing: "border-box",
   zIndex: 1000
 };
 
@@ -263,18 +306,28 @@ const modalStyle = {
   borderRadius: 12,
   border: "1px solid #2f3542",
   color: "#e6edf3",
-  width: 320,
+  width: "100%",
+  maxWidth: 320,
   display: "flex",
   flexDirection: "column",
-  gap: 10
+  gap: 10,
+  boxSizing: "border-box"
+};
+
+const titleStyle = {
+  margin: 0,
+  marginBottom: 12
 };
 
 const inputStyle = {
+  width: "100%",
+  minHeight: 40,
   background: "#2a2f3a",
   border: "1px solid #3a4250",
   borderRadius: 6,
   color: "white",
-  padding: 8
+  padding: 8,
+  boxSizing: "border-box"
 };
 
 const buttonRow = {
