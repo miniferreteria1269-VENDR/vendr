@@ -2858,6 +2858,7 @@ def test_cash_balance(store_id: int):
 @app.post("/cash-event")
 def create_cash_event(data: CashEventRequest):
     conn = None
+    cursor = None
 
     try:
         if data.type not in ("revenue", "expense"):
@@ -2875,12 +2876,34 @@ def create_cash_event(data: CashEventRequest):
         conn = db()
         cursor = conn.cursor()
 
-        direction = (
-            1
-            if data.type == "revenue"
-            else -1
-        )
+        # ---------------------------------------------
+        # IDEMPOTENCY CHECK
+        # ---------------------------------------------
+        if data.client_event_id:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM cash_events
+                WHERE store_id = %s
+                  AND client_event_id = %s
+                LIMIT 1
+                """,
+                (
+                    data.store_id,
+                    data.client_event_id
+                )
+            )
 
+            if cursor.fetchone():
+                return {
+                    "status": "already_processed",
+                    "client_event_id":
+                        data.client_event_id
+                }
+
+        # ---------------------------------------------
+        # VALIDATE STORE
+        # ---------------------------------------------
         cursor.execute(
             """
             SELECT organization_id
@@ -2890,16 +2913,25 @@ def create_cash_event(data: CashEventRequest):
             (data.store_id,)
         )
 
-        result = cursor.fetchone()
+        store = cursor.fetchone()
 
-        if not result:
+        if not store:
             raise HTTPException(
                 status_code=404,
                 detail="Store not found"
             )
 
-        organization_id = result[0]
+        organization_id = store[0]
 
+        direction = (
+            1
+            if data.type == "revenue"
+            else -1
+        )
+
+        # ---------------------------------------------
+        # RECORD CASH EVENT
+        # ---------------------------------------------
         cursor.execute(
             """
             INSERT INTO cash_events (
@@ -2918,9 +2950,6 @@ def create_cash_event(data: CashEventRequest):
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s
             )
-            ON CONFLICT (client_event_id)
-            WHERE client_event_id IS NOT NULL
-            DO NOTHING
             """,
             (
                 organization_id,
@@ -2936,19 +2965,20 @@ def create_cash_event(data: CashEventRequest):
             )
         )
 
-        inserted = cursor.rowcount > 0
-
         conn.commit()
-
-        if not inserted:
-            return {
-                "status": "already_processed",
-                "client_event_id":
-                    data.client_event_id
-            }
 
         return {
             "status": "accepted",
+            "client_event_id":
+                data.client_event_id
+        }
+
+    except psycopg2.errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        return {
+            "status": "already_processed",
             "client_event_id":
                 data.client_event_id
         }
@@ -2965,7 +2995,7 @@ def create_cash_event(data: CashEventRequest):
 
         print(
             "🔥 CASH EVENT ERROR:",
-            str(error)
+            repr(error)
         )
 
         raise HTTPException(
@@ -2974,6 +3004,9 @@ def create_cash_event(data: CashEventRequest):
         )
 
     finally:
+        if cursor:
+            cursor.close()
+
         if conn:
             conn.close()
 
