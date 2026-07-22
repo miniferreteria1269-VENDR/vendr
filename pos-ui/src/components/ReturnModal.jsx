@@ -1,7 +1,16 @@
 import { useMemo, useState } from "react";
-import axios from "axios";
 
 import { useLang } from "../LanguageContext";
+
+import {
+  savePendingEvent,
+  submitPendingEvent
+} from "../offlineEvents";
+
+import {
+  applyLocalReturnToCatalog
+} from "../offlineCatalog";
+
 import {
   COLORS,
   input,
@@ -9,7 +18,33 @@ import {
   btnSecondary
 } from "../uiStyles";
 
-const API = "https://vendr-onkr.onrender.com";
+const getDeviceId = () => {
+  const storageKey = "vendr_device_id";
+
+  let deviceId =
+    localStorage.getItem(storageKey);
+
+  if (!deviceId) {
+    deviceId =
+      crypto.randomUUID?.() ||
+      `device-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+    localStorage.setItem(
+      storageKey,
+      deviceId
+    );
+  }
+
+  return deviceId;
+};
+
+const createClientEventId = () =>
+  crypto.randomUUID?.() ||
+  `return-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
 
 function ReturnModal({
   storeId,
@@ -93,6 +128,7 @@ function ReturnModal({
 
   const submit = async () => {
     const numericAmount = Number(amount);
+    const numericQuantity = Number(quantity);
 
     if (
       !Number.isFinite(numericAmount) ||
@@ -113,8 +149,8 @@ function ReturnModal({
     if (
       mode === "return" &&
       (
-        !Number.isFinite(Number(quantity)) ||
-        Number(quantity) <= 0
+        !Number.isFinite(numericQuantity) ||
+        numericQuantity <= 0
       )
     ) {
       alert(t("enter_valid_quantity"));
@@ -127,7 +163,7 @@ function ReturnModal({
             {
               product_id:
                 selectedProduct.product_id,
-              quantity: Number(quantity),
+              quantity: numericQuantity,
               cost: Number(
                 selectedProduct.cost || 0
               ),
@@ -138,41 +174,143 @@ function ReturnModal({
           ]
         : [];
 
+    const clientEventId =
+      createClientEventId();
+
+    const deviceId = getDeviceId();
+
+    const clientCreatedAt =
+      new Date().toISOString();
+
+    const payload = {
+      store_id: storeId,
+      amount: numericAmount,
+      items,
+      note: note.trim(),
+      client_event_id: clientEventId,
+      device_id: deviceId,
+      client_created_at: clientCreatedAt
+    };
+
+    const pendingEvent = {
+      client_event_id: clientEventId,
+      event_type: "return",
+      store_id: storeId,
+      device_id: deviceId,
+      client_created_at: clientCreatedAt,
+      payload
+    };
+
     setSubmitting(true);
 
-    try {
-      const response = await axios.post(
-        `${API}/returns`,
-        {
-          store_id: storeId,
-          amount: numericAmount,
-          items,
-          note
-        }
-      );
+    let savedLocally = false;
 
-      if (
-        response.data.status !== "accepted" &&
-        response.data.status !== "ok"
-      ) {
-        throw new Error(
-          `Unexpected return status: ${response.data.status}`
+    try {
+      /*
+       * Save before attempting the network request.
+       * At this point, the refund/return is durable even
+       * if the device has no connection.
+       */
+      const saveResult =
+        await savePendingEvent(pendingEvent);
+
+      savedLocally = true;
+
+      /*
+       * Apply the inventory increase only when this event
+       * was newly inserted. This prevents duplicate local
+       * stock adjustments.
+       *
+       * Refund-only events have an empty items array, so
+       * this produces no inventory movement.
+       */
+      if (saveResult.created) {
+        await applyLocalReturnToCatalog(
+          storeId,
+          items
         );
       }
 
-      await onSuccess?.();
+      /*
+       * Close the modal and refresh the visible catalog
+       * from local state before attempting synchronization.
+       */
+      try {
+        await onSuccess?.({
+          type:
+            mode === "return"
+              ? "return"
+              : "refund",
+          synced: false,
+          local: true
+        });
+      } catch (refreshError) {
+        console.warn(
+          "LOCAL RETURN REFRESH ERROR:",
+          refreshError
+        );
+      }
+
+      /*
+       * Immediate synchronization attempt.
+       * submitPendingEvent deletes the queued event only
+       * after the backend accepts it or confirms that it
+       * was already processed.
+       */
+      try {
+        await submitPendingEvent(
+          pendingEvent
+        );
+
+        try {
+          await onSuccess?.({
+            type:
+              mode === "return"
+                ? "return"
+                : "refund",
+            synced: true,
+            local: false
+          });
+        } catch (refreshError) {
+          console.warn(
+            "POST-SYNC RETURN REFRESH ERROR:",
+            refreshError
+          );
+        }
+
+        alert(
+          mode === "return"
+            ? t("return_completed")
+            : t("refund_completed")
+        );
+      } catch (syncError) {
+        console.warn(
+          "RETURN/REFUND SAVED PENDING SYNC:",
+          syncError
+        );
+
+        alert(
+          t("return_saved_pending")
+        );
+      }
+
       onClose();
     } catch (error) {
       console.error(
-        "RETURN/REFUND ERROR:",
+        "RETURN/REFUND LOCAL SAVE ERROR:",
         error
       );
 
-      alert(t("failed"));
+      alert(
+        savedLocally
+          ? t("return_saved_pending")
+          : t("return_save_failed")
+      );
     } finally {
       setSubmitting(false);
     }
   };
+
 
   return (
     <div style={overlayStyle}>
