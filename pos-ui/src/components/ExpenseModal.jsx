@@ -1,111 +1,324 @@
 import { useState } from "react";
+
 import { useLang } from "../LanguageContext";
-import axios from "axios";
 
-const API = "https://vendr-onkr.onrender.com";
+import {
+  savePendingEvent,
+  submitPendingEvent
+} from "../offlineEvents";
 
-// ✅ SAFE STRUCTURE (value stays Spanish, label is key)
+// Keep stored values in Spanish for reporting consistency.
+// Labels remain translation keys for the UI.
 const categories = [
-  { value: "Compra Mercaderia", label: "inventory_purchase" },
-  { value: "Nomina", label: "payroll" },
-  { value: "Utilidades", label: "utilities" },
-  { value: "Impuestos", label: "taxes" },
-  { value: "Mantenimiento", label: "maintenance" },
-  { value: "Renta", label: "rent" },
-  { value: "Retiro Dueño", label: "owner_draw" },
-  { value: "Otros", label: "other" }
+  {
+    value: "Compra Mercaderia",
+    label: "inventory_purchase"
+  },
+  {
+    value: "Nomina",
+    label: "payroll"
+  },
+  {
+    value: "Utilidades",
+    label: "utilities"
+  },
+  {
+    value: "Impuestos",
+    label: "taxes"
+  },
+  {
+    value: "Mantenimiento",
+    label: "maintenance"
+  },
+  {
+    value: "Renta",
+    label: "rent"
+  },
+  {
+    value: "Retiro Dueño",
+    label: "owner_draw"
+  },
+  {
+    value: "Otros",
+    label: "other"
+  }
 ];
 
-function ExpenseModal({ storeId, onClose, onSuccess }) {
+const getDeviceId = () => {
+  const storageKey = "vendr_device_id";
+
+  let deviceId =
+    localStorage.getItem(storageKey);
+
+  if (!deviceId) {
+    deviceId =
+      crypto.randomUUID?.() ||
+      `device-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+    localStorage.setItem(
+      storageKey,
+      deviceId
+    );
+  }
+
+  return deviceId;
+};
+
+const createClientEventId = () =>
+  crypto.randomUUID?.() ||
+  `expense-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+
+function ExpenseModal({
+  storeId,
+  onClose,
+  onSuccess
+}) {
   const { t } = useLang();
 
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState(categories[0].value);
-  const [note, setNote] = useState("");
+  const [amount, setAmount] =
+    useState("");
+
+  const [category, setCategory] =
+    useState(categories[0].value);
+
+  const [note, setNote] =
+    useState("");
+
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const refreshCashPanel = async () => {
+    try {
+      await onSuccess?.();
+    } catch (refreshError) {
+      console.warn(
+        "EXPENSE BALANCE REFRESH ERROR:",
+        refreshError
+      );
+    }
+  };
 
   const submit = async () => {
-    if (!amount || Number(amount) <= 0) return;
+    const numericAmount =
+      Number(amount);
+
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0
+    ) {
+      alert(t("enter_valid_amount"));
+      return;
+    }
+
+    if (!storeId) {
+      alert(t("failed_add_expense"));
+      return;
+    }
+
+    const clientEventId =
+      createClientEventId();
+
+    const deviceId =
+      getDeviceId();
+
+    const clientCreatedAt =
+      new Date().toISOString();
+
+    const payload = {
+      store_id: storeId,
+      amount: numericAmount,
+      type: "expense",
+      category,
+      note: note.trim(),
+      client_event_id: clientEventId,
+      device_id: deviceId,
+      client_created_at: clientCreatedAt
+    };
+
+    const pendingEvent = {
+      client_event_id: clientEventId,
+      event_type: "expense",
+      store_id: storeId,
+      device_id: deviceId,
+      client_created_at: clientCreatedAt,
+      payload
+    };
+
+    setSubmitting(true);
 
     try {
-      await axios.post(`${API}/cash-event`, {
-        store_id: storeId,
-        amount: Number(amount),
-        type: "expense",
-        category,
-        note
-      });
+      /*
+       * Save locally before attempting the network request.
+       */
+      await savePendingEvent(
+        pendingEvent
+      );
 
-      onSuccess();
+      try {
+        /*
+         * Online path:
+         * backend accepts the expense and the queue entry
+         * is removed by submitPendingEvent().
+         */
+        await submitPendingEvent(
+          pendingEvent
+        );
+
+        /*
+         * Refresh after synchronization so the backend
+         * balance already includes the expense.
+         */
+        await refreshCashPanel();
+
+        alert(
+          t("expense_completed")
+        );
+      } catch (syncError) {
+        /*
+         * Offline path:
+         * the event remains queued, and CashPanel will show
+         * cached confirmed balance minus pending expense.
+         */
+        console.warn(
+          "EXPENSE SAVED PENDING SYNC:",
+          syncError
+        );
+
+        await refreshCashPanel();
+
+        alert(
+          t("expense_saved_pending")
+        );
+      }
+
       onClose();
+    } catch (saveError) {
+      console.error(
+        "EXPENSE LOCAL SAVE ERROR:",
+        saveError
+      );
 
-    } catch (err) {
-      console.error("Expense error:", err);
-      alert(t("failed_add_expense"));
+      alert(
+        t("failed_add_expense")
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <div style={overlayStyle}>
-
       <div style={modalStyle}>
-        <h3 style={{ marginBottom: 12 }}>{t("add_expense")}</h3>
+        <h3 style={titleStyle}>
+          {t("add_expense")}
+        </h3>
 
         <input
           type="number"
+          min="0"
+          step="0.01"
+          inputMode="decimal"
           placeholder={t("amount")}
           value={amount}
-          onChange={e => setAmount(e.target.value)}
+          onChange={event =>
+            setAmount(
+              event.target.value
+            )
+          }
+          disabled={submitting}
           style={inputStyle}
         />
 
         <select
           value={category}
-          onChange={e => setCategory(e.target.value)}
+          onChange={event =>
+            setCategory(
+              event.target.value
+            )
+          }
+          disabled={submitting}
           style={inputStyle}
         >
-          {categories.map(c => (
-            <option key={c.value} value={c.value}>
-              {t(c.label)}
+          {categories.map(item => (
+            <option
+              key={item.value}
+              value={item.value}
+            >
+              {t(item.label)}
             </option>
           ))}
         </select>
 
         <input
+          type="text"
           placeholder={t("note_optional")}
           value={note}
-          onChange={e => setNote(e.target.value)}
+          onChange={event =>
+            setNote(
+              event.target.value
+            )
+          }
+          disabled={submitting}
           style={inputStyle}
         />
 
         <div style={buttonRow}>
-          <button onClick={submit} style={btnPrimary}>
-            {t("confirm")}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            style={{
+              ...btnPrimary,
+              opacity:
+                submitting ? 0.6 : 1,
+              cursor:
+                submitting
+                  ? "default"
+                  : "pointer"
+            }}
+          >
+            {submitting
+              ? t("loading")
+              : t("confirm")}
           </button>
 
-          <button onClick={onClose} style={btnDanger}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            style={{
+              ...btnDanger,
+              opacity:
+                submitting ? 0.6 : 1,
+              cursor:
+                submitting
+                  ? "default"
+                  : "pointer"
+            }}
+          >
             {t("cancel")}
           </button>
         </div>
       </div>
-
     </div>
   );
 }
 
-//
-// STYLES
-//
-
 const overlayStyle = {
   position: "fixed",
-  top: 0,
-  left: 0,
+  inset: 0,
   width: "100vw",
   height: "100vh",
-  background: "rgba(0,0,0,0.6)",
+  background: "rgba(0, 0, 0, 0.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  padding: 16,
+  boxSizing: "border-box",
   zIndex: 1000
 };
 
@@ -115,18 +328,28 @@ const modalStyle = {
   borderRadius: 12,
   border: "1px solid #2f3542",
   color: "#e6edf3",
-  width: 320,
+  width: "100%",
+  maxWidth: 320,
   display: "flex",
   flexDirection: "column",
-  gap: 10
+  gap: 10,
+  boxSizing: "border-box"
+};
+
+const titleStyle = {
+  margin: 0,
+  marginBottom: 12
 };
 
 const inputStyle = {
+  width: "100%",
+  minHeight: 40,
   background: "#2a2f3a",
   border: "1px solid #3a4250",
   borderRadius: 6,
   color: "white",
-  padding: 8
+  padding: 8,
+  boxSizing: "border-box"
 };
 
 const buttonRow = {
