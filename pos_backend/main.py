@@ -145,9 +145,13 @@ class IntakeTicket(BaseModel):
 class CashEventRequest(BaseModel):
     store_id: int
     amount: float
-    type: str  # "revenue" or "expense"
+    type: str
     category: str
     note: Optional[str] = None
+
+    client_event_id: Optional[str] = None
+    device_id: Optional[str] = None
+    client_created_at: Optional[str] = None
 
 class ReturnItem(BaseModel):
     product_id: int
@@ -2853,23 +2857,51 @@ def test_cash_balance(store_id: int):
 
 @app.post("/cash-event")
 def create_cash_event(data: CashEventRequest):
+    conn = None
 
     try:
+        if data.type not in ("revenue", "expense"):
+            raise HTTPException(
+                status_code=400,
+                detail="Cash event type must be revenue or expense"
+            )
+
+        if data.amount <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Amount must be greater than zero"
+            )
+
         conn = db()
         cursor = conn.cursor()
 
-        direction = 1 if data.type == "revenue" else -1
+        direction = (
+            1
+            if data.type == "revenue"
+            else -1
+        )
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT organization_id
             FROM stores
             WHERE store_id = %s
-        """, (data.store_id,))
+            """,
+            (data.store_id,)
+        )
 
         result = cursor.fetchone()
-        org_id = result[0] if result and result[0] is not None else None
 
-        cursor.execute("""
+        if not result:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        organization_id = result[0]
+
+        cursor.execute(
+            """
             INSERT INTO cash_events (
                 organization_id,
                 store_id,
@@ -2877,27 +2909,73 @@ def create_cash_event(data: CashEventRequest):
                 direction,
                 amount,
                 category,
-                note
+                note,
+                client_event_id,
+                device_id,
+                client_created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (
-            org_id,
-            data.store_id,
-            data.type,
-            direction,
-            data.amount,
-            data.category,
-            data.note
-        ))
+            VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s
+            )
+            ON CONFLICT (client_event_id)
+            WHERE client_event_id IS NOT NULL
+            DO NOTHING
+            """,
+            (
+                organization_id,
+                data.store_id,
+                data.type,
+                direction,
+                data.amount,
+                data.category,
+                data.note,
+                data.client_event_id,
+                data.device_id,
+                data.client_created_at
+            )
+        )
+
+        inserted = cursor.rowcount > 0
 
         conn.commit()
-        conn.close()
 
-        return {"status": "ok"}
+        if not inserted:
+            return {
+                "status": "already_processed",
+                "client_event_id":
+                    data.client_event_id
+            }
 
-    except Exception as e:
-        print("🔥 CASH EVENT ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "status": "accepted",
+            "client_event_id":
+                data.client_event_id
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "🔥 CASH EVENT ERROR:",
+            str(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+    finally:
+        if conn:
+            conn.close()
 
 @app.post("/returns")
 def process_return(data: ReturnRequest):
