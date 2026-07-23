@@ -13,11 +13,13 @@ import ProductDiagnostics from "./components/ProductDiagnostics";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
+
 import {
   cacheProducts,
   getCachedProducts,
   searchCachedProducts,
-  applyLocalSaleToCatalog
+  applyLocalSaleToCatalog,
+  applyLocalIntakeToCatalog
 } from "./offlineCatalog";
 
 import {
@@ -30,20 +32,36 @@ import {
   syncPendingEvents
 } from "./syncPendingEvents";
 
-
-
-const API = "https://vendr-onkr.onrender.com";
+const API =
+  "https://vendr-onkr.onrender.com";
 
 const getOrCreateDeviceId = () => {
-  let deviceId = localStorage.getItem("vendr_device_id");
+  let deviceId =
+    localStorage.getItem(
+      "vendr_device_id"
+    );
 
   if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    localStorage.setItem("vendr_device_id", deviceId);
+    deviceId =
+      crypto.randomUUID?.() ||
+      `device-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+    localStorage.setItem(
+      "vendr_device_id",
+      deviceId
+    );
   }
 
   return deviceId;
 };
+
+const createIntakeClientEventId = () =>
+  crypto.randomUUID?.() ||
+  `intake-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
 
 // Global color system
 const COLORS = {
@@ -717,58 +735,162 @@ function App() {
   // FINALIZE INTAKE
   // -------------------------------------------------
 
-  const finalizeIntake = async () => {
-    if (
-      !currentTicket ||
-      currentTicket.items.length === 0
-    ) {
-      return;
-    }
+const finalizeIntake = async () => {
+  if (
+    !currentTicket ||
+    !Array.isArray(currentTicket.items) ||
+    currentTicket.items.length === 0
+  ) {
+    return;
+  }
 
-    try {
-      const items =
-        currentTicket.items.map(item => ({
-          product_id:
-            item.product_id,
-          quantity:
-            Number(item.quantity),
-          cost:
-            Number(item.cost),
-          price:
-            Number(item.price)
-        }));
+  if (!storeId) {
+    alert(t("intake_failed"));
+    return;
+  }
+  
+  const items =
+    currentTicket.items.map(item => ({
+      product_id:
+        item.product_id,
+      quantity:
+        Number(item.quantity),
+      cost:
+        Number(item.cost),
+      price:
+        Number(item.price)
+    }));
 
-      await axios.post(
-        `${API}/intake-ticket`,
-        {
-          store_id: storeId,
-          items,
-          paid: intakePaid
-        }
-      );
+  const hasInvalidItem =
+    items.some(item =>
+      !item.product_id ||
+      !Number.isFinite(item.quantity) ||
+      item.quantity <= 0 ||
+      !Number.isFinite(item.cost) ||
+      item.cost < 0 ||
+      !Number.isFinite(item.price) ||
+      item.price < 0
+    );
 
-      setTickets(previous =>
-        previous.filter(
-          ticket =>
-            ticket.id !==
-            activeTicket
-        )
-      );
+  if (hasInvalidItem) {
+    alert(t("intake_failed"));
+    return;
+  }
 
-      setActiveTicket(null);
-      setIntakePaid(false);
+  const clientEventId =
+    createIntakeClientEventId();
 
-      await loadProducts();
-    } catch (error) {
-      console.error(
-        "INTAKE ERROR:",
-        error
-      );
+  const deviceId =
+    getOrCreateDeviceId();
 
-      alert(t("intake_failed"));
-    }
+  const clientCreatedAt =
+    new Date().toISOString();
+
+  const payload = {
+    store_id: storeId,
+    items,
+    paid: intakePaid,
+    client_event_id: clientEventId,
+    device_id: deviceId,
+    client_created_at: clientCreatedAt
   };
 
+  const pendingEvent = {
+    client_event_id: clientEventId,
+    event_type: "intake",
+    store_id: storeId,
+    device_id: deviceId,
+    client_created_at: clientCreatedAt,
+    payload
+  };
+
+  try {
+    /*
+     * Save the intake before changing inventory or
+     * attempting the network request.
+     */
+    const saveResult =
+      await savePendingEvent(
+        pendingEvent
+      );
+
+    /*
+     * Apply stock, cost, and price changes only when
+     * this event was newly inserted into the queue.
+     */
+    if (saveResult.created) {
+      await applyLocalIntakeToCatalog(
+        storeId,
+        items
+      );
+    }
+
+    /*
+     * Once safely stored locally, the intake ticket can
+     * be removed from the active workspace.
+     */
+    setTickets(previous =>
+      previous.filter(
+        ticket =>
+          ticket.id !== activeTicket
+      )
+    );
+
+    setActiveTicket(null);
+    setIntakePaid(false);
+
+    let synchronized = false;
+
+    /*
+     * Attempt immediate synchronization when connected.
+     * A failure leaves the event safely queued.
+     */
+    if (navigator.onLine) {
+      try {
+        await submitPendingEvent(
+          pendingEvent
+        );
+
+        synchronized = true;
+      } catch (syncError) {
+        console.warn(
+          "INTAKE SAVED PENDING SYNC:",
+          syncError
+        );
+      }
+    }
+
+    /*
+     * Online:
+     * reload the now-confirmed server catalog.
+     *
+     * Offline:
+     * loadProducts should fall back to IndexedDB and
+     * preserve the local intake adjustment.
+     */
+    try {
+      await loadProducts();
+    } catch (refreshError) {
+      console.warn(
+        "INTAKE PRODUCT REFRESH ERROR:",
+        refreshError
+      );
+    }
+
+    if (synchronized) {
+      alert(t("intake_completed"));
+    } else {
+      alert(t("intake_saved_pending"));
+    }
+  } catch (error) {
+    console.error(
+      "INTAKE LOCAL SAVE ERROR:",
+      error
+    );
+
+    alert(t("intake_failed"));
+  }
+};
   // -------------------------------------------------
   // AUTHENTICATION VIEW
   // -------------------------------------------------
