@@ -1,5 +1,11 @@
 import { offlineDb } from "./offlineDb";
 
+const isTruthyFlag = value =>
+  value === 1 ||
+  value === true ||
+  value === "1" ||
+  value === "true";
+
 export const cacheProducts = async (
   storeId,
   products
@@ -43,8 +49,7 @@ export const getCachedProducts = async storeId => {
     .equals(storeId)
     .filter(product =>
       product.is_active === undefined ||
-      product.is_active === 1 ||
-      product.is_active === true
+      isTruthyFlag(product.is_active)
     )
     .sortBy("name");
 };
@@ -57,7 +62,9 @@ export const searchCachedProducts = async (
     await getCachedProducts(storeId);
 
   const normalizedTerm =
-    term.trim().toLowerCase();
+    String(term || "")
+      .trim()
+      .toLowerCase();
 
   if (!normalizedTerm) {
     return products;
@@ -93,7 +100,7 @@ export const applyLocalSaleToCatalog = async (
 
         if (
           !product ||
-          product.tracks_stock !== 1
+          !isTruthyFlag(product.tracks_stock)
         ) {
           continue;
         }
@@ -134,7 +141,7 @@ export const applyLocalReturnToCatalog = async (
 
         if (
           !product ||
-          product.tracks_stock !== 1
+          !isTruthyFlag(product.tracks_stock)
         ) {
           continue;
         }
@@ -182,7 +189,7 @@ export const applyLocalIntakeToCatalog = async (
           price: Number(item.price || 0)
         };
 
-        if (product.tracks_stock === 1) {
+        if (isTruthyFlag(product.tracks_stock)) {
           updates.stock =
             Number(product.stock || 0) +
             Number(item.quantity || 0);
@@ -204,11 +211,14 @@ export const applyLocalStockAdjustmentToCatalog =
     quantity,
     direction
   ) => {
+    const numericQuantity =
+      Number(quantity);
+
     if (
       !storeId ||
       !productId ||
-      !Number.isFinite(Number(quantity)) ||
-      Number(quantity) <= 0 ||
+      !Number.isFinite(numericQuantity) ||
+      numericQuantity <= 0 ||
       !["positive", "negative"].includes(direction)
     ) {
       return;
@@ -228,15 +238,15 @@ export const applyLocalStockAdjustmentToCatalog =
 
         if (
           !product ||
-          product.tracks_stock !== 1
+          !isTruthyFlag(product.tracks_stock)
         ) {
           return;
         }
 
         const stockDelta =
           direction === "positive"
-            ? Number(quantity)
-            : -Number(quantity);
+            ? numericQuantity
+            : -numericQuantity;
 
         await offlineDb.products.update(
           key,
