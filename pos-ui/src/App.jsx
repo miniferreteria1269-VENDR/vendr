@@ -4,6 +4,7 @@ import axios from "axios";
 import { useLang } from "./LanguageContext";
 import Login from "./Login";
 import Signup from "./Signup";
+import SyncStatus from "./components/SyncStatus";
 
 import ProductPanel from "./components/ProductPanel";
 import TicketPanel from "./components/TicketPanel";
@@ -969,15 +970,25 @@ const finalizeIntake = async () => {
         style={{
           padding: 12,
           display: "flex",
-          justifyContent:
-            "space-between",
+          justifyContent: "space-between",
+          alignItems: "center",
           borderBottom:
             `1px solid ${COLORS.border}`
         }}
       >
         <div>
-          {user.store_name ||
-            `${t("store")} ${storeId}`}
+          <div
+            style={{
+              fontWeight: 600
+            }}
+          >
+            {user.store_name ||
+              `${t("store")} ${storeId}`}
+          </div>
+
+          <SyncStatus
+            storeId={storeId}
+          />
         </div>
 
         <button
