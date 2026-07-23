@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pos_backend.rebuild_products import rebuild_products
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, time, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import pandas as pd
@@ -97,7 +97,246 @@ def init_db():
 
     conn.commit()
     conn.close()
-    
+
+
+def round_money(value):
+    return round(float(value or 0), 2)
+
+
+def calculate_percent_change(current, previous):
+    current = float(current or 0)
+    previous = float(previous or 0)
+
+    if previous == 0:
+        if current == 0:
+            return 0.0
+
+        return None
+
+    return round(
+        ((current - previous) / previous) * 100,
+        2
+    )
+
+
+def build_period_boundaries(
+    start_date: date,
+    end_date: date
+):
+    if end_date < start_date:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "end_date must not be before "
+                "start_date"
+            )
+        )
+
+    start_datetime = datetime.combine(
+        start_date,
+        time.min,
+        tzinfo=timezone.utc
+    )
+
+    end_exclusive = datetime.combine(
+        end_date + timedelta(days=1),
+        time.min,
+        tzinfo=timezone.utc
+    )
+
+    days_in_period = (
+        end_date - start_date
+    ).days + 1
+
+    return {
+        "start": start_datetime,
+        "end_exclusive": end_exclusive,
+        "days": days_in_period
+    }
+
+def build_sales_analysis_data(
+    cursor,
+    store_id: int,
+    start_datetime: datetime,
+    end_exclusive: datetime,
+    days_in_period: int
+):
+    cursor.execute(
+        """
+        SELECT
+            COALESCE(
+                SUM(quantity * price_at_time),
+                0
+            ),
+            COALESCE(
+                SUM(quantity * cost_at_time),
+                0
+            ),
+            COALESCE(
+                SUM(quantity),
+                0
+            ),
+            COUNT(DISTINCT ticket_id)
+        FROM events
+        WHERE store_id = %s
+          AND event_type = 'sale'
+          AND event_datetime::timestamp >= %s
+          AND event_datetime::timestamp < %s
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    row = cursor.fetchone()
+
+    revenue = float(row[0] or 0)
+    cost = float(row[1] or 0)
+    units_sold = int(row[2] or 0)
+    tickets = int(row[3] or 0)
+
+    gross_profit = revenue - cost
+
+    gross_margin_percent = (
+        gross_profit / revenue * 100
+        if revenue > 0
+        else 0
+    )
+
+    average_ticket = (
+        revenue / tickets
+        if tickets > 0
+        else 0
+    )
+
+    units_per_ticket = (
+        units_sold / tickets
+        if tickets > 0
+        else 0
+    )
+
+    summary = {
+        "tickets": tickets,
+        "units_sold": units_sold,
+        "revenue": round_money(revenue),
+        "cost": round_money(cost),
+        "gross_profit":
+            round_money(gross_profit),
+        "gross_margin_percent":
+            round(gross_margin_percent, 2),
+        "average_ticket":
+            round_money(average_ticket),
+        "units_per_ticket":
+            round(units_per_ticket, 2),
+        "average_daily_revenue":
+            round_money(
+                revenue / days_in_period
+            ),
+        "average_daily_profit":
+            round_money(
+                gross_profit / days_in_period
+            )
+    }
+
+    cursor.execute(
+        """
+        SELECT
+            product_id,
+            product_name_at_time,
+            COALESCE(
+                SUM(quantity),
+                0
+            ) AS units,
+            COALESCE(
+                SUM(quantity * price_at_time),
+                0
+            ) AS revenue,
+            COALESCE(
+                SUM(quantity * cost_at_time),
+                0
+            ) AS cost,
+            COALESCE(
+                SUM(
+                    quantity *
+                    (
+                        price_at_time -
+                        cost_at_time
+                    )
+                ),
+                0
+            ) AS profit
+        FROM events
+        WHERE store_id = %s
+          AND event_type = 'sale'
+          AND event_datetime::timestamp >= %s
+          AND event_datetime::timestamp < %s
+        GROUP BY
+            product_id,
+            product_name_at_time
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    products = []
+
+    for row in cursor.fetchall():
+        product_revenue = float(
+            row[3] or 0
+        )
+
+        product_profit = float(
+            row[5] or 0
+        )
+
+        margin_percent = (
+            product_profit /
+            product_revenue * 100
+            if product_revenue > 0
+            else 0
+        )
+
+        products.append({
+            "product_id": row[0],
+            "name": row[1],
+            "units": int(row[2] or 0),
+            "revenue":
+                round_money(row[3]),
+            "cost":
+                round_money(row[4]),
+            "profit":
+                round_money(row[5]),
+            "margin_percent":
+                round(margin_percent, 2)
+        })
+
+    return {
+        "summary": summary,
+        "top_revenue_products": sorted(
+            products,
+            key=lambda item:
+                item["revenue"],
+            reverse=True
+        )[:10],
+        "top_profit_products": sorted(
+            products,
+            key=lambda item:
+                item["profit"],
+            reverse=True
+        )[:10],
+        "top_volume_products": sorted(
+            products,
+            key=lambda item:
+                item["units"],
+            reverse=True
+        )[:10]
+    }
+
 @app.on_event("startup")
 def startup():
     init_db()
@@ -2701,119 +2940,341 @@ def review_lst(data: ReviewLSTRequest):
     finally:
         cursor.close()
         conn.close()
+        
 @app.get("/sales-analysis")
-def sales_analysis(store_id: int, start_date: str, end_date: str):
+def sales_analysis(
+    store_id: int,
+    start_date: date,
+    end_date: date
+):
+    conn = None
+    cursor = None
 
-    conn = db()
-    cursor = conn.cursor()
+    try:
+        period = build_period_boundaries(
+            start_date,
+            end_date
+        )
 
-    # -----------------------------
-    # SUMMARY METRICS
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            SUM(quantity * price_at_time),
-            SUM(quantity * cost_at_time),
-            COUNT(DISTINCT ticket_id),
-            COUNT(DISTINCT (event_datetime::timestamp)::date)
-        FROM events
-        WHERE store_id = %s
-        AND event_type = 'sale'
-        AND event_datetime::timestamp BETWEEN %s AND (%s::date + INTERVAL '1 day')
-    """, (store_id, start_date, end_date))
+        conn = db()
+        cursor = conn.cursor()
 
-    row = cursor.fetchone()
+        analysis = build_sales_analysis_data(
+            cursor=cursor,
+            store_id=store_id,
+            start_datetime=period["start"],
+            end_exclusive=period["end_exclusive"],
+            days_in_period=period["days"]
+        )
 
-    revenue = row[0] or 0
-    cost = row[1] or 0
-    tickets = row[2] or 0
-    days = row[3] or 1
+        summary = analysis["summary"]
 
-    profit = revenue - cost
+        return {
+            "summary": {
+                "revenue": summary["revenue"],
+                "profit": summary["gross_profit"],
+                "tickets": summary["tickets"],
+                "avg_daily_revenue":
+                    summary["average_daily_revenue"],
+                "avg_daily_profit":
+                    summary["average_daily_profit"],
+                "avg_ticket_value":
+                    summary["average_ticket"]
+            },
+            "top_revenue_products":
+                analysis["top_revenue_products"],
+            "top_profit_products":
+                analysis["top_profit_products"],
+            "top_volume_products":
+                analysis["top_volume_products"]
+        }
 
-    summary = {
-        "revenue": revenue,
-        "profit": profit,
-        "tickets": tickets,
-        "avg_daily_revenue": revenue / days,
-        "avg_daily_profit": profit / days,
-        "avg_ticket_value": revenue / tickets if tickets else 0
-    }
+    except HTTPException:
+        raise
 
-    # -----------------------------
-    # TOP REVENUE PRODUCTS
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            product_id,
-            product_name_at_time,
-            SUM(quantity * price_at_time) AS revenue
-        FROM events
-        WHERE store_id = %s
-        AND event_type = 'sale'
-        AND event_datetime::timestamp BETWEEN %s AND (%s::date + INTERVAL '1 day')
-        GROUP BY product_id, product_name_at_time
-        ORDER BY revenue DESC
-        LIMIT 10
-    """, (store_id, start_date, end_date))
+    except Exception as error:
+        print(
+            "🔥 SALES ANALYSIS ERROR:",
+            repr(error)
+        )
 
-    top_revenue = [
-        {"name": r[1], "revenue": r[2] or 0}
-        for r in cursor.fetchall()
-    ]
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
 
-    # -----------------------------
-    # TOP PROFIT PRODUCTS
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            product_id,
-            product_name_at_time,
-            SUM(quantity * (price_at_time - cost_at_time)) AS profit
-        FROM events
-        WHERE store_id = %s
-        AND event_type = 'sale'
-        AND event_datetime::timestamp BETWEEN %s AND (%s::date + INTERVAL '1 day')
-        GROUP BY product_id, product_name_at_time
-        ORDER BY profit DESC
-        LIMIT 10
-    """, (store_id, start_date, end_date))
+    finally:
+        if cursor:
+            cursor.close()
 
-    top_profit = [
-        {"name": r[1], "profit": r[2] or 0}
-        for r in cursor.fetchall()
-    ]
+        if conn:
+            conn.close()
 
-    # -----------------------------
-    # TOP VOLUME PRODUCTS
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            product_id,
-            product_name_at_time,
-            SUM(quantity) AS units
-        FROM events
-        WHERE store_id = %s
-        AND event_type = 'sale'
-        AND event_datetime::timestamp BETWEEN %s AND (%s::date + INTERVAL '1 day')
-        GROUP BY product_id, product_name_at_time
-        ORDER BY units DESC
-        LIMIT 10
-    """, (store_id, start_date, end_date))
+@app.get("/internal/weekly-briefing-data")
+def weekly_briefing_data(
+    store_id: int,
+    week_end: Optional[date] = None
+):
+    conn = None
+    cursor = None
 
-    top_volume = [
-        {"name": r[1], "units": r[2] or 0}
-        for r in cursor.fetchall()
-    ]
+    try:
+        # ---------------------------------------------
+        # RESOLVE REPORT PERIOD
+        # ---------------------------------------------
+        if week_end is None:
+            week_end = (
+                datetime.now(
+                    timezone.utc
+                ).date()
+                - timedelta(days=1)
+            )
 
-    conn.close()
+        week_start = (
+            week_end
+            - timedelta(days=6)
+        )
 
-    return {
-        "summary": summary,
-        "top_revenue_products": top_revenue,
-        "top_profit_products": top_profit,
-        "top_volume_products": top_volume
-    }
+        previous_end = (
+            week_start
+            - timedelta(days=1)
+        )
+
+        previous_start = (
+            previous_end
+            - timedelta(days=6)
+        )
+
+        current_period = (
+            build_period_boundaries(
+                week_start,
+                week_end
+            )
+        )
+
+        previous_period = (
+            build_period_boundaries(
+                previous_start,
+                previous_end
+            )
+        )
+
+        # ---------------------------------------------
+        # DATABASE
+        # ---------------------------------------------
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                name,
+                organization_id
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (store_id,)
+        )
+
+        store = cursor.fetchone()
+
+        if not store:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        store_name = store[0]
+        organization_id = store[1]
+
+        # ---------------------------------------------
+        # CURRENT WEEK
+        # ---------------------------------------------
+        current_analysis = (
+            build_sales_analysis_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    current_period["start"],
+                end_exclusive=
+                    current_period[
+                        "end_exclusive"
+                    ],
+                days_in_period=
+                    current_period["days"]
+            )
+        )
+
+        # ---------------------------------------------
+        # PREVIOUS WEEK
+        # ---------------------------------------------
+        previous_analysis = (
+            build_sales_analysis_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    previous_period["start"],
+                end_exclusive=
+                    previous_period[
+                        "end_exclusive"
+                    ],
+                days_in_period=
+                    previous_period["days"]
+            )
+        )
+
+        current_summary = (
+            current_analysis["summary"]
+        )
+
+        previous_summary = (
+            previous_analysis["summary"]
+        )
+
+        # ---------------------------------------------
+        # PERIOD COMPARISON
+        # ---------------------------------------------
+        comparison = {
+            "revenue_change_percent":
+                calculate_percent_change(
+                    current_summary["revenue"],
+                    previous_summary["revenue"]
+                ),
+
+            "profit_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "gross_profit"
+                    ],
+                    previous_summary[
+                        "gross_profit"
+                    ]
+                ),
+
+            "ticket_change_percent":
+                calculate_percent_change(
+                    current_summary["tickets"],
+                    previous_summary["tickets"]
+                ),
+
+            "average_ticket_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "average_ticket"
+                    ],
+                    previous_summary[
+                        "average_ticket"
+                    ]
+                ),
+
+            "units_sold_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "units_sold"
+                    ],
+                    previous_summary[
+                        "units_sold"
+                    ]
+                ),
+
+            "margin_change_points":
+                round(
+                    current_summary[
+                        "gross_margin_percent"
+                    ]
+                    -
+                    previous_summary[
+                        "gross_margin_percent"
+                    ],
+                    2
+                )
+        }
+
+        # ---------------------------------------------
+        # RESPONSE
+        # ---------------------------------------------
+        return {
+            "metadata": {
+                "store_id": store_id,
+                "store_name": store_name,
+                "organization_id":
+                    organization_id,
+
+                "period_start":
+                    week_start.isoformat(),
+
+                "period_end":
+                    week_end.isoformat(),
+
+                "previous_period_start":
+                    previous_start.isoformat(),
+
+                "previous_period_end":
+                    previous_end.isoformat(),
+
+                "days_in_period":
+                    current_period["days"],
+
+                "generated_at":
+                    datetime.now(
+                        timezone.utc
+                    ).isoformat()
+            },
+
+            "sales":
+                current_summary,
+
+            "previous_sales":
+                previous_summary,
+
+            "comparison":
+                comparison,
+
+            "products": {
+                "top_revenue":
+                    current_analysis[
+                        "top_revenue_products"
+                    ],
+
+                "top_profit":
+                    current_analysis[
+                        "top_profit_products"
+                    ],
+
+                "top_volume":
+                    current_analysis[
+                        "top_volume_products"
+                    ]
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "🔥 WEEKLY BRIEFING DATA ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 
 @app.post("/import-products")
 async def import_products(
