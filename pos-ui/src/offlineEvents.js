@@ -137,6 +137,24 @@ const submitIntakeEvent = async event => {
   return response.data;
 };
 
+const submitStockAdjustmentEvent = async event => {
+  const response = await axios.post(
+    `${API}/stock-adjustment`,
+    event.payload
+  );
+
+  if (
+    response.data.status !== "accepted" &&
+    response.data.status !== "already_processed"
+  ) {
+    throw new Error(
+      `Unexpected stock adjustment status: ${response.data.status}`
+    );
+  }
+
+  return response.data;
+};
+
 /**
  * Routes a local event to the correct backend endpoint.
  */
@@ -163,6 +181,13 @@ export const submitPendingEvent = async event => {
     case "intake":
       responseData =
         await submitIntakeEvent(event);
+      break;
+
+    case "stock_adjustment":
+      responseData =
+        await submitStockAdjustmentEvent(
+          event
+        );
       break;
 
     default:
