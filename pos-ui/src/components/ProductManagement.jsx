@@ -601,46 +601,59 @@ export function StockAdjustment({
   const [submitting, setSubmitting] =
     useState(false);
 
-  const searchProducts = async term => {
-    const normalizedTerm =
-      String(term || "").trim();
+const searchProducts = async term => {
+  const normalizedTerm =
+    String(term || "").trim();
 
-    if (
-      !storeId ||
-      normalizedTerm.length < 2
-    ) {
-      setProducts([]);
-      return;
-    }
+  if (
+    !storeId ||
+    normalizedTerm.length < 2
+  ) {
+    setProducts([]);
+    return;
+  }
 
-    try {
-      /*
-       * The complete product catalog is already cached
-       * by the POS, so adjustment search works without
-       * requiring the backend.
-       */
-      const cachedProducts =
-        await searchCachedProducts(
-          storeId,
-          normalizedTerm
+  try {
+    const cachedProducts =
+      await searchCachedProducts(
+        storeId,
+        normalizedTerm
+      );
+
+    const trackedProducts =
+      cachedProducts.filter(product => {
+        const tracksStock =
+          product.tracks_stock;
+
+        return (
+          tracksStock === 1 ||
+          tracksStock === true ||
+          tracksStock === "1" ||
+          tracksStock === "true"
         );
+      });
 
-      setProducts(
-        cachedProducts.filter(
-          product =>
-            product.tracks_stock === 1 ||
-            product.tracks_stock === true
-        )
-      );
-    } catch (error) {
-      console.error(
-        "ADJUSTMENT PRODUCT SEARCH ERROR:",
-        error
-      );
+    console.log(
+      "OFFLINE ADJUSTMENT SEARCH:",
+      {
+        term: normalizedTerm,
+        cachedFound:
+          cachedProducts.length,
+        trackedFound:
+          trackedProducts.length
+      }
+    );
 
-      setProducts([]);
-    }
-  };
+    setProducts(trackedProducts);
+  } catch (error) {
+    console.error(
+      "ADJUSTMENT PRODUCT SEARCH ERROR:",
+      error
+    );
+
+    setProducts([]);
+  }
+};
 
   const resetForm = () => {
     setSelected(null);
