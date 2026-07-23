@@ -196,3 +196,56 @@ export const applyLocalIntakeToCatalog = async (
     }
   );
 };
+
+export const applyLocalStockAdjustmentToCatalog =
+  async (
+    storeId,
+    productId,
+    quantity,
+    direction
+  ) => {
+    if (
+      !storeId ||
+      !productId ||
+      !Number.isFinite(Number(quantity)) ||
+      Number(quantity) <= 0 ||
+      !["positive", "negative"].includes(direction)
+    ) {
+      return;
+    }
+
+    const key = [
+      storeId,
+      productId
+    ];
+
+    await offlineDb.transaction(
+      "rw",
+      offlineDb.products,
+      async () => {
+        const product =
+          await offlineDb.products.get(key);
+
+        if (
+          !product ||
+          product.tracks_stock !== 1
+        ) {
+          return;
+        }
+
+        const stockDelta =
+          direction === "positive"
+            ? Number(quantity)
+            : -Number(quantity);
+
+        await offlineDb.products.update(
+          key,
+          {
+            stock:
+              Number(product.stock || 0) +
+              stockDelta
+          }
+        );
+      }
+    );
+  };
