@@ -111,6 +111,9 @@ function App() {
 
   const storeId = user?.store_id;
 
+  const [finalizingIntake, setFinalizingIntake] =
+    useState(false);
+
   const currentTicket = tickets.find(
     ticket => ticket.id === activeTicket
   );
@@ -736,6 +739,10 @@ function App() {
   // -------------------------------------------------
 
 const finalizeIntake = async () => {
+  if (finalizingIntake) {
+    return;
+  }
+
   if (
     !currentTicket ||
     !Array.isArray(currentTicket.items) ||
@@ -748,17 +755,15 @@ const finalizeIntake = async () => {
     alert(t("intake_failed"));
     return;
   }
-  
+
+  const ticketId = currentTicket.id;
+
   const items =
     currentTicket.items.map(item => ({
-      product_id:
-        item.product_id,
-      quantity:
-        Number(item.quantity),
-      cost:
-        Number(item.cost),
-      price:
-        Number(item.price)
+      product_id: item.product_id,
+      quantity: Number(item.quantity),
+      cost: Number(item.cost),
+      price: Number(item.price)
     }));
 
   const hasInvalidItem =
@@ -777,14 +782,38 @@ const finalizeIntake = async () => {
     return;
   }
 
+  /*
+   * Reuse an event ID already attached to this ticket.
+   * Only create one when the ticket has never been
+   * finalized before.
+   */
   const clientEventId =
+    currentTicket.client_event_id ||
     createIntakeClientEventId();
 
   const deviceId =
     getOrCreateDeviceId();
 
   const clientCreatedAt =
+    currentTicket.client_created_at ||
     new Date().toISOString();
+
+  /*
+   * Persist the identity on the visible ticket before
+   * performing asynchronous work. If the ticket somehow
+   * remains visible, another click reuses the same ID.
+   */
+  setTickets(previous =>
+    previous.map(ticket =>
+      String(ticket.id) === String(ticketId)
+        ? {
+            ...ticket,
+            client_event_id: clientEventId,
+            client_created_at: clientCreatedAt
+          }
+        : ticket
+    )
+  );
 
   const payload = {
     store_id: storeId,
@@ -804,20 +833,14 @@ const finalizeIntake = async () => {
     payload
   };
 
+  setFinalizingIntake(true);
+
   try {
-    /*
-     * Save the intake before changing inventory or
-     * attempting the network request.
-     */
     const saveResult =
       await savePendingEvent(
         pendingEvent
       );
 
-    /*
-     * Apply stock, cost, and price changes only when
-     * this event was newly inserted into the queue.
-     */
     if (saveResult.created) {
       await applyLocalIntakeToCatalog(
         storeId,
@@ -826,25 +849,28 @@ const finalizeIntake = async () => {
     }
 
     /*
-     * Once safely stored locally, the intake ticket can
-     * be removed from the active workspace.
+     * Remove the exact ticket that was finalized.
+     * String normalization avoids number/string mismatch.
      */
     setTickets(previous =>
       previous.filter(
         ticket =>
-          ticket.id !== activeTicket
+          String(ticket.id) !==
+          String(ticketId)
       )
     );
 
-    setActiveTicket(null);
+    setActiveTicket(previousActive =>
+      String(previousActive) ===
+      String(ticketId)
+        ? null
+        : previousActive
+    );
+
     setIntakePaid(false);
 
     let synchronized = false;
 
-    /*
-     * Attempt immediate synchronization when connected.
-     * A failure leaves the event safely queued.
-     */
     if (navigator.onLine) {
       try {
         await submitPendingEvent(
@@ -860,14 +886,6 @@ const finalizeIntake = async () => {
       }
     }
 
-    /*
-     * Online:
-     * reload the now-confirmed server catalog.
-     *
-     * Offline:
-     * loadProducts should fall back to IndexedDB and
-     * preserve the local intake adjustment.
-     */
     try {
       await loadProducts();
     } catch (refreshError) {
@@ -877,11 +895,11 @@ const finalizeIntake = async () => {
       );
     }
 
-    if (synchronized) {
-      alert(t("intake_completed"));
-    } else {
-      alert(t("intake_saved_pending"));
-    }
+    alert(
+      synchronized
+        ? t("intake_completed")
+        : t("intake_saved_pending")
+    );
   } catch (error) {
     console.error(
       "INTAKE LOCAL SAVE ERROR:",
@@ -889,6 +907,8 @@ const finalizeIntake = async () => {
     );
 
     alert(t("intake_failed"));
+  } finally {
+    setFinalizingIntake(false);
   }
 };
   // -------------------------------------------------
