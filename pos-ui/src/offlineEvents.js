@@ -119,6 +119,24 @@ const submitCashEvent = async event => {
   return response.data;
 };
 
+const submitIntakeEvent = async event => {
+  const response = await axios.post(
+    `${API}/intake-ticket`,
+    event.payload
+  );
+
+  if (
+    response.data.status !== "accepted" &&
+    response.data.status !== "already_processed"
+  ) {
+    throw new Error(
+      `Unexpected intake status: ${response.data.status}`
+    );
+  }
+
+  return response.data;
+};
+
 /**
  * Routes a local event to the correct backend endpoint.
  */
@@ -140,6 +158,11 @@ export const submitPendingEvent = async event => {
     case "expense":
       responseData =
         await submitCashEvent(event);
+      break;
+
+    case "intake":
+      responseData =
+        await submitIntakeEvent(event);
       break;
 
     default:
