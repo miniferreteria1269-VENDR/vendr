@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { useLang } from "../LanguageContext";
 import axios from "axios";
+import {
+  savePendingEvent,
+  submitPendingEvent
+} from "../offlineEvents";
+
+import {
+  searchCachedProducts,
+  applyLocalStockAdjustmentToCatalog
+} from "../offlineCatalog";
 import ProductImporter from "./ProductImporter";
 import {
   COLORS,
@@ -536,78 +545,391 @@ function ArchiveProduct({ storeId }) {
     </div>
   );
 }
-export function StockAdjustment({ storeId }) {
-  const { t } = useLang();
-  const [search, setSearch] = useState("");
-  const [products, setProducts] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [quantity, setQuantity] = useState(1);
-  const [direction, setDirection] = useState("positive");
-  const [note, setNote] = useState("");
 
-  const searchProducts = async (term) => {
-    const res = await axios.get("https://vendr-onkr.onrender.com/products/search", {
-      params: { store_id: storeId, name: term }
-    });
-    setProducts(res.data.products || []);
+const getOrCreateAdjustmentDeviceId = () => {
+  const storageKey = "vendr_device_id";
+
+  let deviceId =
+    localStorage.getItem(storageKey);
+
+  if (!deviceId) {
+    deviceId =
+      crypto.randomUUID?.() ||
+      `device-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+    localStorage.setItem(
+      storageKey,
+      deviceId
+    );
+  }
+
+  return deviceId;
+};
+
+const createAdjustmentClientEventId = () =>
+  crypto.randomUUID?.() ||
+  `adjustment-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+
+
+export function StockAdjustment({
+  storeId
+}) {
+  const { t } = useLang();
+
+  const [search, setSearch] =
+    useState("");
+
+  const [products, setProducts] =
+    useState([]);
+
+  const [selected, setSelected] =
+    useState(null);
+
+  const [quantity, setQuantity] =
+    useState(1);
+
+  const [direction, setDirection] =
+    useState("positive");
+
+  const [note, setNote] =
+    useState("");
+
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const searchProducts = async term => {
+    const normalizedTerm =
+      String(term || "").trim();
+
+    if (
+      !storeId ||
+      normalizedTerm.length < 2
+    ) {
+      setProducts([]);
+      return;
+    }
+
+    try {
+      /*
+       * The complete product catalog is already cached
+       * by the POS, so adjustment search works without
+       * requiring the backend.
+       */
+      const cachedProducts =
+        await searchCachedProducts(
+          storeId,
+          normalizedTerm
+        );
+
+      setProducts(
+        cachedProducts.filter(
+          product =>
+            product.tracks_stock === 1 ||
+            product.tracks_stock === true
+        )
+      );
+    } catch (error) {
+      console.error(
+        "ADJUSTMENT PRODUCT SEARCH ERROR:",
+        error
+      );
+
+      setProducts([]);
+    }
   };
 
-  const submit = async () => {
-    await axios.post("https://vendr-onkr.onrender.com/stock-adjustment", {
-      store_id: storeId,
-      product_id: selected.product_id,
-      quantity,
-      direction,
-      reason: "",
-      note
-    });
-
-    alert("Stock adjustment recorded.");
+  const resetForm = () => {
     setSelected(null);
+    setSearch("");
+    setProducts([]);
     setQuantity(1);
     setDirection("positive");
     setNote("");
   };
 
+  const submit = async () => {
+    if (submitting) {
+      return;
+    }
+
+    const numericQuantity =
+      Number(quantity);
+
+    if (
+      !storeId ||
+      !selected?.product_id ||
+      !Number.isFinite(numericQuantity) ||
+      numericQuantity <= 0 ||
+      !["positive", "negative"].includes(
+        direction
+      )
+    ) {
+      alert(
+        t("stock_adjustment_failed")
+      );
+
+      return;
+    }
+
+    const clientEventId =
+      createAdjustmentClientEventId();
+
+    const deviceId =
+      getOrCreateAdjustmentDeviceId();
+
+    const clientCreatedAt =
+      new Date().toISOString();
+
+    const payload = {
+      store_id: storeId,
+      product_id:
+        selected.product_id,
+      quantity: numericQuantity,
+      direction,
+      reason: "",
+      note: note.trim(),
+      client_event_id:
+        clientEventId,
+      device_id: deviceId,
+      client_created_at:
+        clientCreatedAt
+    };
+
+    const pendingEvent = {
+      client_event_id:
+        clientEventId,
+      event_type:
+        "stock_adjustment",
+      store_id: storeId,
+      device_id: deviceId,
+      client_created_at:
+        clientCreatedAt,
+      payload
+    };
+
+    setSubmitting(true);
+
+    try {
+      /*
+       * Save locally first. Once this succeeds, the
+       * adjustment is durable even without internet.
+       */
+      const saveResult =
+        await savePendingEvent(
+          pendingEvent
+        );
+
+      /*
+       * Apply the stock movement exactly once locally.
+       */
+      if (saveResult.created) {
+        await applyLocalStockAdjustmentToCatalog(
+          storeId,
+          selected.product_id,
+          numericQuantity,
+          direction
+        );
+      }
+
+      /*
+       * Clear the completed adjustment from the UI once
+       * it has been safely recorded locally.
+       */
+      resetForm();
+
+      let synchronized = false;
+
+      if (navigator.onLine) {
+        try {
+          await submitPendingEvent(
+            pendingEvent
+          );
+
+          synchronized = true;
+        } catch (syncError) {
+          console.warn(
+            "STOCK ADJUSTMENT SAVED PENDING SYNC:",
+            syncError
+          );
+        }
+      }
+
+      alert(
+        synchronized
+          ? t("stock_adjustment_completed")
+          : t("stock_adjustment_saved_pending")
+      );
+    } catch (error) {
+      console.error(
+        "STOCK ADJUSTMENT LOCAL SAVE ERROR:",
+        error
+      );
+
+      alert(
+        t("stock_adjustment_failed")
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div style={card}>
-      <h3>Stock Adjustment</h3>
+      <h3>
+        {t("stock_adjustment")}
+      </h3>
 
       {!selected && (
         <>
           <input
+            type="text"
             placeholder={t("search")}
             value={search}
-            onChange={e => {
-              setSearch(e.target.value);
-              if (e.target.value.length > 1) searchProducts(e.target.value);
-              else setProducts([]);
+            onChange={event => {
+              const value =
+                event.target.value;
+
+              setSearch(value);
+              searchProducts(value);
             }}
+            disabled={submitting}
             style={input}
           />
 
-          {products.map(p => (
-            <div key={p.product_id} onClick={() => setSelected(p)} style={resultCard()}>
-              {p.name} ({t("stock")}: {p.stock})
-            </div>
+          {products.map(product => (
+            <button
+              key={product.product_id}
+              type="button"
+              onClick={() => {
+                setSelected(product);
+                setProducts([]);
+                setSearch("");
+              }}
+              disabled={submitting}
+              style={{
+                ...resultCard(),
+                width: "100%",
+                textAlign: "left",
+                cursor:
+                  submitting
+                    ? "default"
+                    : "pointer"
+              }}
+            >
+              {product.name}
+              {" ("}
+              {t("stock")}:{" "}
+              {Number(
+                product.stock || 0
+              )}
+              {")"}
+            </button>
           ))}
         </>
       )}
 
       {selected && (
         <>
-          <p><strong>{selected.name}</strong></p>
+          <p>
+            <strong>
+              {selected.name}
+            </strong>
+          </p>
 
-          <select value={direction} onChange={e => setDirection(e.target.value)} style={input}>
-            <option value="positive">Adjustment +</option>
-            <option value="negative">Adjustment -</option>
+          <p>
+            {t("stock")}:{" "}
+            {Number(
+              selected.stock || 0
+            )}
+          </p>
+
+          <select
+            value={direction}
+            onChange={event =>
+              setDirection(
+                event.target.value
+              )
+            }
+            disabled={submitting}
+            style={input}
+          >
+            <option value="positive">
+              {t("adjustment_positive")}
+            </option>
+
+            <option value="negative">
+              {t("adjustment_negative")}
+            </option>
           </select>
 
-          <input type="number" value={quantity} min="1" onChange={e => setQuantity(Number(e.target.value))} style={input} />
-          <input placeholder="Note" value={note} onChange={e => setNote(e.target.value)} style={input} />
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={quantity}
+            onChange={event =>
+              setQuantity(
+                Number(
+                  event.target.value
+                )
+              )
+            }
+            disabled={submitting}
+            style={input}
+          />
 
-          <button onClick={submit} style={btnPrimary}>Submit</button>
-          <button onClick={() => setSelected(null)} style={btnSecondary}>Cancel</button>
+          <input
+            type="text"
+            placeholder={t("note")}
+            value={note}
+            onChange={event =>
+              setNote(
+                event.target.value
+              )
+            }
+            disabled={submitting}
+            style={input}
+          />
+
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            style={{
+              ...btnPrimary,
+              opacity:
+                submitting ? 0.6 : 1,
+              cursor:
+                submitting
+                  ? "default"
+                  : "pointer"
+            }}
+          >
+            {submitting
+              ? t("loading")
+              : t("submit")}
+          </button>
+
+          <button
+            type="button"
+            onClick={resetForm}
+            disabled={submitting}
+            style={{
+              ...btnSecondary,
+              opacity:
+                submitting ? 0.6 : 1,
+              cursor:
+                submitting
+                  ? "default"
+                  : "pointer"
+            }}
+          >
+            {t("cancel")}
+          </button>
         </>
       )}
     </div>
