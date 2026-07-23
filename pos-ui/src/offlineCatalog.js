@@ -151,3 +151,48 @@ export const applyLocalReturnToCatalog = async (
     }
   );
 };
+
+export const applyLocalIntakeToCatalog = async (
+  storeId,
+  items
+) => {
+  if (!storeId || !Array.isArray(items)) {
+    return;
+  }
+
+  await offlineDb.transaction(
+    "rw",
+    offlineDb.products,
+    async () => {
+      for (const item of items) {
+        const key = [
+          storeId,
+          item.product_id
+        ];
+
+        const product =
+          await offlineDb.products.get(key);
+
+        if (!product) {
+          continue;
+        }
+
+        const updates = {
+          cost: Number(item.cost || 0),
+          price: Number(item.price || 0)
+        };
+
+        if (product.tracks_stock === 1) {
+          updates.stock =
+            Number(product.stock || 0) +
+            Number(item.quantity || 0);
+        }
+
+        await offlineDb.products.update(
+          key,
+          updates
+        );
+      }
+    }
+  );
+};
