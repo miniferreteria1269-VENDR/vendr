@@ -111,9 +111,13 @@ class StockAdjustmentRequest(BaseModel):
     store_id: int
     product_id: int
     quantity: int
-    direction: str  # "positive" or "negative"
+    direction: str
     reason: Optional[str] = None
     note: Optional[str] = None
+
+    client_event_id: Optional[str] = None
+    device_id: Optional[str] = None
+    client_created_at: Optional[str] = None
 
 class StockTransferRequest(BaseModel):
     store_id: int
@@ -1368,96 +1372,275 @@ def get_product(store_id: int, product_id: int):
     }
 @app.post("/stock-adjustment")
 def stock_adjustment(data: StockAdjustmentRequest):
-    if data.quantity <= 0:
-        raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
+    conn = None
+    cursor = None
 
-    if data.direction not in ["positive", "negative"]:
-        raise HTTPException(status_code=400, detail="Direction must be 'positive' or 'negative'")
+    try:
+        if data.quantity <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Quantity must be greater than zero"
+            )
 
-    conn = db()
-    cursor = conn.cursor()
-    now = datetime.now(timezone.utc).isoformat()
+        if data.direction not in (
+            "positive",
+            "negative"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Direction must be "
+                    "'positive' or 'negative'"
+                )
+            )
 
-    cursor.execute("""
-        SELECT name, cost, price, tracks_stock
-        FROM products
-        WHERE product_id = %s
-          AND store_id = %s
-          AND is_active = 1
-    """, (data.product_id, data.store_id))
+        conn = db()
+        cursor = conn.cursor()
 
-    product = cursor.fetchone()
+        # ---------------------------------------------
+        # IDEMPOTENCY CHECK
+        # ---------------------------------------------
+        if data.client_event_id:
+            cursor.execute(
+                """
+                SELECT event_id
+                FROM events
+                WHERE store_id = %s
+                  AND client_event_id = %s
+                  AND event_type IN (
+                    'stock_adjustment_positive',
+                    'stock_adjustment_negative'
+                  )
+                LIMIT 1
+                """,
+                (
+                    data.store_id,
+                    data.client_event_id
+                )
+            )
 
-    if not product:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Product not found")
+            existing = cursor.fetchone()
 
-    name, cost, price, tracks_stock = product
+            if existing:
+                return {
+                    "status": "already_processed",
+                    "event_id": existing[0],
+                    "client_event_id":
+                        data.client_event_id
+                }
 
-    if tracks_stock != 1:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Product does not track stock")
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
 
-    event_type = (
-        "stock_adjustment_positive"
-        if data.direction == "positive"
-        else "stock_adjustment_negative"
-    )
-
-    stock_delta = data.quantity if data.direction == "positive" else -data.quantity
-
-    note_parts = []
-    if data.reason:
-        note_parts.append(f"Reason: {data.reason}")
-    if data.note:
-        note_parts.append(f"Note: {data.note}")
-
-    adjustment_note = " | ".join(note_parts) if note_parts else None
-
-    cursor.execute("""
-        INSERT INTO events (
-            store_id,
-            event_type,
-            product_id,
-            product_name_at_time,
-            quantity,
-            cost_at_time,
-            price_at_time,
-            event_datetime,
-            note
+        cursor.execute(
+            """
+            SELECT
+                name,
+                cost,
+                price,
+                tracks_stock
+            FROM products
+            WHERE product_id = %s
+              AND store_id = %s
+              AND is_active = 1
+            """,
+            (
+                data.product_id,
+                data.store_id
+            )
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        data.store_id,
-        event_type,
-        data.product_id,
-        name,
-        data.quantity,
-        cost,
-        price,
-        now,
-        data.note
-    ))
 
-    cursor.execute("""
-        UPDATE products
-        SET stock = COALESCE(stock, 0) + %s
-        WHERE product_id = %s
-          AND store_id = %s
-          AND tracks_stock = 1
-    """, (stock_delta, data.product_id, data.store_id))
+        product = cursor.fetchone()
 
-    conn.commit()
-    conn.close()
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found"
+            )
 
-    return {
-        "message": "Stock adjustment recorded",
-        "event_type": event_type,
-        "product_id": data.product_id,
-        "product_name": name,
-        "quantity": data.quantity,
-        "stock_delta": stock_delta
-    }
+        name, cost, price, tracks_stock = product
+
+        if tracks_stock != 1:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Product does not track stock"
+                )
+            )
+
+        event_type = (
+            "stock_adjustment_positive"
+            if data.direction == "positive"
+            else "stock_adjustment_negative"
+        )
+
+        stock_delta = (
+            data.quantity
+            if data.direction == "positive"
+            else -data.quantity
+        )
+
+        note_parts = []
+
+        if data.reason:
+            note_parts.append(
+                f"Reason: {data.reason}"
+            )
+
+        if data.note:
+            note_parts.append(
+                f"Note: {data.note}"
+            )
+
+        adjustment_note = (
+            " | ".join(note_parts)
+            if note_parts
+            else None
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO events (
+                store_id,
+                event_type,
+                product_id,
+                product_name_at_time,
+                quantity,
+                cost_at_time,
+                price_at_time,
+                event_datetime,
+                note,
+                client_event_id,
+                device_id,
+                client_created_at
+            )
+            VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s
+            )
+            RETURNING event_id
+            """,
+            (
+                data.store_id,
+                event_type,
+                data.product_id,
+                name,
+                data.quantity,
+                cost,
+                price,
+                now,
+                adjustment_note,
+                data.client_event_id,
+                data.device_id,
+                data.client_created_at
+            )
+        )
+
+        event_id = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+            UPDATE products
+            SET stock =
+                COALESCE(stock, 0) + %s
+            WHERE product_id = %s
+              AND store_id = %s
+              AND tracks_stock = 1
+            """,
+            (
+                stock_delta,
+                data.product_id,
+                data.store_id
+            )
+        )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "event_id": event_id,
+            "event_type": event_type,
+            "product_id": data.product_id,
+            "product_name": name,
+            "quantity": data.quantity,
+            "stock_delta": stock_delta,
+            "client_event_id":
+                data.client_event_id
+        }
+
+    except psycopg2.errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        if (
+            cursor and
+            data.client_event_id
+        ):
+            cursor.execute(
+                """
+                SELECT event_id
+                FROM events
+                WHERE store_id = %s
+                  AND client_event_id = %s
+                  AND event_type IN (
+                    'stock_adjustment_positive',
+                    'stock_adjustment_negative'
+                  )
+                LIMIT 1
+                """,
+                (
+                    data.store_id,
+                    data.client_event_id
+                )
+            )
+
+            existing = cursor.fetchone()
+
+            if existing:
+                return {
+                    "status":
+                        "already_processed",
+                    "event_id":
+                        existing[0],
+                    "client_event_id":
+                        data.client_event_id
+                }
+
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Duplicate stock adjustment event"
+            )
+        )
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "🔥 STOCK ADJUSTMENT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.post("/stock-transfer")
 def stock_transfer(data: StockTransferRequest):
