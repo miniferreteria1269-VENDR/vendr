@@ -48,6 +48,25 @@ export const getCachedConfirmedCashBalance =
   };
 
 /**
+ * Calculates the total cost of an intake ticket.
+ */
+const getIntakeTotalCost = event => {
+  const items = event?.payload?.items;
+
+  if (!Array.isArray(items)) {
+    return 0;
+  }
+
+  return items.reduce(
+    (total, item) =>
+      total +
+      Number(item.cost || 0) *
+        Number(item.quantity || 0),
+    0
+  );
+};
+
+/**
  * Determines how a pending event affects cash.
  */
 const getPendingCashDelta = event => {
@@ -55,17 +74,17 @@ const getPendingCashDelta = event => {
     event?.payload?.amount || 0
   );
 
-  if (!Number.isFinite(amount)) {
-    return 0;
-  }
-
   switch (event.event_type) {
     case "revenue":
-      return amount;
+      return Number.isFinite(amount)
+        ? amount
+        : 0;
 
     case "expense":
     case "return":
-      return -amount;
+      return Number.isFinite(amount)
+        ? -amount
+        : 0;
 
     case "sale":
       return Array.isArray(
@@ -78,6 +97,11 @@ const getPendingCashDelta = event => {
                 Number(item.quantity || 0),
             0
           )
+        : 0;
+
+    case "intake":
+      return event?.payload?.paid === true
+        ? -getIntakeTotalCost(event)
         : 0;
 
     default:
