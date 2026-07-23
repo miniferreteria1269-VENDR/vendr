@@ -142,6 +142,10 @@ class IntakeTicket(BaseModel):
     items: List[IntakeItem]
     paid: bool = False
 
+    client_event_id: Optional[str] = None
+    device_id: Optional[str] = None
+    client_created_at: Optional[str] = None
+
 class CashEventRequest(BaseModel):
     store_id: int
     amount: float
@@ -905,88 +909,225 @@ def change_price(store_id:int,product_id:int,cost:float,price:float):
 
 @app.post("/intake-ticket")
 def intake_ticket(ticket: IntakeTicket):
+    conn = None
+    cursor = None
 
     try:
+        if not ticket.items:
+            raise HTTPException(
+                status_code=400,
+                detail="Intake ticket must contain at least one item"
+            )
+
+        for item in ticket.items:
+            if item.quantity <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Item quantity must be greater than zero"
+                )
+
+            if item.cost < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Item cost cannot be negative"
+                )
+
+            if item.price < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Item price cannot be negative"
+                )
+
         conn = db()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT MAX(ticket_id) FROM events")
-        result = cursor.fetchone()[0]
-        ticket_id = 1 if result is None else result + 1
+        # ---------------------------------------------
+        # IDEMPOTENCY CHECK
+        # ---------------------------------------------
+        if ticket.client_event_id:
+            cursor.execute(
+                """
+                SELECT ticket_id
+                FROM events
+                WHERE store_id = %s
+                  AND client_event_id = %s
+                  AND event_type = 'intake'
+                LIMIT 1
+                """,
+                (
+                    ticket.store_id,
+                    ticket.client_event_id
+                )
+            )
 
-        now = datetime.now(timezone.utc).isoformat()
+            existing = cursor.fetchone()
 
-        total_cost = 0  # ✅ NEW
+            if existing:
+                return {
+                    "status": "already_processed",
+                    "ticket_id": existing[0],
+                    "client_event_id":
+                        ticket.client_event_id
+                }
 
-        # -----------------------------
-        # PROCESS ITEMS (UNCHANGED LOGIC)
-        # -----------------------------
+        # ---------------------------------------------
+        # SERIALIZE TICKET ID GENERATION
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT pg_advisory_xact_lock(%s)
+            """,
+            (1269002,)
+        )
+
+        cursor.execute(
+            """
+            SELECT COALESCE(MAX(ticket_id), 0)
+            FROM events
+            """
+        )
+
+        ticket_id = cursor.fetchone()[0] + 1
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        total_cost = 0.0
+
+        # ---------------------------------------------
+        # PROCESS INTAKE ITEMS
+        # ---------------------------------------------
         for item in ticket.items:
-
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT name
                 FROM products
-                WHERE product_id = %s AND store_id = %s
-            """, (item.product_id, ticket.store_id))
+                WHERE product_id = %s
+                  AND store_id = %s
+                  AND is_active = 1
+                """,
+                (
+                    item.product_id,
+                    ticket.store_id
+                )
+            )
 
             product = cursor.fetchone()
 
             if not product:
-                raise ValueError("Product not found")
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"Product {item.product_id} "
+                        "not found"
+                    )
+                )
 
-            name = product[0]
+            product_name = product[0]
 
-            # INSERT EVENT (inventory truth)
-            cursor.execute("""
-                INSERT INTO events
-                (store_id, event_type, product_id, product_name_at_time,
-                quantity, cost_at_time, price_at_time, event_datetime, ticket_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                ticket.store_id,
-                "intake",
-                item.product_id,
-                name,
-                item.quantity,
-                item.cost,
-                item.price,
-                now,
-                ticket_id
-            ))
+            quantity = int(item.quantity)
+            cost = round(
+                float(item.cost),
+                2
+            )
+            price = round(
+                float(item.price),
+                2
+            )
 
-            # UPDATE STOCK
-            cursor.execute("""
+            cursor.execute(
+                """
+                INSERT INTO events (
+                    store_id,
+                    event_type,
+                    product_id,
+                    product_name_at_time,
+                    quantity,
+                    cost_at_time,
+                    price_at_time,
+                    event_datetime,
+                    ticket_id,
+                    client_event_id,
+                    device_id,
+                    client_created_at
+                )
+                VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s
+                )
+                """,
+                (
+                    ticket.store_id,
+                    "intake",
+                    item.product_id,
+                    product_name,
+                    quantity,
+                    cost,
+                    price,
+                    now,
+                    ticket_id,
+                    ticket.client_event_id,
+                    ticket.device_id,
+                    ticket.client_created_at
+                )
+            )
+
+            cursor.execute(
+                """
                 UPDATE products
-                SET stock = stock + %s,
+                SET
+                    stock =
+                        COALESCE(stock, 0) + %s,
                     cost = %s,
                     price = %s
-                WHERE product_id = %s AND store_id = %s
-            """, (
-                item.quantity,
-                item.cost,
-                item.price,
-                item.product_id,
-                ticket.store_id
-            ))
+                WHERE product_id = %s
+                  AND store_id = %s
+                """,
+                (
+                    quantity,
+                    cost,
+                    price,
+                    item.product_id,
+                    ticket.store_id
+                )
+            )
 
-            # ✅ ACCUMULATE COST
-            total_cost += item.cost * item.quantity
+            total_cost += (
+                cost * quantity
+            )
 
-        # -----------------------------
-        # CASH EVENT (ONLY IF PAID)
-        # -----------------------------
+        total_cost = round(
+            total_cost,
+            2
+        )
+
+        # ---------------------------------------------
+        # PAID INTAKE CASH OUTFLOW
+        # ---------------------------------------------
         if ticket.paid:
-
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT organization_id
                 FROM stores
                 WHERE store_id = %s
-            """, (ticket.store_id,))
+                """,
+                (ticket.store_id,)
+            )
 
-            result = cursor.fetchone()
-            org_id = result[0] if result and result[0] is not None else None
+            store = cursor.fetchone()
 
-            cursor.execute("""
+            if not store:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Store not found"
+                )
+
+            organization_id = store[0]
+
+            cursor.execute(
+                """
                 INSERT INTO cash_events (
                     organization_id,
                     store_id,
@@ -995,31 +1136,107 @@ def intake_ticket(ticket: IntakeTicket):
                     amount,
                     category,
                     note,
-                    reference_id
+                    reference_id,
+                    client_event_id,
+                    device_id,
+                    client_created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                org_id,
-                ticket.store_id,
-                "intake_paid",
-                -1,
-                total_cost,
-                "inventory",
-                "Paid intake",
-                ticket_id
-            ))
+                VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+                """,
+                (
+                    organization_id,
+                    ticket.store_id,
+                    "intake_paid",
+                    -1,
+                    total_cost,
+                    "inventory",
+                    "Paid intake",
+                    ticket_id,
+                    ticket.client_event_id,
+                    ticket.device_id,
+                    ticket.client_created_at
+                )
+            )
 
-        # -----------------------------
-        # COMMIT (single atomic operation)
-        # -----------------------------
         conn.commit()
-        conn.close()
 
-        return {"ticket_id": ticket_id}
+        return {
+            "status": "accepted",
+            "ticket_id": ticket_id,
+            "client_event_id":
+                ticket.client_event_id
+        }
 
-    except Exception as e:
-        print("🔥 INTAKE ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+    except psycopg2.errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        if (
+            cursor and
+            ticket.client_event_id
+        ):
+            cursor.execute(
+                """
+                SELECT ticket_id
+                FROM events
+                WHERE store_id = %s
+                  AND client_event_id = %s
+                  AND event_type = 'intake'
+                LIMIT 1
+                """,
+                (
+                    ticket.store_id,
+                    ticket.client_event_id
+                )
+            )
+
+            existing = cursor.fetchone()
+
+            if existing:
+                return {
+                    "status":
+                        "already_processed",
+                    "ticket_id":
+                        existing[0],
+                    "client_event_id":
+                        ticket.client_event_id
+                }
+
+        raise HTTPException(
+            status_code=409,
+            detail="Duplicate intake event"
+        )
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "🔥 INTAKE ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 # -----------------------------
 # ADMIN RECOVERY
 # -----------------------------
