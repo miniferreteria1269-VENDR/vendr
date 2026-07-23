@@ -29,7 +29,8 @@ function CashPanel({
 }) {
   const { t } = useLang();
 
-  const [balance, setBalance] = useState(0);
+  const [balance, setBalance] =
+    useState(0);
 
   const [showReturn, setShowReturn] =
     useState(false);
@@ -67,6 +68,10 @@ function CashPanel({
         confirmedBalance
       );
 
+      /*
+       * Always include any local events that may still
+       * be pending, even while the server is reachable.
+       */
       const displayedBalance =
         await getDisplayedCashBalance(
           storeId
@@ -77,6 +82,26 @@ function CashPanel({
           ? displayedBalance
           : confirmedBalance
       );
+    } catch (error) {
+      console.warn(
+        "USING OFFLINE CASH BALANCE:",
+        error
+      );
+
+      try {
+        /*
+         * Offline balance =
+         * last confirmed backend balance
+         * + all unsynchronized local cash effects.
+         */
+        const displayedBalance =
+          await getDisplayedCashBalance(
+            storeId
+          );
+
+        if (displayedBalance !== null) {
+          setBalance(displayedBalance);
+        }
       } catch (offlineError) {
         console.error(
           "FAILED TO LOAD OFFLINE CASH BALANCE:",
