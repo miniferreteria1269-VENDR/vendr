@@ -154,6 +154,163 @@ def build_period_boundaries(
         "days": days_in_period
     }
 
+
+def build_growth_history_data(
+    cursor,
+    store_id: int
+):
+    # ---------------------------------------------
+    # FIRST AND LAST RECORDED SALES
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            MIN(
+                event_datetime::timestamp
+            ),
+            MAX(
+                event_datetime::timestamp
+            ),
+            COUNT(
+                DISTINCT (
+                    event_datetime::timestamp
+                )::date
+            )
+        FROM events
+        WHERE store_id = %s
+          AND event_type = 'sale'
+        """,
+        (store_id,)
+    )
+
+    row = cursor.fetchone()
+
+    first_sale_datetime = row[0]
+    last_sale_datetime = row[1]
+    active_sales_days = int(
+        row[2] or 0
+    )
+
+    if not first_sale_datetime:
+        return {
+            "first_recorded_sale_date":
+                None,
+            "last_recorded_sale_date":
+                None,
+            "calendar_days_of_history": 0,
+            "completed_weeks_of_history": 0,
+            "completed_months_of_history": 0,
+            "active_sales_days": 0
+        }
+
+    first_sale_date = (
+        first_sale_datetime.date()
+    )
+
+    last_sale_date = (
+        last_sale_datetime.date()
+    )
+
+    today = datetime.now(
+        timezone.utc
+    ).date()
+
+    calendar_days_of_history = (
+        today - first_sale_date
+    ).days + 1
+
+    completed_weeks_of_history = (
+        calendar_days_of_history // 7
+    )
+
+    completed_months_of_history = (
+        calendar_days_of_history // 30
+    )
+
+    return {
+        "first_recorded_sale_date":
+            first_sale_date.isoformat(),
+
+        "last_recorded_sale_date":
+            last_sale_date.isoformat(),
+
+        "calendar_days_of_history":
+            calendar_days_of_history,
+
+        "completed_weeks_of_history":
+            completed_weeks_of_history,
+
+        "completed_months_of_history":
+            completed_months_of_history,
+
+        "active_sales_days":
+            active_sales_days
+    }
+
+def classify_growth_data_readiness(
+    history: dict
+):
+    completed_weeks = int(
+        history.get(
+            "completed_weeks_of_history",
+            0
+        ) or 0
+    )
+
+    if completed_weeks < 2:
+        level = "insufficient_history"
+        confidence = "very_low"
+
+    elif completed_weeks < 8:
+        level = "weekly_momentum_only"
+        confidence = "low"
+
+    elif completed_weeks < 13:
+        level = "short_term_trend"
+        confidence = "moderate"
+
+    elif completed_weeks < 52:
+        level = "quarterly_trend"
+        confidence = "moderate"
+
+    elif completed_weeks < 104:
+        level = "annual_comparison"
+        confidence = "high"
+
+    else:
+        level = "multi_year_trend"
+        confidence = "high"
+
+    return {
+        "level":
+            level,
+
+        "confidence":
+            confidence,
+
+        "weekly_momentum_available":
+            completed_weeks >= 2,
+
+        "short_term_trend_available":
+            completed_weeks >= 8,
+
+        "quarterly_trend_available":
+            completed_weeks >= 13,
+
+        "annual_comparison_available":
+            completed_weeks >= 52,
+
+        "seasonal_comparison_available":
+            completed_weeks >= 52,
+
+        "multi_year_trend_available":
+            completed_weeks >= 104,
+
+        "inflation_adjustment_available":
+            False
+    }
+    
+
 def build_sales_analysis_data(
     cursor,
     store_id: int,
@@ -4548,6 +4705,124 @@ def weekly_briefing_data(
         if conn:
             conn.close()
             
+
+@app.get("/internal/growth-analysis-data")
+def growth_analysis_data(
+    store_id: int
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                name,
+                organization_id
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (store_id,)
+        )
+
+        store = cursor.fetchone()
+
+        if not store:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        store_name = str(
+            store[0] or ""
+        ).strip()
+
+        organization_id = store[1]
+
+        history = (
+            build_growth_history_data(
+                cursor=cursor,
+                store_id=store_id
+            )
+        )
+
+        readiness = (
+            classify_growth_data_readiness(
+                history
+            )
+        )
+
+        return {
+            "metadata": {
+                "store_id":
+                    store_id,
+
+                "store_name":
+                    store_name,
+
+                "organization_id":
+                    organization_id,
+
+                "generated_at":
+                    datetime.now(
+                        timezone.utc
+                    ).isoformat()
+            },
+
+            "history":
+                history,
+
+            "data_readiness":
+                readiness,
+
+            "weekly_momentum":
+                None,
+
+            "short_term_trend":
+                None,
+
+            "quarterly_trend":
+                None,
+
+            "annual_trend":
+                None,
+
+            "multi_year_trend":
+                None,
+
+            "inflation_context":
+                None
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "🔥 GROWTH ANALYSIS DATA ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.post("/import-products")
 async def import_products(
