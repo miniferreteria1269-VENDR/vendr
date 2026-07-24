@@ -1972,6 +1972,49 @@ def build_weekly_alerts_data(
     }
 
 
+def build_review_queue_data(alerts):
+
+    queue = []
+
+    for alert in alerts.get("items", []):
+
+        priority = "medium"
+
+        if alert["severity"] == "warning":
+            priority = "high"
+
+        elif alert["severity"] == "attention":
+            priority = "medium"
+
+        else:
+            priority = "low"
+
+        queue.append({
+            "priority": priority,
+            "panel": alert["review_panel"],
+            "label": alert["review_label"],
+            "reason": alert["message"]
+        })
+
+    priority_order = {
+        "high": 0,
+        "medium": 1,
+        "low": 2
+    }
+
+    queue.sort(
+        key=lambda item: (
+            priority_order[item["priority"]],
+            item["label"]
+        )
+    )
+
+    return {
+        "count": len(queue),
+        "items": queue
+    }
+
+
 @app.on_event("startup")
 def startup():
     init_db()
@@ -4861,6 +4904,15 @@ def weekly_briefing_data(
             )
         )
 
+        # ---------------------------------------------
+        # REVIEW QUEUE
+        # ---------------------------------------------
+        review_queue = (
+            build_review_queue_data(
+                alerts
+            )
+        )
+
         current_net_cash = float(
             current_cash.get(
                 "net_cash_movement",
@@ -5126,7 +5178,10 @@ def weekly_briefing_data(
             },
 
             "alerts":
-                alerts
+                alerts,
+
+            "review_queue":
+                review_queue
         }
 
     except HTTPException:
