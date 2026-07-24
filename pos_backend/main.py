@@ -3992,63 +3992,134 @@ def product_movement_summary(store_id: int, start_date: str, end_date: str):
         })
 
     return {"summary": summary}
-@app.get("/sales-history")
-def sales_history(store_id: int, start_date: str = None, end_date: str = None):
 
+@app.get("/sales-history")
+def sales_history(
+    store_id: int,
+    start_date: str = None,
+    end_date: str = None
+):
     conn = db()
     cursor = conn.cursor()
 
-    query = """
-        SELECT
-            ticket_id,
-            MIN(event_datetime::timestamp) as event_datetime,
-            COUNT(*) as items,
-            SUM(quantity * price_at_time) as revenue,
-            SUM(quantity * cost_at_time) as cost
-        FROM events
-        WHERE store_id = %s
-        AND event_type = 'sale'
-    """
+    try:
+        query = """
+            SELECT
+                ticket_id,
 
-    params = [store_id]
+                MIN(
+                    event_datetime::timestamptz
+                ) AS event_datetime,
 
-    # -----------------------------
-    # Date filters (FIXED)
-    # -----------------------------
-    if start_date:
-        query += " AND event_datetime::timestamp >= %s"
-        params.append(start_date)
+                COUNT(*) AS items,
 
-    if end_date:
-        query += " AND event_datetime::timestamp < (%s::date + INTERVAL '1 day')"
-        params.append(end_date)
+                COALESCE(
+                    SUM(
+                        quantity *
+                        price_at_time
+                    ),
+                    0
+                ) AS revenue,
 
-    query += """
-        GROUP BY ticket_id
-        ORDER BY event_datetime DESC
-        LIMIT 100
-    """
+                COALESCE(
+                    SUM(
+                        quantity *
+                        cost_at_time
+                    ),
+                    0
+                ) AS cost
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
+            FROM events
 
-    history = []
+            WHERE store_id = %s
+              AND event_type = 'sale'
+        """
 
-    for row in rows:
+        params = [store_id]
 
-        revenue = row[3] or 0
-        cost = row[4] or 0
+        # Filter according to the business's local
+        # calendar date, not the UTC calendar date.
+        if start_date:
+            query += """
+                AND (
+                    event_datetime::timestamptz
+                    AT TIME ZONE
+                    'America/El_Salvador'
+                )::date >= %s::date
+            """
 
-        history.append({
-            "ticket_id": row[0],
-            "datetime": row[1],
-            "items": row[2],
-            "revenue": revenue,
-            "profit": revenue - cost
-        })
+            params.append(start_date)
 
-    return {"sales": history}
+        if end_date:
+            query += """
+                AND (
+                    event_datetime::timestamptz
+                    AT TIME ZONE
+                    'America/El_Salvador'
+                )::date <= %s::date
+            """
+
+            params.append(end_date)
+
+        query += """
+            GROUP BY ticket_id
+            ORDER BY event_datetime DESC
+            LIMIT 100
+        """
+
+        cursor.execute(
+            query,
+            params
+        )
+
+        rows = cursor.fetchall()
+
+        history = []
+
+        for row in rows:
+            revenue = float(
+                row[3] or 0
+            )
+
+            cost = float(
+                row[4] or 0
+            )
+
+            history.append({
+                "ticket_id":
+                    row[0],
+
+                "datetime":
+                    row[1],
+
+                "items":
+                    int(row[2] or 0),
+
+                "revenue":
+                    revenue,
+
+                "profit":
+                    revenue - cost
+            })
+
+        return {
+            "sales": history
+        }
+
+    except Exception as error:
+        print(
+            "SALES HISTORY ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load sales history"
+        )
+
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.get("/intake-ticket-details")
 def intake_ticket_details(store_id: int, ticket_id: int):
