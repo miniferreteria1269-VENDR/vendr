@@ -9,8 +9,7 @@ import axios from "axios";
 import {
   COLORS,
   card,
-  input,
-  btnPrimary
+  input
 } from "../uiStyles";
 
 const API =
@@ -27,6 +26,42 @@ const getLocalDateValue = () => {
   return localTime
     .toISOString()
     .slice(0, 10);
+};
+
+const formatSaleDateTime = value => {
+  if (!value) {
+    return "—";
+  }
+
+  const normalizedValue =
+    String(value).replace(
+      /\.(\d{3})\d*(?=[+-]\d{2}:\d{2}$|Z$)/,
+      ".$1"
+    );
+
+  const parsedDate =
+    new Date(normalizedValue);
+
+  if (
+    Number.isNaN(
+      parsedDate.getTime()
+    )
+  ) {
+    console.warn(
+      "INVALID SALES HISTORY DATETIME:",
+      value
+    );
+
+    return "—";
+  }
+
+  return parsedDate.toLocaleString(
+    "es-SV",
+    {
+      dateStyle: "short",
+      timeStyle: "medium"
+    }
+  );
 };
 
 function SalesHistoryPanel({
@@ -46,11 +81,15 @@ function SalesHistoryPanel({
   const [endDate, setEndDate] =
     useState(today);
 
-  const [selectedTicket, setSelectedTicket] =
-    useState(null);
+  const [
+    selectedTicket,
+    setSelectedTicket
+  ] = useState(null);
 
-  const [ticketDetails, setTicketDetails] =
-    useState([]);
+  const [
+    ticketDetails,
+    setTicketDetails
+  ] = useState([]);
 
   const [loading, setLoading] =
     useState(false);
@@ -133,6 +172,11 @@ function SalesHistoryPanel({
     }
   };
 
+  const closeTicket = () => {
+    setSelectedTicket(null);
+    setTicketDetails([]);
+  };
+
   return (
     <div
       style={{
@@ -205,9 +249,14 @@ function SalesHistoryPanel({
               loading
             }
             style={{
-              ...btnPrimary,
+              background:
+                COLORS.primary,
+              border: "none",
+              borderRadius: 8,
               minHeight: 38,
               padding: "8px 16px",
+              color: "white",
+              fontWeight: 600,
               opacity:
                 invalidDateRange ||
                 loading
@@ -222,11 +271,12 @@ function SalesHistoryPanel({
           >
             {loading
               ? t("loading")
-              : t("apply") || "Apply"}
+              : t("apply") ||
+                "Apply"}
           </button>
         </div>
 
-        {/* SCROLL CONTAINER */}
+        {/* SALES LIST */}
         <div
           style={{
             flex: 1,
@@ -271,19 +321,9 @@ function SalesHistoryPanel({
                         COLORS.textDim
                     }}
                   >
-                    {sale.datetime
-                      ? new Date(
-                          sale.datetime
-                        ).toLocaleString(
-                          "es-SV",
-                          {
-                            dateStyle:
-                              "short",
-                            timeStyle:
-                              "medium"
-                          }
-                        )
-                      : "—"}
+                    {formatSaleDateTime(
+                      sale.datetime
+                    )}
                   </div>
                 </div>
 
@@ -349,15 +389,13 @@ function SalesHistoryPanel({
         </div>
       </div>
 
-      {/* MODAL */}
+      {/* TICKET DETAILS MODAL */}
       {selectedTicket !== null && (
         <div
+          onClick={closeTicket}
           style={{
             position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
+            inset: 0,
             background:
               "rgba(0,0,0,0.6)",
             display: "flex",
@@ -368,6 +406,9 @@ function SalesHistoryPanel({
           }}
         >
           <div
+            onClick={event =>
+              event.stopPropagation()
+            }
             style={{
               background:
                 COLORS.panel,
@@ -425,21 +466,21 @@ function SalesHistoryPanel({
 
             <button
               type="button"
-              onClick={() => {
-                setSelectedTicket(
-                  null
-                );
-
-                setTicketDetails(
-                  []
-                );
-              }}
+              onClick={closeTicket}
               style={{
-                ...btnPrimary,
-                width: "100%"
+                background:
+                  COLORS.primary,
+                border: "none",
+                borderRadius: 8,
+                padding: "8px 12px",
+                color: "white",
+                cursor: "pointer",
+                width: "100%",
+                fontWeight: 600
               }}
             >
-              {t("back") || "Back"}
+              {t("back") ||
+                "Back"}
             </button>
           </div>
         </div>
