@@ -4121,10 +4121,7 @@ def weekly_briefing_data(
                     ]
                 ),
 
-            /*
-             * Do not use a percentage for net cash
-             * movement when values may cross zero.
-             */
+           
             "net_cash_movement_change":
                 round_money(
                     current_net_cash
