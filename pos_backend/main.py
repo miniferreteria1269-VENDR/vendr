@@ -161,6 +161,9 @@ def build_sales_analysis_data(
     end_exclusive: datetime,
     days_in_period: int
 ):
+    # ---------------------------------------------
+    # SALES SUMMARY
+    # ---------------------------------------------
     cursor.execute(
         """
         SELECT
@@ -240,6 +243,9 @@ def build_sales_analysis_data(
             )
     }
 
+    # ---------------------------------------------
+    # PRODUCT PERFORMANCE
+    # ---------------------------------------------
     cursor.execute(
         """
         SELECT
@@ -315,28 +321,280 @@ def build_sales_analysis_data(
                 round(margin_percent, 2)
         })
 
-    return {
-        "summary": summary,
-        "top_revenue_products": sorted(
-            products,
-            key=lambda item:
-                item["revenue"],
-            reverse=True
-        )[:10],
-        "top_profit_products": sorted(
-            products,
-            key=lambda item:
-                item["profit"],
-            reverse=True
-        )[:10],
-        "top_volume_products": sorted(
-            products,
-            key=lambda item:
-                item["units"],
-            reverse=True
-        )[:10]
+    top_revenue_products = sorted(
+        products,
+        key=lambda item:
+            item["revenue"],
+        reverse=True
+    )[:10]
+
+    top_profit_products = sorted(
+        products,
+        key=lambda item:
+            item["profit"],
+        reverse=True
+    )[:10]
+
+    top_volume_products = sorted(
+        products,
+        key=lambda item:
+            item["units"],
+        reverse=True
+    )[:10]
+
+    # ---------------------------------------------
+    # INTAKE ACTIVITY
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            COUNT(
+                DISTINCT ticket_id
+            ),
+            COALESCE(
+                SUM(quantity),
+                0
+            ),
+            COALESCE(
+                SUM(
+                    quantity *
+                    cost_at_time
+                ),
+                0
+            )
+        FROM events
+        WHERE store_id = %s
+          AND event_type = 'intake'
+          AND event_datetime::timestamp >= %s
+          AND event_datetime::timestamp < %s
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    intake_row = cursor.fetchone()
+
+    inventory = {
+        "intake_tickets":
+            int(intake_row[0] or 0),
+
+        "intake_units":
+            int(intake_row[1] or 0),
+
+        "intake_cost":
+            round_money(
+                intake_row[2]
+            ),
+
+        "positive_adjustment_events": 0,
+        "positive_adjustment_units": 0,
+
+        "negative_adjustment_events": 0,
+        "negative_adjustment_units": 0,
+
+        "loss_events": 0,
+        "loss_units": 0,
+        "loss_cost": 0.0,
+
+        "transfer_in_events": 0,
+        "transfer_in_units": 0,
+
+        "transfer_out_events": 0,
+        "transfer_out_units": 0
     }
 
+    # ---------------------------------------------
+    # STOCK ADJUSTMENTS
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            event_type,
+            COUNT(*) AS event_count,
+            COALESCE(
+                SUM(quantity),
+                0
+            ) AS total_units
+        FROM events
+        WHERE store_id = %s
+          AND event_type IN (
+              'stock_adjustment_positive',
+              'stock_adjustment_negative'
+          )
+          AND event_datetime::timestamp >= %s
+          AND event_datetime::timestamp < %s
+        GROUP BY event_type
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    for (
+        event_type,
+        event_count,
+        total_units
+    ) in cursor.fetchall():
+        if (
+            event_type ==
+            "stock_adjustment_positive"
+        ):
+            inventory[
+                "positive_adjustment_events"
+            ] = int(
+                event_count or 0
+            )
+
+            inventory[
+                "positive_adjustment_units"
+            ] = int(
+                total_units or 0
+            )
+
+        elif (
+            event_type ==
+            "stock_adjustment_negative"
+        ):
+            inventory[
+                "negative_adjustment_events"
+            ] = int(
+                event_count or 0
+            )
+
+            inventory[
+                "negative_adjustment_units"
+            ] = int(
+                total_units or 0
+            )
+
+    # ---------------------------------------------
+    # LOSSES
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*) AS event_count,
+            COALESCE(
+                SUM(quantity),
+                0
+            ) AS total_units,
+            COALESCE(
+                SUM(
+                    quantity *
+                    cost_at_time
+                ),
+                0
+            ) AS total_cost
+        FROM events
+        WHERE store_id = %s
+          AND event_type = 'loss'
+          AND event_datetime::timestamp >= %s
+          AND event_datetime::timestamp < %s
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    loss_row = cursor.fetchone()
+
+    inventory["loss_events"] = int(
+        loss_row[0] or 0
+    )
+
+    inventory["loss_units"] = int(
+        loss_row[1] or 0
+    )
+
+    inventory["loss_cost"] = round_money(
+        loss_row[2]
+    )
+
+    # ---------------------------------------------
+    # TRANSFERS
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            event_type,
+            COUNT(*) AS event_count,
+            COALESCE(
+                SUM(quantity),
+                0
+            ) AS total_units
+        FROM events
+        WHERE store_id = %s
+          AND event_type IN (
+              'transfer_in',
+              'transfer_out'
+          )
+          AND event_datetime::timestamp >= %s
+          AND event_datetime::timestamp < %s
+        GROUP BY event_type
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    for (
+        event_type,
+        event_count,
+        total_units
+    ) in cursor.fetchall():
+        if event_type == "transfer_in":
+            inventory[
+                "transfer_in_events"
+            ] = int(
+                event_count or 0
+            )
+
+            inventory[
+                "transfer_in_units"
+            ] = int(
+                total_units or 0
+            )
+
+        elif event_type == "transfer_out":
+            inventory[
+                "transfer_out_events"
+            ] = int(
+                event_count or 0
+            )
+
+            inventory[
+                "transfer_out_units"
+            ] = int(
+                total_units or 0
+            )
+
+    # ---------------------------------------------
+    # RESPONSE
+    # ---------------------------------------------
+    return {
+        "summary": summary,
+
+        "inventory": inventory,
+
+        "top_revenue_products":
+            top_revenue_products,
+
+        "top_profit_products":
+            top_profit_products,
+
+        "top_volume_products":
+            top_volume_products
+    }
+    
 @app.on_event("startup")
 def startup():
     init_db()
@@ -3177,7 +3435,8 @@ def weekly_briefing_data(
                     ]
                 ),
 
-            "margin_change_points":
+            
+            "margin_change_points": (
                 round(
                     current_summary[
                         "gross_margin_percent"
@@ -3188,6 +3447,13 @@ def weekly_briefing_data(
                     ],
                     2
                 )
+                if (
+                    current_summary["revenue"] > 0
+                    and
+                    previous_summary["revenue"] > 0
+                )
+                else None
+            )
         }
 
         # ---------------------------------------------
@@ -3195,8 +3461,12 @@ def weekly_briefing_data(
         # ---------------------------------------------
         return {
             "metadata": {
-                "store_id": store_id,
-                "store_name": store_name,
+                "store_id":
+                    store_id,
+
+                "store_name":
+                    store_name,
+
                 "organization_id":
                     organization_id,
 
@@ -3245,6 +3515,36 @@ def weekly_briefing_data(
                     current_analysis[
                         "top_volume_products"
                     ]
+            },
+
+            "inventory": {
+                "current_week":
+                    current_analysis.get(
+                        "inventory",
+                        {
+                            "intake_tickets": 0,
+                            "intake_units": 0,
+                            "intake_cost": 0.0,
+                            "positive_adjustments": 0,
+                            "negative_adjustments": 0,
+                            "loss_units": 0,
+                            "loss_cost": 0.0
+                        }
+                    ),
+
+                "previous_week":
+                    previous_analysis.get(
+                        "inventory",
+                        {
+                            "intake_tickets": 0,
+                            "intake_units": 0,
+                            "intake_cost": 0.0,
+                            "positive_adjustments": 0,
+                            "negative_adjustments": 0,
+                            "loss_units": 0,
+                            "loss_cost": 0.0
+                        }
+                    )
             }
         }
 
@@ -3274,7 +3574,7 @@ def weekly_briefing_data(
 
         if conn:
             conn.close()
-
+            
 
 @app.post("/import-products")
 async def import_products(
