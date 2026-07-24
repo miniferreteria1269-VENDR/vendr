@@ -129,7 +129,15 @@ function SalesHistoryPanel({ storeId }) {
                   fontSize: 12,
                   color: COLORS.textDim
                 }}>
-                  {new Date(sale.datetime + "Z").toLocaleString()}
+                  {new Date(
+                    sale.datetime
+                  ).toLocaleString(
+                    "es-SV",
+                   {
+                      dateStyle: "short",
+                      timeStyle: "medium"
+                    }
+                  )}
                 </div>
               </div>
 
