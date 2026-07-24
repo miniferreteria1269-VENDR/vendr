@@ -4782,7 +4782,7 @@ def growth_analysis_data(
             "data_readiness":
                 readiness,
 
-            "short_term_trend":
+            "short_term_monthly_trend":
                 None,
 
             "quarterly_trend":
