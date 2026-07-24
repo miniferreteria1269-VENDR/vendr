@@ -594,7 +594,333 @@ def build_sales_analysis_data(
         "top_volume_products":
             top_volume_products
     }
-    
+
+def build_cash_activity_data(
+    cursor,
+    store_id: int,
+    start_datetime: datetime,
+    end_exclusive: datetime
+):
+    # ---------------------------------------------
+    # OVERALL CASH MOVEMENT
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*),
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN direction = 1
+                        THEN amount
+                        ELSE 0
+                    END
+                ),
+                0
+            ),
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN direction = -1
+                        THEN amount
+                        ELSE 0
+                    END
+                ),
+                0
+            ),
+            COALESCE(
+                SUM(
+                    amount * direction
+                ),
+                0
+            )
+        FROM cash_events
+        WHERE store_id = %s
+          AND created_at >= %s
+          AND created_at < %s
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    overall_row = cursor.fetchone()
+
+    event_count = int(
+        overall_row[0] or 0
+    )
+
+    total_inflows = round_money(
+        overall_row[1]
+    )
+
+    total_outflows = round_money(
+        overall_row[2]
+    )
+
+    net_cash_movement = round_money(
+        overall_row[3]
+    )
+
+    # ---------------------------------------------
+    # MOVEMENT BY TYPE
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            COALESCE(type, ''),
+            direction,
+            COUNT(*),
+            COALESCE(
+                SUM(amount),
+                0
+            )
+        FROM cash_events
+        WHERE store_id = %s
+          AND created_at >= %s
+          AND created_at < %s
+        GROUP BY
+            COALESCE(type, ''),
+            direction
+        ORDER BY
+            COALESCE(type, ''),
+            direction DESC
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    by_type = []
+
+    for (
+        event_type,
+        direction,
+        count,
+        total
+    ) in cursor.fetchall():
+        numeric_direction = int(
+            direction or 1
+        )
+
+        numeric_total = round_money(
+            total
+        )
+
+        by_type.append({
+            "type": str(
+                event_type or ""
+            ),
+            "direction":
+                numeric_direction,
+            "count": int(
+                count or 0
+            ),
+            "total":
+                numeric_total,
+            "signed_total":
+                round_money(
+                    numeric_total *
+                    numeric_direction
+                )
+        })
+
+    # ---------------------------------------------
+    # MOVEMENT BY CATEGORY
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            COALESCE(category, ''),
+            direction,
+            COUNT(*),
+            COALESCE(
+                SUM(amount),
+                0
+            )
+        FROM cash_events
+        WHERE store_id = %s
+          AND created_at >= %s
+          AND created_at < %s
+        GROUP BY
+            COALESCE(category, ''),
+            direction
+        ORDER BY
+            COALESCE(category, ''),
+            direction DESC
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    by_category = []
+
+    for (
+        category,
+        direction,
+        count,
+        total
+    ) in cursor.fetchall():
+        numeric_direction = int(
+            direction or 1
+        )
+
+        numeric_total = round_money(
+            total
+        )
+
+        by_category.append({
+            "category": str(
+                category or ""
+            ),
+            "direction":
+                numeric_direction,
+            "count": int(
+                count or 0
+            ),
+            "total":
+                numeric_total,
+            "signed_total":
+                round_money(
+                    numeric_total *
+                    numeric_direction
+                )
+        })
+
+    # ---------------------------------------------
+    # COMMON BUSINESS BUCKETS
+    # ---------------------------------------------
+    sales_inflow = 0.0
+    other_revenue = 0.0
+    expenses = 0.0
+    paid_intakes = 0.0
+    returns_and_refunds = 0.0
+    owner_withdrawals = 0.0
+
+    for movement in by_type:
+        event_type = (
+            movement["type"]
+            .strip()
+            .lower()
+        )
+
+        direction = (
+            movement["direction"]
+        )
+
+        total = movement["total"]
+
+        if (
+            event_type == "sale"
+            and direction == 1
+        ):
+            sales_inflow += total
+
+        elif (
+            event_type == "revenue"
+            and direction == 1
+        ):
+            other_revenue += total
+
+        elif (
+            event_type == "expense"
+            and direction == -1
+        ):
+            expenses += total
+
+        elif (
+            event_type == "intake_paid"
+            and direction == -1
+        ):
+            paid_intakes += total
+
+        elif (
+            event_type in {
+                "return",
+                "refund",
+                "return_refund"
+            }
+            and direction == -1
+        ):
+            returns_and_refunds += total
+
+    for movement in by_category:
+        category = (
+            movement["category"]
+            .strip()
+            .lower()
+        )
+
+        if (
+            category in {
+                "retiro dueño",
+                "retiro dueno",
+                "owner_draw"
+            }
+            and
+            movement["direction"] == -1
+        ):
+            owner_withdrawals += (
+                movement["total"]
+            )
+
+    return {
+        "event_count":
+            event_count,
+
+        "total_inflows":
+            total_inflows,
+
+        "total_outflows":
+            total_outflows,
+
+        "net_cash_movement":
+            net_cash_movement,
+
+        "sales_inflow":
+            round_money(
+                sales_inflow
+            ),
+
+        "other_revenue":
+            round_money(
+                other_revenue
+            ),
+
+        "expenses":
+            round_money(
+                expenses
+            ),
+
+        "paid_intakes":
+            round_money(
+                paid_intakes
+            ),
+
+        "returns_and_refunds":
+            round_money(
+                returns_and_refunds
+            ),
+
+        "owner_withdrawals":
+            round_money(
+                owner_withdrawals
+            ),
+
+        "by_type":
+            by_type,
+
+        "by_category":
+            by_category
+    }
+
 @app.on_event("startup")
 def startup():
     init_db()
@@ -3346,7 +3672,7 @@ def weekly_briefing_data(
         organization_id = store[1]
 
         # ---------------------------------------------
-        # CURRENT WEEK
+        # CURRENT WEEK SALES + INVENTORY
         # ---------------------------------------------
         current_analysis = (
             build_sales_analysis_data(
@@ -3364,7 +3690,7 @@ def weekly_briefing_data(
         )
 
         # ---------------------------------------------
-        # PREVIOUS WEEK
+        # PREVIOUS WEEK SALES + INVENTORY
         # ---------------------------------------------
         previous_analysis = (
             build_sales_analysis_data(
@@ -3378,6 +3704,38 @@ def weekly_briefing_data(
                     ],
                 days_in_period=
                     previous_period["days"]
+            )
+        )
+
+        # ---------------------------------------------
+        # CURRENT WEEK CASH ACTIVITY
+        # ---------------------------------------------
+        current_cash = (
+            build_cash_activity_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    current_period["start"],
+                end_exclusive=
+                    current_period[
+                        "end_exclusive"
+                    ]
+            )
+        )
+
+        # ---------------------------------------------
+        # PREVIOUS WEEK CASH ACTIVITY
+        # ---------------------------------------------
+        previous_cash = (
+            build_cash_activity_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    previous_period["start"],
+                end_exclusive=
+                    previous_period[
+                        "end_exclusive"
+                    ]
             )
         )
 
@@ -3435,7 +3793,6 @@ def weekly_briefing_data(
                     ]
                 ),
 
-            
             "margin_change_points": (
                 round(
                     current_summary[
@@ -3453,7 +3810,62 @@ def weekly_briefing_data(
                     previous_summary["revenue"] > 0
                 )
                 else None
-            )
+            ),
+
+            "cash_inflow_change_percent":
+                calculate_percent_change(
+                    current_cash[
+                        "total_inflows"
+                    ],
+                    previous_cash[
+                        "total_inflows"
+                    ]
+                ),
+
+            "cash_outflow_change_percent":
+                calculate_percent_change(
+                    current_cash[
+                        "total_outflows"
+                    ],
+                    previous_cash[
+                        "total_outflows"
+                    ]
+                ),
+
+            "net_cash_movement_change_percent":
+                calculate_percent_change(
+                    current_cash[
+                        "net_cash_movement"
+                    ],
+                    previous_cash[
+                        "net_cash_movement"
+                    ]
+                )
+        }
+
+        # ---------------------------------------------
+        # DEFAULT INVENTORY OBJECT
+        # ---------------------------------------------
+        empty_inventory = {
+            "intake_tickets": 0,
+            "intake_units": 0,
+            "intake_cost": 0.0,
+
+            "positive_adjustment_events": 0,
+            "positive_adjustment_units": 0,
+
+            "negative_adjustment_events": 0,
+            "negative_adjustment_units": 0,
+
+            "loss_events": 0,
+            "loss_units": 0,
+            "loss_cost": 0.0,
+
+            "transfer_in_events": 0,
+            "transfer_in_units": 0,
+
+            "transfer_out_events": 0,
+            "transfer_out_units": 0
         }
 
         # ---------------------------------------------
@@ -3521,30 +3933,22 @@ def weekly_briefing_data(
                 "current_week":
                     current_analysis.get(
                         "inventory",
-                        {
-                            "intake_tickets": 0,
-                            "intake_units": 0,
-                            "intake_cost": 0.0,
-                            "positive_adjustments": 0,
-                            "negative_adjustments": 0,
-                            "loss_units": 0,
-                            "loss_cost": 0.0
-                        }
+                        empty_inventory.copy()
                     ),
 
                 "previous_week":
                     previous_analysis.get(
                         "inventory",
-                        {
-                            "intake_tickets": 0,
-                            "intake_units": 0,
-                            "intake_cost": 0.0,
-                            "positive_adjustments": 0,
-                            "negative_adjustments": 0,
-                            "loss_units": 0,
-                            "loss_cost": 0.0
-                        }
+                        empty_inventory.copy()
                     )
+            },
+
+            "cash": {
+                "current_week":
+                    current_cash,
+
+                "previous_week":
+                    previous_cash
             }
         }
 
@@ -4497,6 +4901,7 @@ def process_return(data: ReturnRequest):
     finally:
         cursor.close()
         conn.close()
+        
 @app.get("/cash-movements")
 def cash_movements(store_id: int, start_date: str, end_date: str):
 
