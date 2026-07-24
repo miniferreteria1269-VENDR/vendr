@@ -921,6 +921,206 @@ def build_cash_activity_data(
             by_category
     }
 
+
+def build_catalog_profile_data(
+    cursor,
+    store_id: int,
+    start_datetime: datetime,
+    end_exclusive: datetime
+):
+    # ---------------------------------------------
+    # ACTIVE CATALOG PROFILE
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*) FILTER (
+                WHERE tracks_stock = 1
+            ),
+            COUNT(*) FILTER (
+                WHERE tracks_stock != 1
+                   OR tracks_stock IS NULL
+            ),
+            COUNT(*)
+        FROM products
+        WHERE store_id = %s
+          AND is_active = 1
+        """,
+        (store_id,)
+    )
+
+    catalog_row = cursor.fetchone()
+
+    tracked_catalog_count = int(
+        catalog_row[0] or 0
+    )
+
+    service_catalog_count = int(
+        catalog_row[1] or 0
+    )
+
+    active_catalog_count = int(
+        catalog_row[2] or 0
+    )
+
+    # ---------------------------------------------
+    # SALES MIX BY OFFERING TYPE
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT
+            CASE
+                WHEN COALESCE(
+                    product.tracks_stock,
+                    0
+                ) = 1
+                THEN 'inventory'
+                ELSE 'service'
+            END AS offering_type,
+
+            COALESCE(
+                SUM(event.quantity),
+                0
+            ) AS units,
+
+            COALESCE(
+                SUM(
+                    event.quantity *
+                    event.price_at_time
+                ),
+                0
+            ) AS revenue,
+
+            COUNT(
+                DISTINCT event.ticket_id
+            ) AS tickets
+
+        FROM events AS event
+
+        LEFT JOIN products AS product
+          ON product.store_id =
+                event.store_id
+         AND product.product_id =
+                event.product_id
+
+        WHERE event.store_id = %s
+          AND event.event_type = 'sale'
+          AND event.event_datetime::timestamp >= %s
+          AND event.event_datetime::timestamp < %s
+
+        GROUP BY offering_type
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    sales_mix = {
+        "inventory": {
+            "units": 0,
+            "revenue": 0.0,
+            "tickets": 0,
+            "revenue_percent": 0.0
+        },
+        "service": {
+            "units": 0,
+            "revenue": 0.0,
+            "tickets": 0,
+            "revenue_percent": 0.0
+        }
+    }
+
+    for (
+        offering_type,
+        units,
+        revenue,
+        tickets
+    ) in cursor.fetchall():
+        key = (
+            "inventory"
+            if offering_type == "inventory"
+            else "service"
+        )
+
+        sales_mix[key] = {
+            "units": int(units or 0),
+            "revenue":
+                round_money(revenue),
+            "tickets": int(tickets or 0),
+            "revenue_percent": 0.0
+        }
+
+    total_sales_revenue = (
+        sales_mix["inventory"]["revenue"]
+        +
+        sales_mix["service"]["revenue"]
+    )
+
+    if total_sales_revenue > 0:
+        sales_mix["inventory"][
+            "revenue_percent"
+        ] = round(
+            (
+                sales_mix["inventory"]["revenue"]
+                /
+                total_sales_revenue
+            ) * 100,
+            2
+        )
+
+        sales_mix["service"][
+            "revenue_percent"
+        ] = round(
+            (
+                sales_mix["service"]["revenue"]
+                /
+                total_sales_revenue
+            ) * 100,
+            2
+        )
+
+    # ---------------------------------------------
+    # PROFILE LABEL
+    # ---------------------------------------------
+    inventory_share = (
+        sales_mix["inventory"][
+            "revenue_percent"
+        ]
+    )
+
+    service_share = (
+        sales_mix["service"][
+            "revenue_percent"
+        ]
+    )
+
+    if service_share >= 80:
+        business_model = "service_heavy"
+    elif inventory_share >= 80:
+        business_model = "inventory_heavy"
+    else:
+        business_model = "mixed"
+
+    return {
+        "active_catalog_count":
+            active_catalog_count,
+
+        "tracked_inventory_count":
+            tracked_catalog_count,
+
+        "service_offering_count":
+            service_catalog_count,
+
+        "business_model":
+            business_model,
+
+        "sales_mix":
+            sales_mix
+    }
+
+
 @app.on_event("startup")
 def startup():
     init_db()
@@ -3668,7 +3868,10 @@ def weekly_briefing_data(
                 detail="Store not found"
             )
 
-        store_name = store[0]
+        store_name = str(
+            store[0] or ""
+        ).strip()
+
         organization_id = store[1]
 
         # ---------------------------------------------
@@ -3739,6 +3942,38 @@ def weekly_briefing_data(
             )
         )
 
+        # ---------------------------------------------
+        # CURRENT WEEK CATALOG PROFILE
+        # ---------------------------------------------
+        current_catalog_profile = (
+            build_catalog_profile_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    current_period["start"],
+                end_exclusive=
+                    current_period[
+                        "end_exclusive"
+                    ]
+            )
+        )
+
+        # ---------------------------------------------
+        # PREVIOUS WEEK CATALOG PROFILE
+        # ---------------------------------------------
+        previous_catalog_profile = (
+            build_catalog_profile_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    previous_period["start"],
+                end_exclusive=
+                    previous_period[
+                        "end_exclusive"
+                    ]
+            )
+        )
+
         current_summary = (
             current_analysis["summary"]
         )
@@ -3746,6 +3981,60 @@ def weekly_briefing_data(
         previous_summary = (
             previous_analysis["summary"]
         )
+
+        current_net_cash = float(
+            current_cash.get(
+                "net_cash_movement",
+                0
+            ) or 0
+        )
+
+        previous_net_cash = float(
+            previous_cash.get(
+                "net_cash_movement",
+                0
+            ) or 0
+        )
+
+        # ---------------------------------------------
+        # NET CASH POSITION CLASSIFICATION
+        # ---------------------------------------------
+        if (
+            previous_net_cash < 0
+            and current_net_cash >= 0
+        ):
+            net_cash_position_change = (
+                "negative_to_positive"
+            )
+
+        elif (
+            previous_net_cash >= 0
+            and current_net_cash < 0
+        ):
+            net_cash_position_change = (
+                "positive_to_negative"
+            )
+
+        elif (
+            current_net_cash
+            > previous_net_cash
+        ):
+            net_cash_position_change = (
+                "improved"
+            )
+
+        elif (
+            current_net_cash
+            < previous_net_cash
+        ):
+            net_cash_position_change = (
+                "declined"
+            )
+
+        else:
+            net_cash_position_change = (
+                "unchanged"
+            )
 
         # ---------------------------------------------
         # PERIOD COMPARISON
@@ -3832,15 +4121,19 @@ def weekly_briefing_data(
                     ]
                 ),
 
-            "net_cash_movement_change_percent":
-                calculate_percent_change(
-                    current_cash[
-                        "net_cash_movement"
-                    ],
-                    previous_cash[
-                        "net_cash_movement"
-                    ]
-                )
+            /*
+             * Do not use a percentage for net cash
+             * movement when values may cross zero.
+             */
+            "net_cash_movement_change":
+                round_money(
+                    current_net_cash
+                    -
+                    previous_net_cash
+                ),
+
+            "net_cash_position_change":
+                net_cash_position_change
         }
 
         # ---------------------------------------------
@@ -3949,6 +4242,14 @@ def weekly_briefing_data(
 
                 "previous_week":
                     previous_cash
+            },
+
+            "catalog_profile": {
+                "current_week":
+                    current_catalog_profile,
+
+                "previous_week":
+                    previous_catalog_profile
             }
         }
 
