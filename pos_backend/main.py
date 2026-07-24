@@ -1121,6 +1121,249 @@ def build_catalog_profile_data(
     }
 
 
+def build_weekly_alerts_data(
+    cursor,
+    store_id: int,
+    current_inventory: dict,
+    current_sales: dict
+):
+    alerts = []
+
+    # ---------------------------------------------
+    # NEGATIVE STOCK
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM products
+        WHERE store_id = %s
+          AND is_active = 1
+          AND tracks_stock = 1
+          AND COALESCE(stock, 0) < 0
+        """,
+        (store_id,)
+    )
+
+    negative_stock_count = int(
+        cursor.fetchone()[0] or 0
+    )
+
+    if negative_stock_count > 0:
+        alerts.append({
+            "severity": "warning",
+            "code": "NEGATIVE_STOCK",
+            "count": negative_stock_count,
+            "message": (
+                f"{negative_stock_count} active "
+                "product(s) currently have "
+                "negative stock."
+            ),
+            "review_panel": "low_stock",
+            "review_label": "Low Stock"
+        })
+
+    # ---------------------------------------------
+    # LOW STOCK
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM products
+        WHERE store_id = %s
+          AND is_active = 1
+          AND tracks_stock = 1
+          AND COALESCE(stock, 0) >= 0
+          AND COALESCE(
+                stock,
+                0
+              ) <= COALESCE(
+                low_stock_threshold,
+                0
+              )
+        """,
+        (store_id,)
+    )
+
+    low_stock_count = int(
+        cursor.fetchone()[0] or 0
+    )
+
+    if low_stock_count > 0:
+        alerts.append({
+            "severity": "attention",
+            "code": "LOW_STOCK",
+            "count": low_stock_count,
+            "message": (
+                f"{low_stock_count} active "
+                "product(s) are at or below "
+                "their configured low-stock "
+                "threshold."
+            ),
+            "review_panel": "low_stock",
+            "review_label": "Low Stock"
+        })
+
+    # ---------------------------------------------
+    # ZERO COST
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM products
+        WHERE store_id = %s
+          AND is_active = 1
+          AND COALESCE(cost, 0) = 0
+        """,
+        (store_id,)
+    )
+
+    zero_cost_count = int(
+        cursor.fetchone()[0] or 0
+    )
+
+    if zero_cost_count > 0:
+        alerts.append({
+            "severity": "warning",
+            "code": "ZERO_COST",
+            "count": zero_cost_count,
+            "message": (
+                f"{zero_cost_count} active "
+                "product or service record(s) "
+                "have a cost of zero."
+            ),
+            "review_panel": "diagnostics",
+            "review_label": "Diagnostics"
+        })
+
+    # ---------------------------------------------
+    # ZERO PRICE
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM products
+        WHERE store_id = %s
+          AND is_active = 1
+          AND COALESCE(price, 0) = 0
+        """,
+        (store_id,)
+    )
+
+    zero_price_count = int(
+        cursor.fetchone()[0] or 0
+    )
+
+    if zero_price_count > 0:
+        alerts.append({
+            "severity": "warning",
+            "code": "ZERO_PRICE",
+            "count": zero_price_count,
+            "message": (
+                f"{zero_price_count} active "
+                "product or service record(s) "
+                "have a selling price of zero."
+            ),
+            "review_panel": "diagnostics",
+            "review_label": "Diagnostics"
+        })
+
+    # ---------------------------------------------
+    # PRICE BELOW COST
+    # ---------------------------------------------
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM products
+        WHERE store_id = %s
+          AND is_active = 1
+          AND COALESCE(price, 0)
+              < COALESCE(cost, 0)
+        """,
+        (store_id,)
+    )
+
+    below_cost_count = int(
+        cursor.fetchone()[0] or 0
+    )
+
+    if below_cost_count > 0:
+        alerts.append({
+            "severity": "warning",
+            "code": "PRICE_BELOW_COST",
+            "count": below_cost_count,
+            "message": (
+                f"{below_cost_count} active "
+                "product or service record(s) "
+                "have a selling price below "
+                "their recorded cost."
+            ),
+            "review_panel": "diagnostics",
+            "review_label": "Diagnostics"
+        })
+
+    # ---------------------------------------------
+    # STOCK ADJUSTMENT ACTIVITY
+    # ---------------------------------------------
+    positive_units = int(
+        current_inventory.get(
+            "positive_adjustment_units",
+            0
+        ) or 0
+    )
+
+    negative_units = int(
+        current_inventory.get(
+            "negative_adjustment_units",
+            0
+        ) or 0
+    )
+
+    adjusted_units = (
+        positive_units
+        + negative_units
+    )
+
+    units_sold = int(
+        current_sales.get(
+            "units_sold",
+            0
+        ) or 0
+    )
+
+   
+    if (
+        adjusted_units >= 20
+        and adjusted_units > units_sold
+    ):
+        alerts.append({
+            "severity": "attention",
+            "code":
+                "HIGH_STOCK_ADJUSTMENT_ACTIVITY",
+            "adjusted_units":
+                adjusted_units,
+            "positive_units":
+                positive_units,
+            "negative_units":
+                negative_units,
+            "units_sold":
+                units_sold,
+            "message": (
+                "Stock adjustment activity was "
+                "high relative to sales volume "
+                "during the reporting period."
+            ),
+            "review_panel":
+                "movement_summary",
+            "review_label":
+                "Movement Summary"
+        })
+
+    return {
+        "count": len(alerts),
+        "items": alerts
+    }
+
+
 @app.on_event("startup")
 def startup():
     init_db()
@@ -3982,6 +4225,34 @@ def weekly_briefing_data(
             previous_analysis["summary"]
         )
 
+        current_inventory = (
+            current_analysis.get(
+                "inventory",
+                {}
+            )
+        )
+
+        previous_inventory = (
+            previous_analysis.get(
+                "inventory",
+                {}
+            )
+        )
+
+        # ---------------------------------------------
+        # ALERTS
+        # ---------------------------------------------
+        alerts = (
+            build_weekly_alerts_data(
+                cursor=cursor,
+                store_id=store_id,
+                current_inventory=
+                    current_inventory,
+                current_sales=
+                    current_summary
+            )
+        )
+
         current_net_cash = float(
             current_cash.get(
                 "net_cash_movement",
@@ -4121,7 +4392,8 @@ def weekly_briefing_data(
                     ]
                 ),
 
-           
+            # Net cash movement may cross zero, so an
+            # absolute change is safer than a percentage.
             "net_cash_movement_change":
                 round_money(
                     current_net_cash
@@ -4221,16 +4493,12 @@ def weekly_briefing_data(
 
             "inventory": {
                 "current_week":
-                    current_analysis.get(
-                        "inventory",
-                        empty_inventory.copy()
-                    ),
+                    current_inventory
+                    or empty_inventory.copy(),
 
                 "previous_week":
-                    previous_analysis.get(
-                        "inventory",
-                        empty_inventory.copy()
-                    )
+                    previous_inventory
+                    or empty_inventory.copy()
             },
 
             "cash": {
@@ -4247,7 +4515,10 @@ def weekly_briefing_data(
 
                 "previous_week":
                     previous_catalog_profile
-            }
+            },
+
+            "alerts":
+                alerts
         }
 
     except HTTPException:
