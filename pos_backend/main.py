@@ -257,16 +257,23 @@ def classify_growth_data_readiness(
         ) or 0
     )
 
-    if completed_weeks < 2:
+    completed_months = int(
+        history.get(
+            "completed_months_of_history",
+            0
+        ) or 0
+    )
+
+    if completed_months < 2:
         level = "insufficient_history"
         confidence = "very_low"
 
-    elif completed_weeks < 8:
-        level = "weekly_momentum_only"
+    elif completed_months < 3:
+        level = "monthly_comparison"
         confidence = "low"
 
-    elif completed_weeks < 13:
-        level = "short_term_trend"
+    elif completed_weeks < 26:
+        level = "short_term_monthly_trend"
         confidence = "moderate"
 
     elif completed_weeks < 52:
@@ -282,20 +289,17 @@ def classify_growth_data_readiness(
         confidence = "high"
 
     return {
-        "level":
-            level,
+        "level": level,
+        "confidence": confidence,
 
-        "confidence":
-            confidence,
+        "monthly_comparison_available":
+            completed_months >= 2,
 
-        "weekly_momentum_available":
-            completed_weeks >= 2,
-
-        "short_term_trend_available":
-            completed_weeks >= 8,
+        "short_term_monthly_trend_available":
+            completed_months >= 3,
 
         "quarterly_trend_available":
-            completed_weeks >= 13,
+            completed_weeks >= 26,
 
         "annual_comparison_available":
             completed_weeks >= 52,
@@ -4777,9 +4781,6 @@ def growth_analysis_data(
 
             "data_readiness":
                 readiness,
-
-            "weekly_momentum":
-                None,
 
             "short_term_trend":
                 None,
