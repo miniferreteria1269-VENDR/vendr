@@ -314,6 +314,453 @@ def classify_growth_data_readiness(
             False
     }
     
+def build_completed_month_periods(
+    reference_date: Optional[date] = None
+):
+    if reference_date is None:
+        reference_date = datetime.now(
+            timezone.utc
+        ).date()
+
+    # First day of the current, still-open month.
+    current_month_start = date(
+        reference_date.year,
+        reference_date.month,
+        1
+    )
+
+    # Most recently completed calendar month.
+    latest_completed_end = (
+        current_month_start
+        - timedelta(days=1)
+    )
+
+    latest_completed_start = date(
+        latest_completed_end.year,
+        latest_completed_end.month,
+        1
+    )
+
+    # Calendar month immediately before it.
+    previous_completed_end = (
+        latest_completed_start
+        - timedelta(days=1)
+    )
+
+    previous_completed_start = date(
+        previous_completed_end.year,
+        previous_completed_end.month,
+        1
+    )
+
+    return {
+        "current": {
+            "start":
+                latest_completed_start,
+
+            "end":
+                latest_completed_end,
+
+            "boundaries":
+                build_period_boundaries(
+                    latest_completed_start,
+                    latest_completed_end
+                )
+        },
+
+        "previous": {
+            "start":
+                previous_completed_start,
+
+            "end":
+                previous_completed_end,
+
+            "boundaries":
+                build_period_boundaries(
+                    previous_completed_start,
+                    previous_completed_end
+                )
+        }
+    }
+
+def build_growth_period_summary(
+    cursor,
+    store_id: int,
+    start_datetime: datetime,
+    end_exclusive: datetime,
+    days_in_period: int
+):
+    cursor.execute(
+        """
+        SELECT
+            COALESCE(
+                SUM(quantity * price_at_time),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                SUM(quantity * cost_at_time),
+                0
+            ) AS cost,
+
+            COALESCE(
+                SUM(quantity),
+                0
+            ) AS units_sold,
+
+            COUNT(
+                DISTINCT ticket_id
+            ) AS tickets,
+
+            COUNT(
+                DISTINCT (
+                    event_datetime::timestamp
+                )::date
+            ) AS active_sales_days
+
+        FROM events
+        WHERE store_id = %s
+          AND event_type = 'sale'
+          AND event_datetime::timestamp >= %s
+          AND event_datetime::timestamp < %s
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    row = cursor.fetchone()
+
+    revenue = float(row[0] or 0)
+    cost = float(row[1] or 0)
+    units_sold = int(row[2] or 0)
+    tickets = int(row[3] or 0)
+    active_sales_days = int(row[4] or 0)
+
+    gross_profit = revenue - cost
+
+    gross_margin_percent = (
+        gross_profit / revenue * 100
+        if revenue > 0
+        else 0
+    )
+
+    average_ticket = (
+        revenue / tickets
+        if tickets > 0
+        else 0
+    )
+
+    units_per_ticket = (
+        units_sold / tickets
+        if tickets > 0
+        else 0
+    )
+
+    return {
+        "days_in_period":
+            int(days_in_period),
+
+        "active_sales_days":
+            active_sales_days,
+
+        "tickets":
+            tickets,
+
+        "units_sold":
+            units_sold,
+
+        "revenue":
+            round_money(revenue),
+
+        "cost":
+            round_money(cost),
+
+        "gross_profit":
+            round_money(gross_profit),
+
+        "gross_margin_percent":
+            round(
+                gross_margin_percent,
+                2
+            ),
+
+        "average_ticket":
+            round_money(
+                average_ticket
+            ),
+
+        "units_per_ticket":
+            round(
+                units_per_ticket,
+                2
+            ),
+
+        "average_daily_revenue":
+            round_money(
+                revenue / days_in_period
+            ),
+
+        "average_daily_gross_profit":
+            round_money(
+                gross_profit /
+                days_in_period
+            )
+    }
+
+def get_first_full_month_start(
+    first_sale_date: Optional[date]
+):
+    if first_sale_date is None:
+        return None
+
+    if first_sale_date.day == 1:
+        return first_sale_date
+
+    if first_sale_date.month == 12:
+        return date(
+            first_sale_date.year + 1,
+            1,
+            1
+        )
+
+    return date(
+        first_sale_date.year,
+        first_sale_date.month + 1,
+        1
+    )
+
+def build_completed_month_comparison(
+    cursor,
+    store_id: int,
+    history: dict,
+    reference_date: Optional[date] = None
+):
+    periods = build_completed_month_periods(
+        reference_date
+    )
+
+    current_period = periods["current"]
+    previous_period = periods["previous"]
+
+    first_sale_value = history.get(
+        "first_recorded_sale_date"
+    )
+
+    first_sale_date = (
+        date.fromisoformat(
+            first_sale_value
+        )
+        if first_sale_value
+        else None
+    )
+
+    first_full_month_start = (
+        get_first_full_month_start(
+            first_sale_date
+        )
+    )
+
+    current_is_complete = bool(
+        first_full_month_start
+        and
+        current_period["start"]
+        >= first_full_month_start
+    )
+
+    previous_is_complete = bool(
+        first_full_month_start
+        and
+        previous_period["start"]
+        >= first_full_month_start
+    )
+
+    comparison_available = (
+        current_is_complete
+        and previous_is_complete
+    )
+
+    current_summary = (
+        build_growth_period_summary(
+            cursor=cursor,
+            store_id=store_id,
+            start_datetime=
+                current_period[
+                    "boundaries"
+                ]["start"],
+            end_exclusive=
+                current_period[
+                    "boundaries"
+                ]["end_exclusive"],
+            days_in_period=
+                current_period[
+                    "boundaries"
+                ]["days"]
+        )
+    )
+
+    previous_summary = (
+        build_growth_period_summary(
+            cursor=cursor,
+            store_id=store_id,
+            start_datetime=
+                previous_period[
+                    "boundaries"
+                ]["start"],
+            end_exclusive=
+                previous_period[
+                    "boundaries"
+                ]["end_exclusive"],
+            days_in_period=
+                previous_period[
+                    "boundaries"
+                ]["days"]
+        )
+    )
+
+    if comparison_available:
+        comparison = {
+            "revenue_change_percent":
+                calculate_percent_change(
+                    current_summary["revenue"],
+                    previous_summary["revenue"]
+                ),
+
+            "gross_profit_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "gross_profit"
+                    ],
+                    previous_summary[
+                        "gross_profit"
+                    ]
+                ),
+
+            "ticket_change_percent":
+                calculate_percent_change(
+                    current_summary["tickets"],
+                    previous_summary["tickets"]
+                ),
+
+            "units_sold_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "units_sold"
+                    ],
+                    previous_summary[
+                        "units_sold"
+                    ]
+                ),
+
+            "average_ticket_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "average_ticket"
+                    ],
+                    previous_summary[
+                        "average_ticket"
+                    ]
+                ),
+
+            "margin_change_points": (
+                round(
+                    current_summary[
+                        "gross_margin_percent"
+                    ]
+                    -
+                    previous_summary[
+                        "gross_margin_percent"
+                    ],
+                    2
+                )
+                if (
+                    current_summary["revenue"] > 0
+                    and
+                    previous_summary["revenue"] > 0
+                )
+                else None
+            )
+        }
+
+        unavailable_reason = None
+
+    else:
+        comparison = None
+
+        if first_sale_date is None:
+            unavailable_reason = (
+                "no_recorded_sales"
+            )
+
+        elif not previous_is_complete:
+            unavailable_reason = (
+                "previous_month_predates_"
+                "complete_vendr_history"
+            )
+
+        elif not current_is_complete:
+            unavailable_reason = (
+                "current_comparison_month_"
+                "predates_complete_vendr_history"
+            )
+
+        else:
+            unavailable_reason = (
+                "insufficient_complete_months"
+            )
+
+    return {
+        "available":
+            comparison_available,
+
+        "unavailable_reason":
+            unavailable_reason,
+
+        "first_full_month_start": (
+            first_full_month_start.isoformat()
+            if first_full_month_start
+            else None
+        ),
+
+        "current_month": {
+            "period_start":
+                current_period[
+                    "start"
+                ].isoformat(),
+
+            "period_end":
+                current_period[
+                    "end"
+                ].isoformat(),
+
+            "fully_observed":
+                current_is_complete,
+
+            **current_summary
+        },
+
+        "previous_month": {
+            "period_start":
+                previous_period[
+                    "start"
+                ].isoformat(),
+
+            "period_end":
+                previous_period[
+                    "end"
+                ].isoformat(),
+
+            "fully_observed":
+                previous_is_complete,
+
+            **previous_summary
+        },
+
+        "comparison":
+            comparison
+    }
 
 def build_sales_analysis_data(
     cursor,
@@ -4709,7 +5156,6 @@ def weekly_briefing_data(
         if conn:
             conn.close()
             
-
 @app.get("/internal/growth-analysis-data")
 def growth_analysis_data(
     store_id: int
@@ -4759,6 +5205,14 @@ def growth_analysis_data(
             )
         )
 
+        monthly_comparison = (
+            build_completed_month_comparison(
+                cursor=cursor,
+                store_id=store_id,
+                history=history
+            )
+        )
+
         return {
             "metadata": {
                 "store_id":
@@ -4782,6 +5236,9 @@ def growth_analysis_data(
             "data_readiness":
                 readiness,
 
+            "monthly_comparison":
+                monthly_comparison,
+
             "short_term_monthly_trend":
                 None,
 
@@ -4789,6 +5246,9 @@ def growth_analysis_data(
                 None,
 
             "annual_trend":
+                None,
+
+            "seasonal_context":
                 None,
 
             "multi_year_trend":
