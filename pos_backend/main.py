@@ -3952,104 +3952,473 @@ def get_low_stock(store_id: int):
     return {"low_stock": low_stock}
 
 @app.get("/product-movement-summary")
-def product_movement_summary(store_id: int, start_date: str, end_date: str):
-    conn = db()
-    cursor = conn.cursor()
+def product_movement_summary(
+    store_id: int,
+    start_date: str,
+    end_date: str
+):
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        WITH movement AS (
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VALIDATE DATE RANGE
+        # ---------------------------------------------
+        try:
+            parsed_start = date.fromisoformat(
+                start_date
+            )
+
+            parsed_end = date.fromisoformat(
+                end_date
+            )
+
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Dates must use YYYY-MM-DD format"
+                )
+            )
+
+        if parsed_end < parsed_start:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "end_date must not be before "
+                    "start_date"
+                )
+            )
+
+        # ---------------------------------------------
+        # PRODUCT MOVEMENT SUMMARY
+        #
+        # The selected dates represent local calendar
+        # days in El Salvador.
+        #
+        # PostgreSQL converts those local midnights
+        # into UTC-aware timestamps for comparison.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            WITH boundaries AS (
+                SELECT
+                    (
+                        %s::date::timestamp
+                        AT TIME ZONE
+                        'America/El_Salvador'
+                    ) AS start_utc,
+
+                    (
+                        (
+                            %s::date
+                            + INTERVAL '1 day'
+                        )::timestamp
+                        AT TIME ZONE
+                        'America/El_Salvador'
+                    ) AS end_utc
+            ),
+
+            period_movement AS (
+                SELECT
+                    e.product_id,
+
+                    MAX(
+                        e.product_name_at_time
+                    ) AS product_name_at_time,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN e.event_type = 'intake'
+                                THEN e.quantity
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS purchase,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN e.event_type = 'sale'
+                                THEN e.quantity
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS sale,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN e.event_type = 'loss'
+                                THEN e.quantity
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS loss,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN e.event_type = 'transfer_in'
+                                THEN e.quantity
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS transfer_in,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN e.event_type = 'transfer_out'
+                                THEN e.quantity
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS transfer_out,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN e.event_type =
+                                    'stock_adjustment_positive'
+                                THEN e.quantity
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS adjustment_positive,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN e.event_type =
+                                    'stock_adjustment_negative'
+                                THEN e.quantity
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS adjustment_negative
+
+                FROM events e
+                CROSS JOIN boundaries b
+
+                WHERE e.store_id = %s
+                  AND e.product_id IS NOT NULL
+
+                  AND e.event_type IN (
+                      'intake',
+                      'sale',
+                      'loss',
+                      'transfer_in',
+                      'transfer_out',
+                      'stock_adjustment_positive',
+                      'stock_adjustment_negative'
+                  )
+
+                  AND e.event_datetime::timestamptz
+                      >= b.start_utc
+
+                  AND e.event_datetime::timestamptz
+                      < b.end_utc
+
+                GROUP BY
+                    e.product_id
+            ),
+
+            movement_after_period AS (
+                SELECT
+                    e.product_id,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN e.event_type IN (
+                                    'intake',
+                                    'transfer_in',
+                                    'stock_adjustment_positive'
+                                )
+                                THEN e.quantity
+
+                                WHEN e.event_type IN (
+                                    'sale',
+                                    'loss',
+                                    'transfer_out',
+                                    'stock_adjustment_negative'
+                                )
+                                THEN -e.quantity
+
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS net_after_period
+
+                FROM events e
+                CROSS JOIN boundaries b
+
+                WHERE e.store_id = %s
+                  AND e.product_id IS NOT NULL
+
+                  AND e.event_type IN (
+                      'intake',
+                      'sale',
+                      'loss',
+                      'transfer_in',
+                      'transfer_out',
+                      'stock_adjustment_positive',
+                      'stock_adjustment_negative'
+                  )
+
+                  AND e.event_datetime::timestamptz
+                      >= b.end_utc
+
+                GROUP BY
+                    e.product_id
+            )
+
             SELECT
+                p.product_id,
+
+                COALESCE(
+                    pm.product_name_at_time,
+                    p.name
+                ) AS product_name,
+
+                COALESCE(
+                    p.stock,
+                    0
+                ) AS current_stock,
+
+                COALESCE(
+                    pm.purchase,
+                    0
+                ) AS purchase,
+
+                COALESCE(
+                    pm.sale,
+                    0
+                ) AS sale,
+
+                COALESCE(
+                    pm.loss,
+                    0
+                ) AS loss,
+
+                COALESCE(
+                    pm.transfer_in,
+                    0
+                ) AS transfer_in,
+
+                COALESCE(
+                    pm.transfer_out,
+                    0
+                ) AS transfer_out,
+
+                COALESCE(
+                    pm.adjustment_positive,
+                    0
+                ) AS adjustment_positive,
+
+                COALESCE(
+                    pm.adjustment_negative,
+                    0
+                ) AS adjustment_negative,
+
+                COALESCE(
+                    map.net_after_period,
+                    0
+                ) AS net_after_period
+
+            FROM period_movement pm
+
+            JOIN products p
+              ON p.product_id = pm.product_id
+             AND p.store_id = %s
+
+            LEFT JOIN movement_after_period map
+              ON map.product_id = pm.product_id
+
+            WHERE p.tracks_stock = 1
+
+            ORDER BY
+                product_name
+            """,
+            (
+                start_date,
+                end_date,
+                store_id,
+                store_id,
+                store_id
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        summary = []
+
+        for row in rows:
+            (
                 product_id,
-                product_name_at_time,
-                SUM(CASE WHEN event_type = 'intake' THEN quantity ELSE 0 END) AS purchase,
-                SUM(CASE WHEN event_type = 'sale' THEN quantity ELSE 0 END) AS sale,
-                SUM(CASE WHEN event_type = 'loss' THEN quantity ELSE 0 END) AS loss,
-                SUM(CASE WHEN event_type = 'transfer_in' THEN quantity ELSE 0 END) AS transfer_in,
-                SUM(CASE WHEN event_type = 'transfer_out' THEN quantity ELSE 0 END) AS transfer_out,
-                SUM(CASE WHEN event_type = 'stock_adjustment_positive' THEN quantity ELSE 0 END) AS adjustment_positive,
-                SUM(CASE WHEN event_type = 'stock_adjustment_negative' THEN quantity ELSE 0 END) AS adjustment_negative
-            FROM events
-            WHERE store_id = %s
-              AND event_datetime >= %s
-              AND event_datetime < %s
-              AND product_id IS NOT NULL
-              AND event_type IN (
-                'intake',
-                'sale',
-                'loss',
-                'transfer_in',
-                'transfer_out',
-                'stock_adjustment_positive',
-                'stock_adjustment_negative'
-              )
-            GROUP BY product_id, product_name_at_time
+                product_name,
+                current_stock,
+                purchase,
+                sale,
+                loss,
+                transfer_in,
+                transfer_out,
+                adjustment_positive,
+                adjustment_negative,
+                net_after_period
+            ) = row
+
+            current_stock = int(
+                current_stock or 0
+            )
+
+            purchase = int(
+                purchase or 0
+            )
+
+            sale = int(
+                sale or 0
+            )
+
+            loss = int(
+                loss or 0
+            )
+
+            transfer_in = int(
+                transfer_in or 0
+            )
+
+            transfer_out = int(
+                transfer_out or 0
+            )
+
+            adjustment_positive = int(
+                adjustment_positive or 0
+            )
+
+            adjustment_negative = int(
+                adjustment_negative or 0
+            )
+
+            net_after_period = int(
+                net_after_period or 0
+            )
+
+            period_net_movement = (
+                purchase
+                - sale
+                - loss
+                + transfer_in
+                - transfer_out
+                + adjustment_positive
+                - adjustment_negative
+            )
+
+            # Current stock includes every movement
+            # through the present. Remove movements
+            # after the selected period to reconstruct
+            # stock at the selected closing boundary.
+            final_stock = (
+                current_stock
+                - net_after_period
+            )
+
+            initial_stock = (
+                final_stock
+                - period_net_movement
+            )
+
+            summary.append({
+                "product_id":
+                    product_id,
+
+                "product":
+                    product_name,
+
+                "initial_stock":
+                    initial_stock,
+
+                "purchase":
+                    purchase,
+
+                "sale":
+                    sale,
+
+                "loss":
+                    loss,
+
+                "transfer_in":
+                    transfer_in,
+
+                "transfer_out":
+                    transfer_out,
+
+                "adjustment_positive":
+                    adjustment_positive,
+
+                "adjustment_negative":
+                    adjustment_negative,
+
+                "final_stock":
+                    final_stock
+            })
+
+        return {
+            "store_id":
+                store_id,
+
+            "start_date":
+                start_date,
+
+            "end_date":
+                end_date,
+
+            "summary":
+                summary
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "PRODUCT MOVEMENT SUMMARY ERROR:",
+            repr(error)
         )
-        SELECT
-            p.product_id,
-            COALESCE(m.product_name_at_time, p.name) AS product_name,
-            p.stock,
-            m.purchase,
-            m.sale,
-            m.loss,
-            m.transfer_in,
-            m.transfer_out,
-            m.adjustment_positive,
-            m.adjustment_negative
-        FROM movement m
-        JOIN products p
-          ON p.product_id = m.product_id
-         AND p.store_id = %s
-        WHERE p.tracks_stock = 1
-        ORDER BY product_name
-    """, (store_id, start_date, end_date, store_id))
 
-    rows = cursor.fetchall()
-    conn.close()
-
-    summary = []
-
-    for row in rows:
-        (
-            product_id,
-            product_name,
-            current_stock,
-            purchase,
-            sale,
-            loss,
-            transfer_in,
-            transfer_out,
-            adjustment_positive,
-            adjustment_negative
-        ) = row
-
-        net_movement = (
-            purchase
-            - sale
-            - loss
-            + transfer_in
-            - transfer_out
-            + adjustment_positive
-            - adjustment_negative
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load product "
+                "movement summary"
+            )
         )
 
-        final_stock = current_stock
-        initial_stock = current_stock - net_movement
+    finally:
+        if cursor:
+            cursor.close()
 
-        summary.append({
-            "product_id": product_id,
-            "product": product_name,
-            "initial_stock": initial_stock,
-            "purchase": purchase,
-            "sale": sale,
-            "loss": loss,
-            "transfer_in": transfer_in,
-            "transfer_out": transfer_out,
-            "adjustment_positive": adjustment_positive,
-            "adjustment_negative": adjustment_negative,
-            "final_stock": final_stock
-        })
-
-    return {"summary": summary}
+        if conn:
+            conn.close()
 
 @app.get("/sales-history")
 def sales_history(
