@@ -6,12 +6,15 @@ from datetime import date, datetime, timezone, time, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import pandas as pd
-from fastapi import UploadFile, File, HTTPException, Form
+from fastapi import UploadFile, File, HTTPException, Form, Depends, status
 import os
 import psycopg2
 import jwt
 
 from jwt.exceptions import InvalidTokenError
+from fastapi.security import (
+    OAuth2PasswordBearer
+)
 
 app = FastAPI()
 
@@ -90,6 +93,15 @@ if not JWT_SECRET_KEY:
         "is required"
     )
 
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/login"
+)
+
+class AuthenticatedUser(BaseModel):
+    user_id: int
+    store_id: int
+    email: str
+
 def create_access_token(
     user_id: int,
     store_id: int
@@ -122,6 +134,128 @@ def create_access_token(
         JWT_SECRET_KEY,
         algorithm=JWT_ALGORITHM
     )
+
+def get_current_user(
+    token: str = Depends(
+        oauth2_scheme
+    )
+) -> AuthenticatedUser:
+    credentials_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=(
+            "Invalid or expired "
+            "authentication token"
+        ),
+        headers={
+            "WWW-Authenticate": "Bearer"
+        }
+    )
+
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[
+                JWT_ALGORITHM
+            ],
+            options={
+                "require": [
+                    "sub",
+                    "store_id",
+                    "iat",
+                    "exp"
+                ]
+            }
+        )
+
+        user_id = int(
+            payload["sub"]
+        )
+
+        token_store_id = int(
+            payload["store_id"]
+        )
+
+    except (
+        InvalidTokenError,
+        ValueError,
+        TypeError,
+        KeyError
+    ):
+        raise credentials_error
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                user_id,
+                store_id,
+                email
+            FROM users
+            WHERE user_id = %s
+            """,
+            (user_id,)
+        )
+
+        user = cursor.fetchone()
+
+        if not user:
+            raise credentials_error
+
+        (
+            database_user_id,
+            database_store_id,
+            email
+        ) = user
+
+        if (
+            database_store_id is None
+            or int(database_store_id)
+            != token_store_id
+        ):
+            raise credentials_error
+
+        return AuthenticatedUser(
+            user_id=int(
+                database_user_id
+            ),
+            store_id=int(
+                database_store_id
+            ),
+            email=str(
+                email
+            )
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "AUTHENTICATION ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to validate "
+                "authentication"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
         
 # ----------------------------------------------------
