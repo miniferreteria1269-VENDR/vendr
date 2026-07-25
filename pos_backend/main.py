@@ -4279,44 +4279,96 @@ def get_sales(store_id: int, start_date: str = None, end_date: str = None):
     }
 
 @app.get("/quick-items")
-def quick_items(store_id: int):
+def quick_items(
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        SELECT 
-            e.product_id,
-            p.name,
-            p.stock,
-            p.price,
-            COUNT(*) as sale_count
-        FROM events e
-        JOIN products p
-        ON e.product_id = p.product_id
-        AND e.store_id = p.store_id
-        WHERE e.store_id = %s
-        AND e.event_type = 'sale'
-        AND e.event_datetime::timestamptz >= NOW() - INTERVAL '90 days'
-        GROUP BY e.product_id, p.name, p.stock, p.price
-        ORDER BY sale_count DESC
-        LIMIT 6
-    """, (store_id,))
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT
+                e.product_id,
+                p.name,
+                p.stock,
+                p.price,
+                COUNT(*) AS sale_count
+            FROM events e
+            JOIN products p
+              ON e.product_id = p.product_id
+             AND e.store_id = p.store_id
+            WHERE e.store_id = %s
+              AND e.event_type = 'sale'
+              AND e.event_datetime::timestamptz >=
+                  NOW() - INTERVAL '90 days'
+            GROUP BY
+                e.product_id,
+                p.name,
+                p.stock,
+                p.price
+            ORDER BY sale_count DESC
+            LIMIT 6
+            """,
+            (store_id,)
+        )
 
-    products = []
+        rows = cursor.fetchall()
 
-    for row in rows:
-        products.append({
-            "product_id": row[0],
-            "name": row[1],
-            "stock": row[2],
-            "price": row[3]
-        })
+        products = []
 
-    return {"products": products}
+        for row in rows:
+            products.append({
+                "product_id":
+                    row[0],
+
+                "name":
+                    row[1],
+
+                "stock":
+                    int(row[2] or 0),
+
+                "price":
+                    float(row[3] or 0)
+            })
+
+        return {
+            "products": products
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "QUICK ITEMS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load quick items"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+            
 @app.post("/set-low-stock")
 def set_low_stock(
     store_id: int,
