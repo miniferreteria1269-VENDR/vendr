@@ -9,6 +9,10 @@ import pandas as pd
 from fastapi import UploadFile, File, HTTPException, Form
 import os
 import psycopg2
+import jwt
+
+from jwt.exceptions import InvalidTokenError
+
 app = FastAPI()
 
 REQUIRED_COLUMNS = [
@@ -66,7 +70,60 @@ def verify_password(
     except Exception:
         return False
 
+JWT_SECRET_KEY = os.environ.get(
+    "JWT_SECRET_KEY"
+)
 
+JWT_ALGORITHM = "HS256"
+
+JWT_ACCESS_TOKEN_MINUTES = int(
+    os.environ.get(
+        "JWT_ACCESS_TOKEN_MINUTES",
+        "10080"
+    )
+)
+
+
+if not JWT_SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET_KEY environment variable "
+        "is required"
+    )
+
+def create_access_token(
+    user_id: int,
+    store_id: int
+) -> str:
+    now = datetime.now(
+        timezone.utc
+    )
+
+    expires_at = (
+        now
+        + timedelta(
+            minutes=
+                JWT_ACCESS_TOKEN_MINUTES
+        )
+    )
+
+    payload = {
+        # JWT subject values should be strings.
+        "sub": str(user_id),
+
+        "store_id": int(store_id),
+
+        "iat": now,
+
+        "exp": expires_at
+    }
+
+    return jwt.encode(
+        payload,
+        JWT_SECRET_KEY,
+        algorithm=JWT_ALGORITHM
+    )
+
+        
 # ----------------------------------------------------
 # DATABASE INITIALIZATION
 # ----------------------------------------------------
@@ -6343,9 +6400,7 @@ def login(
             .lower()
         )
 
-        plain_password = (
-            data.password
-        )
+        plain_password = data.password
 
         conn = db()
         cursor = conn.cursor()
@@ -6358,13 +6413,9 @@ def login(
                 u.password_hash,
                 u.store_id,
                 s.name
-
             FROM users u
-
             JOIN stores s
-              ON u.store_id =
-                 s.store_id
-
+              ON u.store_id = s.store_id
             WHERE LOWER(u.email) = %s
             """,
             (email,)
@@ -6372,15 +6423,11 @@ def login(
 
         user = cursor.fetchone()
 
-        # Use the same response for unknown users
-        # and incorrect passwords so login does
-        # not reveal whether an email exists.
+        # Same response for unknown users and bad passwords.
         if not user:
             raise HTTPException(
                 status_code=401,
-                detail=(
-                    "Invalid email or password"
-                )
+                detail="Invalid email or password"
             )
 
         (
@@ -6398,11 +6445,9 @@ def login(
         # MODERN HASHED ACCOUNT
         # ---------------------------------------------
         if stored_hash:
-            authenticated = (
-                verify_password(
-                    plain_password,
-                    stored_hash
-                )
+            authenticated = verify_password(
+                plain_password,
+                stored_hash
             )
 
         # ---------------------------------------------
@@ -6414,26 +6459,20 @@ def login(
                 legacy_password
             )
 
-            migrate_legacy_password = (
-                authenticated
-            )
+            migrate_legacy_password = authenticated
 
         if not authenticated:
             raise HTTPException(
                 status_code=401,
-                detail=(
-                    "Invalid email or password"
-                )
+                detail="Invalid email or password"
             )
 
         # ---------------------------------------------
         # MIGRATE LEGACY ACCOUNT AFTER SUCCESSFUL LOGIN
         # ---------------------------------------------
         if migrate_legacy_password:
-            generated_hash = (
-                hash_password(
-                    plain_password
-                )
+            generated_hash = hash_password(
+                plain_password
             )
 
             cursor.execute(
@@ -6452,7 +6491,21 @@ def login(
 
             conn.commit()
 
+        # ---------------------------------------------
+        # ISSUE ACCESS TOKEN
+        # ---------------------------------------------
+        access_token = create_access_token(
+            user_id=user_id,
+            store_id=store_id
+        )
+
         return {
+            "access_token":
+                access_token,
+
+            "token_type":
+                "bearer",
+
             "user_id":
                 user_id,
 
