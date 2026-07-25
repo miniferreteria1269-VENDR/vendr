@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import apiClient from "../apiClient";
 
 const COLORS = {
   panel: "#1a1d24",
@@ -28,10 +28,25 @@ function ProductPanel({
   // -----------------------------
   const fetchQuickItems = async () => {
     try {
-      const res = await axios.get(`https://vendr-onkr.onrender.com/quick-items?store_id=${storeId}`)
-      setQuickItems(res.data.products);
+      const res =
+        await apiClient.get(
+          "/quick-items",
+          {
+            params: {
+              store_id: storeId
+            }
+          }
+        );
+
+      setQuickItems(
+        res.data.products
+      );
+
     } catch (err) {
-      console.error("Failed to fetch quick items", err);
+      console.error(
+        "Failed to fetch quick items",
+        err
+      );
     }
   };
 
