@@ -6809,74 +6809,7 @@ def service_report(
 
     return {"services": services}
 
-@app.get("/test-insert-cash")
-def test_insert_cash():
 
-    conn = db()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO cash_events (
-            organization_id,
-            store_id,
-            type,
-            direction,
-            amount,
-            category,
-            note
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """, (
-        None,              # standalone store (adjust if needed)
-        1,                 # use your actual store_id
-        "test",
-        1,
-        100.00,
-        "debug",
-        "first test entry"
-    ))
-
-    conn.commit()
-    conn.close()
-
-    return {"message": "test cash event inserted"}
-
-@app.get("/test-cash-table")
-def test_cash_table():
-
-    conn = db()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT id, store_id, type, direction, amount, category, note
-        FROM cash_events
-        ORDER BY id DESC
-        LIMIT 5
-    """)
-
-    rows = cursor.fetchall()
-
-    conn.close()
-
-    return {"rows": rows}
-
-@app.get("/test-cash-balance")
-def test_cash_balance(store_id: int):
-
-    conn = db()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT COALESCE(SUM(amount * direction), 0)
-        FROM cash_events
-        WHERE store_id = %s
-    """, (store_id,))
-
-    balance = cursor.fetchone()[0]
-
-    conn.close()
-
-    return {"balance": round(float(balance), 2)}
 
 @app.post("/cash-event")
 def create_cash_event(data: CashEventRequest):
