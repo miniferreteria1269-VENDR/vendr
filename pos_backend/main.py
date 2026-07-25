@@ -3719,31 +3719,90 @@ def search_products(
             conn.close()
 
 @app.get("/product/{product_id}")
-def get_product(store_id: int, product_id: int):
+def get_product(
+    product_id: int,
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        SELECT product_id, name, stock, cost, price
-        FROM products
-        WHERE product_id = %s
-        AND store_id = %s
-    """, (product_id, store_id))
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT
+                product_id,
+                name,
+                stock,
+                cost,
+                price
+            FROM products
+            WHERE product_id = %s
+              AND store_id = %s
+            """,
+            (
+                product_id,
+                store_id
+            )
+        )
 
-    if row is None:
-        raise ValueError("Product not found")
+        row = cursor.fetchone()
 
-    return {
-        "product_id": row[0],
-        "name": row[1],
-        "stock": row[2],
-        "cost": row[3],
-        "price": row[4]
-    }
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found"
+            )
+
+        return {
+            "product_id":
+                row[0],
+
+            "name":
+                row[1],
+
+            "stock":
+                int(row[2] or 0),
+
+            "cost":
+                float(row[3] or 0),
+
+            "price":
+                float(row[4] or 0)
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET PRODUCT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load product"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+    
 @app.post("/stock-adjustment")
 def stock_adjustment(data: StockAdjustmentRequest):
     conn = None
