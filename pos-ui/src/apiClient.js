@@ -1,10 +1,10 @@
+// pos-ui/src/apiClient.js
+
 import axios from "axios";
 
-const API =
-  "https://vendr-onkr.onrender.com";
-
 const apiClient = axios.create({
-  baseURL: API
+  baseURL:
+    "https://vendr-onkr.onrender.com"
 });
 
 apiClient.interceptors.request.use(
