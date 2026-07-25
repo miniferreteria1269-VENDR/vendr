@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pos_backend.rebuild_products import rebuild_products
-
+from pwdlib import PasswordHash
 from datetime import date, datetime, timezone, time, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -34,25 +34,70 @@ app.add_middleware(
 )
 
 def db():
-    return psycopg2.connect(os.environ.get("DATABASE_URL"))
+    return psycopg2.connect(
+        os.environ.get("DATABASE_URL")
+    )
 
+
+# ----------------------------------------------------
+# PASSWORD HASHING
+# ----------------------------------------------------
+password_hash = PasswordHash.recommended()
+
+
+def hash_password(
+    plain_password: str
+) -> str:
+    return password_hash.hash(
+        plain_password
+    )
+
+
+def verify_password(
+    plain_password: str,
+    stored_hash: str
+) -> bool:
+    try:
+        return password_hash.verify(
+            plain_password,
+            stored_hash
+        )
+
+    except Exception:
+        return False
+
+
+# ----------------------------------------------------
+# DATABASE INITIALIZATION
+# ----------------------------------------------------
 def init_db():
 
     conn = db()
     cursor = conn.cursor()
 
+    # ---------------------------------------------
     # USERS
+    # ---------------------------------------------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         user_id SERIAL PRIMARY KEY,
         email TEXT UNIQUE,
         password TEXT,
+        password_hash TEXT,
         store_id INTEGER,
         created_at TEXT
     )
     """)
 
+    # Existing databases
+    cursor.execute("""
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS password_hash TEXT
+    """)
+
+    # ---------------------------------------------
     # STORES
+    # ---------------------------------------------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS stores (
         store_id SERIAL PRIMARY KEY,
@@ -62,7 +107,9 @@ def init_db():
     )
     """)
 
+    # ---------------------------------------------
     # PRODUCTS
+    # ---------------------------------------------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS products (
         product_id INTEGER,
@@ -79,7 +126,9 @@ def init_db():
     )
     """)
 
+    # ---------------------------------------------
     # EVENTS
+    # ---------------------------------------------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS events (
         event_id SERIAL PRIMARY KEY,
@@ -96,11 +145,37 @@ def init_db():
     """)
 
     conn.commit()
-    conn.close()
 
+    cursor.close()
+    conn.close()
 
 def round_money(value):
     return round(float(value or 0), 2)
+
+password_hash = (
+    PasswordHash.recommended()
+)
+
+
+def hash_password(
+    plain_password: str
+) -> str:
+    return password_hash.hash(
+        plain_password
+    )
+
+
+def verify_password(
+    plain_password: str,
+    stored_hash: str
+) -> bool:
+    try:
+        return password_hash.verify(
+            plain_password,
+            stored_hash
+        )
+    except Exception:
+        return False
 
 
 def calculate_percent_change(current, previous):
@@ -6063,85 +6138,361 @@ class SignupRequest(BaseModel):
 
 
 @app.post("/signup")
-def signup(data: SignupRequest):
+def signup(
+    data: SignupRequest
+):
+    conn = None
+    cursor = None
 
-    conn = db()
-    cursor = conn.cursor()
+    try:
+        email = (
+            data.email
+            .strip()
+            .lower()
+        )
 
-    created_at = datetime.now(timezone.utc).isoformat()
+        store_name = (
+            data.store_name
+            .strip()
+        )
 
-    # 1. Check if user exists
-    cursor.execute(
-        "SELECT user_id FROM users WHERE email = %s",
-        (data.email,)
-    )
-    if cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=400, detail="User already exists")
+        plain_password = (
+            data.password
+        )
 
-    # 2. Create store
-    cursor.execute("""
-        INSERT INTO stores (name, created_at, organization_id)
-        VALUES (%s, %s, NULL)
-        RETURNING store_id
-    """, (data.store_name, created_at))
+        if not email:
+            raise HTTPException(
+                status_code=400,
+                detail="Email is required"
+            )
 
-    store_id = cursor.fetchone()[0]
+        if not store_name:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Store name is required"
+                )
+            )
 
-    # 3. Create user
-    cursor.execute("""
-        INSERT INTO users (email, password, store_id, created_at)
-        VALUES (%s, %s, %s, %s)
-        RETURNING user_id
-    """, (data.email, data.password, store_id, created_at))
+        if len(plain_password) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Password must contain "
+                    "at least 8 characters"
+                )
+            )
 
-    user_id = cursor.fetchone()[0]
+        created_at = datetime.now(
+            timezone.utc
+        ).isoformat()
 
-    conn.commit()
-    conn.close()
+        generated_hash = (
+            hash_password(
+                plain_password
+            )
+        )
 
-    return {
-        "user_id": user_id,
-        "store_id": store_id,
-        "email": data.email
-    }
+        conn = db()
+        cursor = conn.cursor()
 
+        # ---------------------------------------------
+        # CHECK EXISTING USER
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT user_id
+            FROM users
+            WHERE LOWER(email) = %s
+            """,
+            (email,)
+        )
+
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=400,
+                detail="User already exists"
+            )
+
+        # ---------------------------------------------
+        # CREATE STORE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO stores (
+                name,
+                created_at,
+                organization_id
+            )
+            VALUES (
+                %s,
+                %s,
+                NULL
+            )
+            RETURNING store_id
+            """,
+            (
+                store_name,
+                created_at
+            )
+        )
+
+        store_id = (
+            cursor.fetchone()[0]
+        )
+
+        # ---------------------------------------------
+        # CREATE USER
+        #
+        # New users receive only password_hash.
+        # The legacy password column stays NULL.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO users (
+                email,
+                password,
+                password_hash,
+                store_id,
+                created_at
+            )
+            VALUES (
+                %s,
+                NULL,
+                %s,
+                %s,
+                %s
+            )
+            RETURNING user_id
+            """,
+            (
+                email,
+                generated_hash,
+                store_id,
+                created_at
+            )
+        )
+
+        user_id = (
+            cursor.fetchone()[0]
+        )
+
+        conn.commit()
+
+        return {
+            "user_id":
+                user_id,
+
+            "store_id":
+                store_id,
+
+            "email":
+                email
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except psycopg2.errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail="User already exists"
+        )
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "SIGNUP ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to create account"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 @app.post("/login")
-def login(data: LoginRequest):
+def login(
+    data: LoginRequest
+):
+    conn = None
+    cursor = None
 
-    conn = db()
-    cursor = conn.cursor()
+    try:
+        email = (
+            data.email
+            .strip()
+            .lower()
+        )
 
-    cursor.execute("""
-        SELECT u.user_id, u.password, u.store_id, s.name
-        FROM users u
-        JOIN stores s ON u.store_id = s.store_id
-        WHERE u.email = %s
-    """, (data.email,))
+        plain_password = (
+            data.password
+        )
 
-    user = cursor.fetchone()
+        conn = db()
+        cursor = conn.cursor()
 
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="User not found")
+        cursor.execute(
+            """
+            SELECT
+                u.user_id,
+                u.password,
+                u.password_hash,
+                u.store_id,
+                s.name
 
-    user_id, stored_password, store_id, store_name = user
+            FROM users u
 
-    if data.password != stored_password:
-        conn.close()
-        raise HTTPException(status_code=401, detail="Invalid password")
+            JOIN stores s
+              ON u.store_id =
+                 s.store_id
 
-    conn.close()
+            WHERE LOWER(u.email) = %s
+            """,
+            (email,)
+        )
 
-    return {
-        "user_id": user_id,
-        "store_id": store_id,
-        "store_name": store_name,
-        "email": data.email
-    }
+        user = cursor.fetchone()
 
+        # Use the same response for unknown users
+        # and incorrect passwords so login does
+        # not reveal whether an email exists.
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Invalid email or password"
+                )
+            )
+
+        (
+            user_id,
+            legacy_password,
+            stored_hash,
+            store_id,
+            store_name
+        ) = user
+
+        authenticated = False
+        migrate_legacy_password = False
+
+        # ---------------------------------------------
+        # MODERN HASHED ACCOUNT
+        # ---------------------------------------------
+        if stored_hash:
+            authenticated = (
+                verify_password(
+                    plain_password,
+                    stored_hash
+                )
+            )
+
+        # ---------------------------------------------
+        # LEGACY PLAINTEXT ACCOUNT
+        # ---------------------------------------------
+        elif legacy_password is not None:
+            authenticated = (
+                plain_password ==
+                legacy_password
+            )
+
+            migrate_legacy_password = (
+                authenticated
+            )
+
+        if not authenticated:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Invalid email or password"
+                )
+            )
+
+        # ---------------------------------------------
+        # MIGRATE LEGACY ACCOUNT AFTER SUCCESSFUL LOGIN
+        # ---------------------------------------------
+        if migrate_legacy_password:
+            generated_hash = (
+                hash_password(
+                    plain_password
+                )
+            )
+
+            cursor.execute(
+                """
+                UPDATE users
+                SET
+                    password_hash = %s,
+                    password = NULL
+                WHERE user_id = %s
+                """,
+                (
+                    generated_hash,
+                    user_id
+                )
+            )
+
+            conn.commit()
+
+        return {
+            "user_id":
+                user_id,
+
+            "store_id":
+                store_id,
+
+            "store_name":
+                store_name,
+
+            "email":
+                email
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "LOGIN ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to log in"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+            
 @app.get("/service-report")
 def service_report(
     store_id: int,
