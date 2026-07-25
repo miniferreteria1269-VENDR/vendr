@@ -3589,64 +3589,135 @@ def get_products(
             conn.close()
 
 
-
 @app.get("/products/search")
-def search_products(store_id: int, name: str, include_inactive: bool = False):
+def search_products(
+    store_id: int,
+    name: str,
+    include_inactive: bool = False,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    if include_inactive:
-        cursor.execute("""
-            SELECT
-                product_id,
-                name,
-                stock,
-                cost,
-                price,
-                is_active,
-                tracks_stock,
-                low_stock_threshold
-            FROM products
-            WHERE store_id = %s
-              AND LOWER(name) LIKE %s
-        """, (store_id, '%' + name.lower() + '%'))
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    else:
-        cursor.execute("""
-            SELECT
-                product_id,
-                name,
-                stock,
-                cost,
-                price,
-                is_active,
-                tracks_stock,
-                low_stock_threshold
-            FROM products
-            WHERE store_id = %s
-              AND is_active = 1
-              AND LOWER(name) LIKE %s
-        """, (store_id, '%' + name.lower() + '%'))
+        search_pattern = (
+            f"%{name.strip().lower()}%"
+        )
 
-    rows = cursor.fetchall()
-    conn.close()
+        if include_inactive:
+            cursor.execute(
+                """
+                SELECT
+                    product_id,
+                    name,
+                    stock,
+                    cost,
+                    price,
+                    is_active,
+                    tracks_stock,
+                    low_stock_threshold
+                FROM products
+                WHERE store_id = %s
+                  AND LOWER(name) LIKE %s
+                ORDER BY LOWER(name) ASC
+                """,
+                (
+                    store_id,
+                    search_pattern
+                )
+            )
 
-    results = []
+        else:
+            cursor.execute(
+                """
+                SELECT
+                    product_id,
+                    name,
+                    stock,
+                    cost,
+                    price,
+                    is_active,
+                    tracks_stock,
+                    low_stock_threshold
+                FROM products
+                WHERE store_id = %s
+                  AND is_active = 1
+                  AND LOWER(name) LIKE %s
+                ORDER BY LOWER(name) ASC
+                """,
+                (
+                    store_id,
+                    search_pattern
+                )
+            )
 
-    for row in rows:
-        results.append({
-            "product_id": row[0],
-            "name": row[1],
-            "stock": row[2],
-            "cost": row[3],
-            "price": row[4],
-            "is_active": row[5],
-            "tracks_stock": row[6],
-            "low_stock_threshold": row[7]
-        })
+        rows = cursor.fetchall()
 
-    return {"products": results}
+        results = []
+
+        for row in rows:
+            results.append({
+                "product_id":
+                    row[0],
+
+                "name":
+                    row[1],
+
+                "stock":
+                    int(row[2] or 0),
+
+                "cost":
+                    float(row[3] or 0),
+
+                "price":
+                    float(row[4] or 0),
+
+                "is_active":
+                    int(row[5] or 0),
+
+                "tracks_stock":
+                    int(row[6] or 0),
+
+                "low_stock_threshold":
+                    int(row[7] or 0)
+            })
+
+        return {
+            "products": results
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "SEARCH PRODUCTS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to search products"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.get("/product/{product_id}")
 def get_product(store_id: int, product_id: int):
 
