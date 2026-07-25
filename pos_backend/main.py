@@ -6392,13 +6392,17 @@ def process_return(data: ReturnRequest):
         conn.close()
         
 @app.get("/cash-movements")
-def cash_movements(store_id: int, start_date: str, end_date: str):
-
+def cash_movements(
+    store_id: int,
+    start_date: str,
+    end_date: str
+):
     conn = db()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 created_at,
                 amount,
@@ -6408,32 +6412,81 @@ def cash_movements(store_id: int, start_date: str, end_date: str):
                 note
             FROM cash_events
             WHERE store_id = %s
-            AND created_at::date BETWEEN %s AND %s
-            AND type != 'sale'
-            ORDER BY created_at DESC
-        """, (store_id, start_date, end_date))
+
+              AND (
+                  created_at::timestamptz
+                  AT TIME ZONE
+                  'America/El_Salvador'
+              )::date >= %s::date
+
+              AND (
+                  created_at::timestamptz
+                  AT TIME ZONE
+                  'America/El_Salvador'
+              )::date <= %s::date
+
+              AND type != 'sale'
+
+            ORDER BY
+                created_at::timestamptz DESC
+            """,
+            (
+                store_id,
+                start_date,
+                end_date
+            )
+        )
 
         rows = cursor.fetchall()
 
         movements = []
 
-        for r in rows:
+        for row in rows:
             movements.append({
-                "datetime": r[0],
-                "amount": float(r[1] or 0),
-                "direction": int(r[2] or 1),
-                "type": str(r[3] or ""),
-                "category": r[4] or "",
-                "note": r[5] or ""
+                "datetime": (
+                    row[0].isoformat()
+                    if hasattr(
+                        row[0],
+                        "isoformat"
+                    )
+                    else str(row[0])
+                ),
+
+                "amount":
+                    float(row[1] or 0),
+
+                "direction":
+                    int(row[2] or 1),
+
+                "type":
+                    str(row[3] or ""),
+
+                "category":
+                    row[4] or "",
+
+                "note":
+                    row[5] or ""
             })
 
-        return {"movements": movements}
+        return {
+            "movements": movements
+        }
 
-    except Exception as e:
-        print("❌ CASH MOVEMENTS ERROR:", e)
-        return {"movements": []}
+    except Exception as error:
+        print(
+            "CASH MOVEMENTS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load cash movements"
+            )
+        )
 
     finally:
+        cursor.close()
         conn.close()
 
 @app.get("/rebuild-products")
