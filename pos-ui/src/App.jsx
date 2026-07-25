@@ -239,15 +239,16 @@ function App() {
     if (!storeId) return;
 
     try {
-      const response = await axios.get(
-        `${API}/products/search`,
-        {
-          params: {
-            store_id: storeId,
-            name: term
+      const response =
+        await apiClient.get(
+          "/products/search",
+          {
+            params: {
+              store_id: storeId,
+              name: term
+            }
           }
-       }
-      );
+        );
 
       const data =
         response.data.products ??
