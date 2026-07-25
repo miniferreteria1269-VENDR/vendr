@@ -124,14 +124,19 @@ function App() {
   // -------------------------------------------------
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("tickets");
-    localStorage.removeItem("activeTicket");
+  localStorage.removeItem("user");
+  localStorage.removeItem(
+    "vendr_access_token"
+  );
+  localStorage.removeItem("tickets");
+  localStorage.removeItem(
+    "activeTicket"
+  );
 
-    setUser(null);
-    setTickets([]);
-    setActiveTicket(null);
-  };
+  setUser(null);
+  setTickets([]);
+  setActiveTicket(null);
+};
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
