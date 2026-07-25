@@ -40,7 +40,11 @@ export default function Login({
     setLoading
   ] = useState(false);
 
-  const handleLogin = async () => {
+  const handleLogin = async event => {
+    if (event) {
+      event.preventDefault();
+    }
+
     if (loading) {
       return;
     }
@@ -59,45 +63,64 @@ export default function Login({
           },
 
           body: JSON.stringify({
-            email,
+            email: email.trim(),
             password
           })
         }
       );
 
-      const data =
-        await response.json();
+      let data = {};
 
-      if (response.ok) {
-        localStorage.removeItem(
-          "tickets"
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error(
+          "LOGIN RESPONSE PARSE ERROR:",
+          parseError
         );
+      }
 
-        localStorage.removeItem(
-          "activeTicket"
+      if (!response.ok) {
+        alert(
+          data.detail ||
+          "Login failed"
         );
-
-        if (data.access_token) {
-          localStorage.setItem(
-            "vendr_access_token",
-            data.access_token
-          );
-        }
-
-        localStorage.setItem(
-          "user",
-          JSON.stringify(data)
-        );
-
-        onLogin(data);
 
         return;
       }
 
-      alert(
-        data.detail ||
-        "Login failed"
+      if (!data.access_token) {
+        console.error(
+          "LOGIN RESPONSE MISSING ACCESS TOKEN:",
+          data
+        );
+
+        alert(
+          "Login succeeded, but no access token was returned."
+        );
+
+        return;
+      }
+
+      localStorage.removeItem(
+        "tickets"
       );
+
+      localStorage.removeItem(
+        "activeTicket"
+      );
+
+      localStorage.setItem(
+        "vendr_access_token",
+        data.access_token
+      );
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify(data)
+      );
+
+      onLogin(data);
 
     } catch (error) {
       console.error(
@@ -114,14 +137,6 @@ export default function Login({
     }
   };
 
-  const handleKeyDown = event => {
-    if (
-      event.key === "Enter"
-    ) {
-      handleLogin();
-    }
-  };
-
   return (
     <div
       style={{
@@ -134,7 +149,8 @@ export default function Login({
           "#0f1115"
       }}
     >
-      <div
+      <form
+        onSubmit={handleLogin}
         style={{
           ...card,
           width: 320
@@ -184,6 +200,7 @@ export default function Login({
             width: "100%",
             marginBottom: 12
           }}
+          type="text"
           placeholder={
             t("email")
           }
@@ -193,10 +210,8 @@ export default function Login({
               event.target.value
             )
           }
-          onKeyDown={
-            handleKeyDown
-          }
           autoComplete="username"
+          required
         />
 
         <label>
@@ -219,15 +234,12 @@ export default function Login({
               event.target.value
             )
           }
-          onKeyDown={
-            handleKeyDown
-          }
-          autoComplete=
-            "current-password"
+          autoComplete="current-password"
+          required
         />
 
         <button
-          type="button"
+          type="submit"
           style={{
             ...btnPrimary,
             width: "100%",
@@ -241,9 +253,6 @@ export default function Login({
                 ? "not-allowed"
                 : "pointer"
           }}
-          onClick={
-            handleLogin
-          }
           disabled={
             loading
           }
@@ -271,7 +280,7 @@ export default function Login({
             "create_account"
           )}
         </button>
-      </div>
+      </form>
     </div>
   );
 }
