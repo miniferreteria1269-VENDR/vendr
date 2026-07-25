@@ -3494,37 +3494,99 @@ def rebuild_store(store_id:int):
     return {"message":f"Store {store_id} rebuilt"}
 
 @app.get("/products")
-def get_products(store_id: int):
+def get_products(
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        SELECT product_id, name, stock, cost, price, tracks_stock, low_stock_threshold
-        FROM products
-        WHERE store_id = %s
-        AND is_active = 1
-        ORDER BY LOWER(name) ASC
-    """, (store_id,))
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT
+                product_id,
+                name,
+                stock,
+                cost,
+                price,
+                tracks_stock,
+                low_stock_threshold
 
-    products = []
+            FROM products
 
-    for row in rows:
-        products.append({
-            "product_id": row[0],
-            "name": row[1],
-            "stock": row[2],
-            "cost": row[3],
-            "price": row[4],
-            "tracks_stock": row[5],
-            "low_stock_threshold": row[6]
-        })
+            WHERE store_id = %s
+              AND is_active = 1
 
-    return {"products": products}
+            ORDER BY
+                LOWER(name) ASC
+            """,
+            (store_id,)
+        )
 
+        rows = cursor.fetchall()
+
+        products = []
+
+        for row in rows:
+            products.append({
+                "product_id":
+                    row[0],
+
+                "name":
+                    row[1],
+
+                "stock":
+                    row[2],
+
+                "cost":
+                    float(row[3] or 0),
+
+                "price":
+                    float(row[4] or 0),
+
+                "tracks_stock":
+                    int(row[5] or 0),
+
+                "low_stock_threshold":
+                    int(row[6] or 0)
+            })
+
+        return {
+            "products": products
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET PRODUCTS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load products"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 
