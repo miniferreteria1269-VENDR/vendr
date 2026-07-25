@@ -2713,48 +2713,106 @@ def intake_history(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 ticket_id,
-                MIN(event_datetime::timestamptz) AS intake_datetime,
+                MIN(
+                    event_datetime::timestamptz
+                ) AS intake_datetime,
                 COUNT(*) AS product_lines,
-                SUM(quantity) AS total_units,
-                SUM(quantity * cost_at_time) AS total_cost
+                COALESCE(
+                    SUM(quantity),
+                    0
+                ) AS total_units,
+                COALESCE(
+                    SUM(
+                        quantity *
+                        cost_at_time
+                    ),
+                    0
+                ) AS total_cost
+
             FROM events
+
             WHERE store_id = %s
               AND event_type = 'intake'
               AND ticket_id IS NOT NULL
-              AND event_datetime::timestamptz >= %s::date
-              AND event_datetime::timestamptz < (%s::date + INTERVAL '1 day')
+
+              AND (
+                  event_datetime::timestamptz
+                  AT TIME ZONE
+                  'America/El_Salvador'
+              )::date >= %s::date
+
+              AND (
+                  event_datetime::timestamptz
+                  AT TIME ZONE
+                  'America/El_Salvador'
+              )::date <= %s::date
+
             GROUP BY ticket_id
-            ORDER BY intake_datetime DESC, ticket_id DESC
-        """, (
-            store_id,
-            start_date,
-            end_date
-        ))
+
+            ORDER BY
+                intake_datetime DESC,
+                ticket_id DESC
+            """,
+            (
+                store_id,
+                start_date,
+                end_date
+            )
+        )
 
         rows = cursor.fetchall()
 
         return {
-            "store_id": store_id,
-            "start_date": start_date,
-            "end_date": end_date,
+            "store_id":
+                store_id,
+
+            "start_date":
+                start_date,
+
+            "end_date":
+                end_date,
+
             "intakes": [
                 {
-                    "ticket_id": row[0],
-                    "datetime": row[1].isoformat() if row[1] else None,
-                    "product_lines": row[2],
-                    "total_units": row[3],
-                    "total_cost": round(float(row[4] or 0), 2)
+                    "ticket_id":
+                        row[0],
+
+                    "datetime": (
+                        row[1].isoformat()
+                        if row[1]
+                        else None
+                    ),
+
+                    "product_lines":
+                        int(row[2] or 0),
+
+                    "total_units":
+                        int(row[3] or 0),
+
+                    "total_cost":
+                        round(
+                            float(row[4] or 0),
+                            2
+                        )
                 }
                 for row in rows
             ]
         }
 
-    except Exception as e:
-        print("INTAKE HISTORY ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as error:
+        print(
+            "INTAKE HISTORY ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load intake history"
+        )
 
     finally:
         cursor.close()
