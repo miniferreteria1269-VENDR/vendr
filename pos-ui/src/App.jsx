@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-
+import apiClient from "./apiClient";
 import { useLang } from "./LanguageContext";
 import Login from "./Login";
 import Signup from "./Signup";
@@ -181,14 +181,15 @@ function App() {
     if (!storeId) return;
 
     try {
-      const response = await axios.get(
-        `${API}/products`,
-        {
-          params: {
-            store_id: storeId
+      const response =
+        await apiClient.get(
+          "/products",
+          {
+            params: {
+              store_id: storeId
+            }
           }
-        }
-      );
+        );
 
       const data =
         response.data.products ??
