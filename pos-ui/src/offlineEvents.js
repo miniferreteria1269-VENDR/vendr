@@ -1,9 +1,7 @@
-import axios from "axios";
 import Dexie from "dexie";
 
+import apiClient from "./apiClient";
 import { offlineDb } from "./offlineDb";
-
-const API = "https://vendr-onkr.onrender.com";
 
 /**
  * Stores an event locally exactly once.
@@ -65,147 +63,136 @@ export const savePendingEvent = async ({
   }
 };
 
-const submitSaleEvent = async event => {
-  const response = await axios.post(
-    `${API}/sale-ticket`,
-    event.payload
-  );
-
+const validateAcceptedStatus = (
+  responseData,
+  eventLabel
+) => {
   if (
-    response.data.status !== "accepted" &&
-    response.data.status !== "already_processed"
+    responseData.status !== "accepted" &&
+    responseData.status !==
+      "already_processed"
   ) {
     throw new Error(
-      `Unexpected sale status: ${response.data.status}`
+      `Unexpected ${eventLabel} status: ${responseData.status}`
     );
   }
 
-  return response.data;
+  return responseData;
+};
+
+const submitSaleEvent = async event => {
+  const response = await apiClient.post(
+    "/sale-ticket",
+    event.payload
+  );
+
+  return validateAcceptedStatus(
+    response.data,
+    "sale"
+  );
 };
 
 const submitReturnEvent = async event => {
-  const response = await axios.post(
-    `${API}/returns`,
+  const response = await apiClient.post(
+    "/returns",
     event.payload
   );
 
-  if (
-    response.data.status !== "accepted" &&
-    response.data.status !== "already_processed"
-  ) {
-    throw new Error(
-      `Unexpected return/refund status: ${response.data.status}`
-    );
-  }
-
-  return response.data;
+  return validateAcceptedStatus(
+    response.data,
+    "return/refund"
+  );
 };
 
 const submitCashEvent = async event => {
-  const response = await axios.post(
-    `${API}/cash-event`,
+  const response = await apiClient.post(
+    "/cash-event",
     event.payload
   );
 
-  if (
-    response.data.status !== "accepted" &&
-    response.data.status !== "already_processed"
-  ) {
-    throw new Error(
-      `Unexpected cash event status: ${response.data.status}`
-    );
-  }
-
-  return response.data;
+  return validateAcceptedStatus(
+    response.data,
+    "cash event"
+  );
 };
 
 const submitIntakeEvent = async event => {
-  const response = await axios.post(
-    `${API}/intake-ticket`,
+  const response = await apiClient.post(
+    "/intake-ticket",
     event.payload
   );
 
-  if (
-    response.data.status !== "accepted" &&
-    response.data.status !== "already_processed"
-  ) {
-    throw new Error(
-      `Unexpected intake status: ${response.data.status}`
-    );
-  }
-
-  return response.data;
-};
-
-const submitStockAdjustmentEvent = async event => {
-  const response = await axios.post(
-    `${API}/stock-adjustment`,
-    event.payload
+  return validateAcceptedStatus(
+    response.data,
+    "intake"
   );
-
-  if (
-    response.data.status !== "accepted" &&
-    response.data.status !== "already_processed"
-  ) {
-    throw new Error(
-      `Unexpected stock adjustment status: ${response.data.status}`
-    );
-  }
-
-  return response.data;
 };
+
+const submitStockAdjustmentEvent =
+  async event => {
+    const response = await apiClient.post(
+      "/stock-adjustment",
+      event.payload
+    );
+
+    return validateAcceptedStatus(
+      response.data,
+      "stock adjustment"
+    );
+  };
 
 /**
  * Routes a local event to the correct backend endpoint.
  */
-export const submitPendingEvent = async event => {
-  let responseData;
+export const submitPendingEvent =
+  async event => {
+    let responseData;
 
-  switch (event.event_type) {
-    case "sale":
-      responseData =
-        await submitSaleEvent(event);
-      break;
+    switch (event.event_type) {
+      case "sale":
+        responseData =
+          await submitSaleEvent(event);
+        break;
 
-    case "return":
-      responseData =
-        await submitReturnEvent(event);
-      break;
+      case "return":
+        responseData =
+          await submitReturnEvent(event);
+        break;
 
-    case "revenue":
-    case "expense":
-      responseData =
-        await submitCashEvent(event);
-      break;
+      case "revenue":
+      case "expense":
+        responseData =
+          await submitCashEvent(event);
+        break;
 
-    case "intake":
-      responseData =
-        await submitIntakeEvent(event);
-      break;
+      case "intake":
+        responseData =
+          await submitIntakeEvent(event);
+        break;
 
-    case "stock_adjustment":
-      responseData =
-        await submitStockAdjustmentEvent(
-          event
+      case "stock_adjustment":
+        responseData =
+          await submitStockAdjustmentEvent(
+            event
+          );
+        break;
+
+      default:
+        throw new Error(
+          `Unsupported pending event type: ${event.event_type}`
         );
-      break;
+    }
 
-    default:
-      throw new Error(
-        `Unsupported pending event type: ${event.event_type}`
-      );
-  }
+    /*
+     * Delete the local queue entry only after the backend
+     * accepts the event or confirms it was already processed.
+     */
+    await offlineDb.pendingEvents.delete(
+      event.client_event_id
+    );
 
-  /*
-   * Delete the local queue entry only after the backend
-   * accepts the event or confirms it was already processed.
-   */
-  await offlineDb.pendingEvents.delete(
-    event.client_event_id
-  );
-
-  return responseData;
-};
+    return responseData;
+  };
 
 /**
  * Moves records from the original pendingSales table
@@ -233,25 +220,37 @@ export const migratePendingSalesToEvents =
         await savePendingEvent({
           client_event_id:
             sale.client_event_id,
-          event_type: "sale",
-          store_id: sale.store_id,
-          device_id: sale.device_id,
+
+          event_type:
+            "sale",
+
+          store_id:
+            sale.store_id,
+
+          device_id:
+            sale.device_id,
+
           client_created_at:
             sale.client_created_at ||
             created_at,
-          payload: salePayload
+
+          payload:
+            salePayload
         });
 
       /*
        * Whether newly created or already present,
        * the generic queue now owns this event.
        */
-      if (
+      const genericEventExists =
         result.created ||
-        await offlineDb.pendingEvents.get(
-          sale.client_event_id
-        )
-      ) {
+        Boolean(
+          await offlineDb.pendingEvents.get(
+            sale.client_event_id
+          )
+        );
+
+      if (genericEventExists) {
         await offlineDb.pendingSales.delete(
           sale.client_event_id
         );
