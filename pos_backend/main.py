@@ -2664,36 +2664,62 @@ def sale_product(store_id: int, product_id: int, quantity: int):
 # -----------------------------
 
 @app.post("/sale-ticket")
-def sale_ticket(ticket: SaleTicket):
-    conn = db()
-    cursor = conn.cursor()
+def sale_ticket(
+    ticket: SaleTicket,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # -------------------------------------------------
+    # AUTHORIZATION
+    # -------------------------------------------------
+    if current_user.store_id != ticket.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
 
     try:
-        print("🔥 SALE ENDPOINT HIT")
+        conn = db()
+        cursor = conn.cursor()
 
         # -------------------------------------------------
         # IDEMPOTENCY CHECK
         # -------------------------------------------------
         if ticket.client_event_id:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT ticket_id
                 FROM events
                 WHERE store_id = %s
                   AND client_event_id = %s
+                  AND event_type = 'sale'
                 LIMIT 1
-            """, (
-                ticket.store_id,
-                ticket.client_event_id
-            ))
+                """,
+                (
+                    ticket.store_id,
+                    ticket.client_event_id
+                )
+            )
 
             existing = cursor.fetchone()
 
             if existing:
                 return {
-                    "message": "Sale already recorded",
-                    "status": "already_processed",
-                    "ticket_id": existing[0],
-                    "client_event_id": ticket.client_event_id
+                    "message":
+                        "Sale already recorded",
+
+                    "status":
+                        "already_processed",
+
+                    "ticket_id":
+                        existing[0],
+
+                    "client_event_id":
+                        ticket.client_event_id
                 }
 
         # -------------------------------------------------
@@ -2702,49 +2728,66 @@ def sale_ticket(ticket: SaleTicket):
         if not ticket.items:
             raise HTTPException(
                 status_code=400,
-                detail="Sale ticket must contain at least one item"
+                detail=(
+                    "Sale ticket must contain "
+                    "at least one item"
+                )
             )
 
         for item in ticket.items:
             if item.quantity <= 0:
                 raise HTTPException(
                     status_code=400,
-                    detail="Item quantity must be greater than zero"
+                    detail=(
+                        "Item quantity must be "
+                        "greater than zero"
+                    )
                 )
 
             if item.price < 0:
                 raise HTTPException(
                     status_code=400,
-                    detail="Item price cannot be negative"
+                    detail=(
+                        "Item price cannot be negative"
+                    )
                 )
 
         # -------------------------------------------------
         # SERIALIZE TICKET NUMBER GENERATION
-        #
-        # This prevents two simultaneous requests from
-        # calculating the same MAX(ticket_id) + 1.
-        # The lock is released automatically on commit
-        # or rollback.
         # -------------------------------------------------
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT pg_advisory_xact_lock(%s)
-        """, (1269001,))
+            """,
+            (1269001,)
+        )
 
-        cursor.execute("""
-            SELECT COALESCE(MAX(ticket_id), 0)
+        cursor.execute(
+            """
+            SELECT COALESCE(
+                MAX(ticket_id),
+                0
+            )
             FROM events
-        """)
+            """
+        )
 
-        ticket_id = cursor.fetchone()[0] + 1
+        ticket_id = (
+            cursor.fetchone()[0] + 1
+        )
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(
+            timezone.utc
+        )
+
         total_revenue = 0.0
 
         # -------------------------------------------------
         # PROCESS SALE ITEMS
         # -------------------------------------------------
         for item in ticket.items:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT
                     name,
                     cost
@@ -2752,26 +2795,47 @@ def sale_ticket(ticket: SaleTicket):
                 WHERE product_id = %s
                   AND store_id = %s
                   AND is_active = 1
-            """, (
-                item.product_id,
-                ticket.store_id
-            ))
+                """,
+                (
+                    item.product_id,
+                    ticket.store_id
+                )
+            )
 
             product = cursor.fetchone()
 
             if not product:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Product {item.product_id} not found"
+                    detail=(
+                        f"Product {item.product_id} "
+                        "not found"
+                    )
                 )
 
             name, cost = product
 
-            cost = round(float(cost or 0), 2)
-            price = round(float(item.price), 2)
-            line_total = round(price * item.quantity, 2)
+            quantity = int(
+                item.quantity
+            )
 
-            cursor.execute("""
+            cost = round(
+                float(cost or 0),
+                2
+            )
+
+            price = round(
+                float(item.price),
+                2
+            )
+
+            line_total = round(
+                price * quantity,
+                2
+            )
+
+            cursor.execute(
+                """
                 INSERT INTO events (
                     store_id,
                     event_type,
@@ -2791,47 +2855,59 @@ def sale_ticket(ticket: SaleTicket):
                     %s, %s, %s, %s,
                     %s, %s, %s, %s
                 )
-            """, (
-                ticket.store_id,
-                "sale",
-                item.product_id,
-                name,
-                item.quantity,
-                cost,
-                price,
-                now,
-                ticket_id,
-                ticket.client_event_id,
-                ticket.device_id,
-                ticket.client_created_at
-            ))
+                """,
+                (
+                    ticket.store_id,
+                    "sale",
+                    item.product_id,
+                    name,
+                    quantity,
+                    cost,
+                    price,
+                    now,
+                    ticket_id,
+                    ticket.client_event_id,
+                    ticket.device_id,
+                    ticket.client_created_at
+                )
+            )
 
             total_revenue += line_total
 
             # Stock is reduced only for tracked products.
             # Negative stock remains allowed.
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE products
-                SET stock = COALESCE(stock, 0) - %s
+                SET stock =
+                    COALESCE(stock, 0) - %s
                 WHERE product_id = %s
                   AND store_id = %s
                   AND tracks_stock = 1
-            """, (
-                item.quantity,
-                item.product_id,
-                ticket.store_id
-            ))
+                """,
+                (
+                    quantity,
+                    item.product_id,
+                    ticket.store_id
+                )
+            )
 
-        total_revenue = round(total_revenue, 2)
+        total_revenue = round(
+            total_revenue,
+            2
+        )
 
         # -------------------------------------------------
         # GET ORGANIZATION
         # -------------------------------------------------
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT organization_id
             FROM stores
             WHERE store_id = %s
-        """, (ticket.store_id,))
+            """,
+            (ticket.store_id,)
+        )
 
         store = cursor.fetchone()
 
@@ -2841,18 +2917,13 @@ def sale_ticket(ticket: SaleTicket):
                 detail="Store not found"
             )
 
-        organization_id = (
-            store[0]
-            if store[0] is not None
-            else None
-        )
+        organization_id = store[0]
 
         # -------------------------------------------------
         # RECORD CASH EVENT
         # -------------------------------------------------
-        print("💰 INSERTING CASH EVENT:", total_revenue)
-
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO cash_events (
                 organization_id,
                 store_id,
@@ -2860,53 +2931,87 @@ def sale_ticket(ticket: SaleTicket):
                 direction,
                 amount,
                 note,
-                reference_id
+                reference_id,
+                client_event_id,
+                device_id,
+                client_created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (
-            organization_id,
-            ticket.store_id,
-            "sale",
-            1,
-            total_revenue,
-            "POS sale",
-            ticket_id
-        ))
+            VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s
+            )
+            """,
+            (
+                organization_id,
+                ticket.store_id,
+                "sale",
+                1,
+                total_revenue,
+                "POS sale",
+                ticket_id,
+                ticket.client_event_id,
+                ticket.device_id,
+                ticket.client_created_at
+            )
+        )
 
         conn.commit()
 
         return {
-            "message": "Sale recorded",
-            "status": "accepted",
-            "ticket_id": ticket_id,
-            "client_event_id": ticket.client_event_id
+            "message":
+                "Sale recorded",
+
+            "status":
+                "accepted",
+
+            "ticket_id":
+                ticket_id,
+
+            "client_event_id":
+                ticket.client_event_id
         }
 
     except psycopg2.errors.UniqueViolation:
-        conn.rollback()
+        if conn:
+            conn.rollback()
 
-        # A concurrent request may have recorded the same
-        # client_event_id after the initial duplicate check.
-        if ticket.client_event_id:
-            cursor.execute("""
+        # A concurrent retry may have inserted the
+        # same client event after the first check.
+        if (
+            cursor
+            and ticket.client_event_id
+        ):
+            cursor.execute(
+                """
                 SELECT ticket_id
                 FROM events
                 WHERE store_id = %s
                   AND client_event_id = %s
+                  AND event_type = 'sale'
                 LIMIT 1
-            """, (
-                ticket.store_id,
-                ticket.client_event_id
-            ))
+                """,
+                (
+                    ticket.store_id,
+                    ticket.client_event_id
+                )
+            )
 
             existing = cursor.fetchone()
 
             if existing:
                 return {
-                    "message": "Sale already recorded",
-                    "status": "already_processed",
-                    "ticket_id": existing[0],
-                    "client_event_id": ticket.client_event_id
+                    "message":
+                        "Sale already recorded",
+
+                    "status":
+                        "already_processed",
+
+                    "ticket_id":
+                        existing[0],
+
+                    "client_event_id":
+                        ticket.client_event_id
                 }
 
         raise HTTPException(
@@ -2915,21 +3020,32 @@ def sale_ticket(ticket: SaleTicket):
         )
 
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
+
         raise
 
-    except Exception as e:
-        conn.rollback()
-        print("🔥 SALE TICKET ERROR:", str(e))
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "SALE TICKET ERROR:",
+            repr(error)
+        )
 
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail="Unable to record sale"
         )
 
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 # -----------------------------
 # INTAKE
 # -----------------------------
