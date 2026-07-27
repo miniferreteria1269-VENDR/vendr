@@ -7402,21 +7402,46 @@ def service_report(
 
 
 @app.post("/cash-event")
-def create_cash_event(data: CashEventRequest):
+def create_cash_event(
+    data: CashEventRequest,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != data.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
     conn = None
     cursor = None
 
     try:
-        if data.type not in ("revenue", "expense"):
+        # ---------------------------------------------
+        # VALIDATION
+        # ---------------------------------------------
+        if data.type not in (
+            "revenue",
+            "expense"
+        ):
             raise HTTPException(
                 status_code=400,
-                detail="Cash event type must be revenue or expense"
+                detail=(
+                    "Cash event type must be "
+                    "revenue or expense"
+                )
             )
 
         if data.amount <= 0:
             raise HTTPException(
                 status_code=400,
-                detail="Amount must be greater than zero"
+                detail=(
+                    "Amount must be greater than zero"
+                )
             )
 
         conn = db()
@@ -7442,7 +7467,9 @@ def create_cash_event(data: CashEventRequest):
 
             if cursor.fetchone():
                 return {
-                    "status": "already_processed",
+                    "status":
+                        "already_processed",
+
                     "client_event_id":
                         data.client_event_id
                 }
@@ -7475,6 +7502,11 @@ def create_cash_event(data: CashEventRequest):
             else -1
         )
 
+        amount = round(
+            float(data.amount),
+            2
+        )
+
         # ---------------------------------------------
         # RECORD CASH EVENT
         # ---------------------------------------------
@@ -7502,7 +7534,7 @@ def create_cash_event(data: CashEventRequest):
                 data.store_id,
                 data.type,
                 direction,
-                data.amount,
+                amount,
                 data.category,
                 data.note,
                 data.client_event_id,
@@ -7514,7 +7546,9 @@ def create_cash_event(data: CashEventRequest):
         conn.commit()
 
         return {
-            "status": "accepted",
+            "status":
+                "accepted",
+
             "client_event_id":
                 data.client_event_id
         }
@@ -7524,7 +7558,9 @@ def create_cash_event(data: CashEventRequest):
             conn.rollback()
 
         return {
-            "status": "already_processed",
+            "status":
+                "already_processed",
+
             "client_event_id":
                 data.client_event_id
         }
@@ -7540,13 +7576,15 @@ def create_cash_event(data: CashEventRequest):
             conn.rollback()
 
         print(
-            "🔥 CASH EVENT ERROR:",
+            "CASH EVENT ERROR:",
             repr(error)
         )
 
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail=(
+                "Unable to record cash event"
+            )
         )
 
     finally:
@@ -7555,7 +7593,7 @@ def create_cash_event(data: CashEventRequest):
 
         if conn:
             conn.close()
-
+            
 @app.post("/returns")
 def process_return(
     data: ReturnRequest,
