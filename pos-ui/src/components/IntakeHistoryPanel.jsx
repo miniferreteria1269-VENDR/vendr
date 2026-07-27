@@ -3,7 +3,7 @@ import {
   useState
 } from "react";
 
-import axios from "axios";
+import apiClient from "../apiClient";
 
 import {
   useLang
@@ -16,9 +16,6 @@ import {
   btnPrimary,
   btnSecondary
 } from "../uiStyles";
-
-const API =
-  "https://vendr-onkr.onrender.com";
 
 const getLocalDateValue = () => {
   const now = new Date();
@@ -132,8 +129,8 @@ function IntakeHistoryPanel({
 
     try {
       const response =
-        await axios.get(
-          `${API}/intake-history`,
+        await apiClient.get(
+          "/intake-history",
           {
             params: {
               store_id:
@@ -187,8 +184,8 @@ function IntakeHistoryPanel({
 
       try {
         const response =
-          await axios.get(
-            `${API}/intake-ticket-details`,
+          await apiClient.get(
+            "/intake-ticket-details",
             {
               params: {
                 store_id:
