@@ -83,20 +83,62 @@ function ProductPanel({
     >
 
       {/* SEARCH */}
-      <input
-        type="text"
-        placeholder="Search products..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
+      <div
         style={{
-          padding: 10,
-          borderRadius: 8,
-          border: `1px solid ${COLORS.border}`,
-          background: COLORS.panelAlt,
-          color: COLORS.text,
+          display: "flex",
+          gap: 6,
           marginBottom: 12
         }}
-      />
+      >
+        <input
+          type="text"
+          placeholder="Search products..."
+          value={searchTerm}
+          onChange={event =>
+            setSearchTerm(
+              event.target.value
+            )
+          }
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: 10,
+            borderRadius: 8,
+            border:
+              `1px solid ${COLORS.border}`,
+            background:
+              COLORS.panelAlt,
+            color:
+              COLORS.text,
+            boxSizing:
+              "border-box"
+          }}
+        />
+
+        {searchTerm.trim() !== "" && (
+          <button
+            type="button"
+            onClick={() =>
+              setSearchTerm("")
+            }
+            aria-label="Clear product search"
+            style={{
+              width: 42,
+              minWidth: 42,
+              border: "none",
+              borderRadius: 8,
+              background: COLORS.panelAlt,
+              color: COLORS.text,
+              fontSize: 18,
+              fontWeight: "bold",
+              cursor: "pointer",
+              touchAction: "manipulation"
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
 
       {/* QUICK ITEMS LABEL */}
       {searchTerm.trim() === "" && (
