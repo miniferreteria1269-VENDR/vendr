@@ -953,130 +953,184 @@ const finalizeIntake = async () => {
     );
   }
 
-  // -------------------------------------------------
-  // UI
-  // -------------------------------------------------
+// UI
+// -------------------------------------------------
 
-  return (
-    <div
-      style={{
-        fontFamily:
-          "system-ui, -apple-system, sans-serif",
-        background: COLORS.bg,
-        color: COLORS.text,
-        width: "100vw",
-        height: "100dvh",
-        minHeight: "100dvh",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column"
-      }}
-    >
-      {/* HEADER */}
-      <div
-        style={{
-          padding: 12,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          borderBottom:
-            `1px solid ${COLORS.border}`
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontWeight: 600
-            }}
-          >
-            {user.store_name ||
-              `${t("store")} ${storeId}`}
-          </div>
-
-          <SyncStatus
-            storeId={storeId}
-          />
-        </div>
-
-        <button
-          onClick={handleLogout}
-          style={{
-            background:
-              COLORS.panelAlt,
-            border: "none",
-            color: COLORS.text,
-            padding: "6px 10px",
-            borderRadius: 6,
-            cursor: "pointer"
-          }}
-        >
-          {t("logout")}
-        </button>
-      </div>
-
-{/* NAVIGATION */}
-<div
-  style={{
-    width: "100%",
-    minWidth: 0,
-    overflowX: "auto",
-    overflowY: "hidden",
-    borderBottom:
-      `1px solid ${COLORS.border}`,
-    flexShrink: 0,
-    WebkitOverflowScrolling: "touch",
-    touchAction: "pan-x",
-    overscrollBehaviorX: "contain"
-  }}
->
+return (
   <div
     style={{
+      fontFamily:
+        "system-ui, -apple-system, sans-serif",
+
+      background: COLORS.bg,
+      color: COLORS.text,
+
+      width: "100%",
+      maxWidth: "100%",
+
+      height: "100dvh",
+      minHeight: "100dvh",
+
+      overflowX: "hidden",
+      overflowY: "hidden",
+
       display: "flex",
-      width: "max-content",
-      minWidth: "100%",
-      gap: 8,
-      padding: "8px 10px"
+      flexDirection: "column",
+
+      minWidth: 0,
+      boxSizing: "border-box"
     }}
   >
-    {[
-      "pos",
-      "sales",
-      "inventory",
-      "products",
-      "analysis",
-      "diagnostics",
-      "cash"
-    ].map(navView => (
+    {/* HEADER */}
+    <div
+      style={{
+        padding: 12,
+
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+
+        width: "100%",
+        minWidth: 0,
+        flexShrink: 0,
+        boxSizing: "border-box",
+
+        borderBottom:
+          `1px solid ${COLORS.border}`
+      }}
+    >
+      <div
+        style={{
+          minWidth: 0,
+          overflow: "hidden"
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap"
+          }}
+        >
+          {user.store_name ||
+            `${t("store")} ${storeId}`}
+        </div>
+
+        <SyncStatus
+          storeId={storeId}
+        />
+      </div>
+
       <button
-        key={navView}
         type="button"
-        onClick={() =>
-          setView(navView)
-        }
+        onClick={handleLogout}
         style={{
           background:
-            view === navView
-              ? COLORS.primary
-              : COLORS.panelAlt,
+            COLORS.panelAlt,
 
-          color: "white",
           border: "none",
-          borderRadius: 8,
-          padding: "8px 12px",
+          color: COLORS.text,
+
+          padding: "6px 10px",
+          borderRadius: 6,
           cursor: "pointer",
 
           flex: "0 0 auto",
           whiteSpace: "nowrap"
         }}
       >
-        {t(
-          navView === "sales"
-            ? "history"
-            : navView
-        ).toUpperCase()}
+        {t("logout")}
       </button>
-    ))}
-  </div>
-</div>
+    </div>
+
+    {/* NAVIGATION */}
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+
+        overflowX: "auto",
+        overflowY: "hidden",
+
+        flexShrink: 0,
+        boxSizing: "border-box",
+
+        borderBottom:
+          `1px solid ${COLORS.border}`,
+
+        WebkitOverflowScrolling:
+          "touch",
+
+        touchAction: "pan-x",
+        overscrollBehaviorX:
+          "contain",
+
+        scrollbarWidth:
+          "thin"
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+
+          width: "max-content",
+          minWidth: "100%",
+
+          gap: 8,
+          padding: "8px 10px",
+
+          boxSizing: "border-box"
+        }}
+      >
+        {[
+          "pos",
+          "sales",
+          "inventory",
+          "products",
+          "analysis",
+          "diagnostics",
+          "cash"
+        ].map(navView => (
+          <button
+            key={navView}
+            type="button"
+            onClick={() =>
+              setView(navView)
+            }
+            style={{
+              background:
+                view === navView
+                  ? COLORS.primary
+                  : COLORS.panelAlt,
+
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+
+              padding:
+                "8px 12px",
+
+              cursor:
+                "pointer",
+
+              flex:
+                "0 0 auto",
+
+              whiteSpace:
+                "nowrap"
+            }}
+          >
+            {t(
+              navView === "sales"
+                ? "history"
+                : navView
+            ).toUpperCase()}
+          </button>
+        ))}
+      </div>
+    </div>
 
 export default App;
