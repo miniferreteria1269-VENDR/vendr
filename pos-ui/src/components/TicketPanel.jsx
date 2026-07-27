@@ -232,9 +232,20 @@ function TicketPanel({
           <div
             style={{
               flex: 1,
-              overflowY: "auto"
+              minHeight: 0,
+              minWidth: 0,
+
+              overflowY: "auto",
+              overflowX: "auto",
+
+              WebkitOverflowScrolling:
+                "touch",
+
+              touchAction: "pan-x pan-y",
+
+              paddingBottom: 6
             }}
-          >
+          >   
             {currentTicket.items.map(
               (item, index) => (
                 <div
