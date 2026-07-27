@@ -1017,175 +1017,66 @@ const finalizeIntake = async () => {
 {/* NAVIGATION */}
 <div
   style={{
-    padding: "8px 10px",
-    display: "flex",
-    gap: 8,
-    borderBottom:
-      `1px solid ${COLORS.border}`,
-
+    width: "100%",
+    minWidth: 0,
     overflowX: "auto",
     overflowY: "hidden",
-
+    borderBottom:
+      `1px solid ${COLORS.border}`,
     flexShrink: 0,
-    WebkitOverflowScrolling:
-      "touch",
-
-    scrollbarWidth: "thin"
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-x",
+    overscrollBehaviorX: "contain"
   }}
 >
-  {[
-    "pos",
-    "sales",
-    "inventory",
-    "products",
-    "analysis",
-    "diagnostics",
-    "cash"
-  ].map(navView => (
-    <button
-      key={navView}
-      type="button"
-      onClick={() =>
-        setView(navView)
-      }
-      style={{
-        background:
-          view === navView
-            ? COLORS.primary
-            : COLORS.panelAlt,
-
-        color: "white",
-        border: "none",
-        borderRadius: 8,
-        padding: "8px 12px",
-        cursor: "pointer",
-
-        flexShrink: 0,
-        whiteSpace: "nowrap"
-      }}
-    >
-      {t(
-        navView === "sales"
-          ? "history"
-          : navView
-      ).toUpperCase()}
-    </button>
-  ))}
-</div>
-
-{/* POS */}
-{view === "pos" && (
   <div
     style={{
       display: "flex",
-      flex: 1,
-      minHeight: 0,
-      overflow: "hidden",
-      gap: 12,
-      padding: 12
+      width: "max-content",
+      minWidth: "100%",
+      gap: 8,
+      padding: "8px 10px"
     }}
   >
-    <ProductPanel
-      products={products}
-      searchTerm={searchTerm}
-      setSearchTerm={
-        setSearchTerm
-      }
-      addItem={addItem}
-      storeId={storeId}
-    />
+    {[
+      "pos",
+      "sales",
+      "inventory",
+      "products",
+      "analysis",
+      "diagnostics",
+      "cash"
+    ].map(navView => (
+      <button
+        key={navView}
+        type="button"
+        onClick={() =>
+          setView(navView)
+        }
+        style={{
+          background:
+            view === navView
+              ? COLORS.primary
+              : COLORS.panelAlt,
 
-    <TicketPanel
-      tickets={tickets}
-      activeTicket={
-        activeTicket
-      }
-      setActiveTicket={
-        setActiveTicket
-      }
-      currentTicket={
-        currentTicket
-      }
-      createTicket={
-        createTicket
-      }
-      removeItem={removeItem}
-      updateItemField={
-        updateItemField
-      }
-      cancelTicket={
-        cancelTicket
-      }
-      renameTicket={
-        renameTicket
-      }
-      finalizeSale={
-        finalizeSale
-      }
-      finalizeIntake={
-        finalizeIntake
-      }
-      intakePaid={intakePaid}
-      setIntakePaid={
-        setIntakePaid
-      }
-      discountValue={
-        discountValue
-      }
-      setDiscountValue={
-        setDiscountValue
-      }
-      discountType={
-        discountType
-      }
-      setDiscountType={
-        setDiscountType
-      }
-    />
+          color: "white",
+          border: "none",
+          borderRadius: 8,
+          padding: "8px 12px",
+          cursor: "pointer",
+
+          flex: "0 0 auto",
+          whiteSpace: "nowrap"
+        }}
+      >
+        {t(
+          navView === "sales"
+            ? "history"
+            : navView
+        ).toUpperCase()}
+      </button>
+    ))}
   </div>
-)}
-
-{/* HISTORY */}
-{view === "sales" && (
-  <HistoryPanel
-    storeId={storeId}
-  />
-)}
-
-{/* INVENTORY */}
-{view === "inventory" && (
-  <InventoryReport
-    storeId={storeId}
-  />
-)}
-
-{/* DIAGNOSTICS */}
-{view === "diagnostics" && (
-  <ProductDiagnostics
-    storeId={storeId}
-  />
-)}
-
-{/* PRODUCT MANAGEMENT */}
-{view === "products" && (
-  <ProductManagement
-    storeId={storeId}
-  />
-)}
-
-{/* ANALYSIS */}
-{view === "analysis" && (
-  <SalesAnalysisPanel
-    storeId={storeId}
-  />
-)}
-
-{/* CASH */}
-{view === "cash" && (
-  <CashPanel
-    storeId={storeId}
-    products={products}
-  />
-)}
+</div>
 
 export default App;
