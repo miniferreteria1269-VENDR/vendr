@@ -3269,34 +3269,61 @@ def change_price(store_id:int,product_id:int,cost:float,price:float):
     return {"message":"Price updated"}
 
 @app.post("/intake-ticket")
-def intake_ticket(ticket: IntakeTicket):
+def intake_ticket(
+    ticket: IntakeTicket,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != ticket.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
     conn = None
     cursor = None
 
     try:
+        # ---------------------------------------------
+        # VALIDATE TICKET
+        # ---------------------------------------------
         if not ticket.items:
             raise HTTPException(
                 status_code=400,
-                detail="Intake ticket must contain at least one item"
+                detail=(
+                    "Intake ticket must contain "
+                    "at least one item"
+                )
             )
 
         for item in ticket.items:
             if item.quantity <= 0:
                 raise HTTPException(
                     status_code=400,
-                    detail="Item quantity must be greater than zero"
+                    detail=(
+                        "Item quantity must be "
+                        "greater than zero"
+                    )
                 )
 
             if item.cost < 0:
                 raise HTTPException(
                     status_code=400,
-                    detail="Item cost cannot be negative"
+                    detail=(
+                        "Item cost cannot be negative"
+                    )
                 )
 
             if item.price < 0:
                 raise HTTPException(
                     status_code=400,
-                    detail="Item price cannot be negative"
+                    detail=(
+                        "Item price cannot be negative"
+                    )
                 )
 
         conn = db()
@@ -3325,8 +3352,12 @@ def intake_ticket(ticket: IntakeTicket):
 
             if existing:
                 return {
-                    "status": "already_processed",
-                    "ticket_id": existing[0],
+                    "status":
+                        "already_processed",
+
+                    "ticket_id":
+                        existing[0],
+
                     "client_event_id":
                         ticket.client_event_id
                 }
@@ -3343,12 +3374,17 @@ def intake_ticket(ticket: IntakeTicket):
 
         cursor.execute(
             """
-            SELECT COALESCE(MAX(ticket_id), 0)
+            SELECT COALESCE(
+                MAX(ticket_id),
+                0
+            )
             FROM events
             """
         )
 
-        ticket_id = cursor.fetchone()[0] + 1
+        ticket_id = (
+            cursor.fetchone()[0] + 1
+        )
 
         now = datetime.now(
             timezone.utc
@@ -3387,11 +3423,15 @@ def intake_ticket(ticket: IntakeTicket):
 
             product_name = product[0]
 
-            quantity = int(item.quantity)
+            quantity = int(
+                item.quantity
+            )
+
             cost = round(
                 float(item.cost),
                 2
             )
+
             price = round(
                 float(item.price),
                 2
@@ -3526,8 +3566,12 @@ def intake_ticket(ticket: IntakeTicket):
         conn.commit()
 
         return {
-            "status": "accepted",
-            "ticket_id": ticket_id,
+            "status":
+                "accepted",
+
+            "ticket_id":
+                ticket_id,
+
             "client_event_id":
                 ticket.client_event_id
         }
@@ -3537,8 +3581,8 @@ def intake_ticket(ticket: IntakeTicket):
             conn.rollback()
 
         if (
-            cursor and
-            ticket.client_event_id
+            cursor
+            and ticket.client_event_id
         ):
             cursor.execute(
                 """
@@ -3561,8 +3605,10 @@ def intake_ticket(ticket: IntakeTicket):
                 return {
                     "status":
                         "already_processed",
+
                     "ticket_id":
                         existing[0],
+
                     "client_event_id":
                         ticket.client_event_id
                 }
@@ -3583,13 +3629,13 @@ def intake_ticket(ticket: IntakeTicket):
             conn.rollback()
 
         print(
-            "🔥 INTAKE ERROR:",
+            "INTAKE ERROR:",
             repr(error)
         )
 
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail="Unable to record intake"
         )
 
     finally:
@@ -3598,6 +3644,7 @@ def intake_ticket(ticket: IntakeTicket):
 
         if conn:
             conn.close()
+            
 # -----------------------------
 # ADMIN RECOVERY
 # -----------------------------
