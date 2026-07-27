@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLang } from "../LanguageContext";
-import axios from "axios";
+import apiClient from "../apiClient";
 import {
   savePendingEvent,
   submitPendingEvent
@@ -106,10 +106,13 @@ function CreateProduct({ storeId, goBack }) {
 
     const delay = setTimeout(async () => {
       try {
-        const res = await axios.get(
-          "https://vendr-onkr.onrender.com/products/search",
+        const res = await apiClient.get(
+          "/products/search",
           {
-            params: { store_id: storeId, name }
+            params: {
+              store_id: storeId,
+              name
+            }
           }
         );
         setSuggestions(res.data.products.slice(0, 5));
@@ -129,8 +132,8 @@ function CreateProduct({ storeId, goBack }) {
       return;
     }
 
-    await axios.post(
-      "https://vendr-onkr.onrender.com/create-product",
+    await apiClient.post(
+      "/create-product",
       null,
       {
         params: {
@@ -139,7 +142,7 @@ function CreateProduct({ storeId, goBack }) {
           initial_stock: initialStock,
           cost,
           price,
-          tracks_stock: tracksStock, // ✅ FIXED (was broken)
+          tracks_stock: tracksStock,
           low_stock_threshold: threshold
         }
       }
@@ -241,16 +244,21 @@ function PriceChange({ storeId }) {
   const [price, setPrice] = useState(0);
 
   const searchProducts = async (term) => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/products/search",
-      { params: { store_id: storeId, name: term } }
+    const res = await apiClient.get(
+      "/products/search",
+      {
+        params: {
+          store_id: storeId,
+          name: term
+        }
+      }
     );
     setProducts(res.data.products || []);
   };
 
   const submit = async () => {
-    await axios.post(
-      "https://vendr-onkr.onrender.com/price-change",
+    await apiClient.post(
+      "/price-change",
       null,
       {
         params: {
@@ -334,17 +342,31 @@ function LogLoss({ storeId }) {
   const [quantity, setQuantity] = useState(1);
 
   const searchProducts = async (term) => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/products/search",
-      { params: { store_id: storeId, name: term } }
+    const res = await apiClient.get(
+      "/products/search",
+      {
+        params: {
+          store_id: storeId,
+          name: term
+        }
+      }
     );
     setProducts(res.data.products || []);
   };
 
   const submit = async () => {
-    await axios.post("https://vendr-onkr.onrender.com/loss", null, {
-      params: { store_id: storeId, product_id: selected.product_id, quantity, notes }
-    });
+    await apiClient.post(
+      "/loss",
+      null,
+      {
+        params: {
+          store_id: storeId,
+          product_id: selected.product_id,
+          quantity,
+          notes
+        }
+      }
+    );
     alert(t("loss_recorded"));
     setSelected(null);
     setNotes("");
@@ -416,17 +438,33 @@ function EditDetails({ storeId }) {
   const [tracksStock, setTracksStock] = useState(true);
 
   const searchProducts = async (term) => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/products/search",
-      { params: { store_id: storeId, name: term, include_inactive: true } }
+    const res = await apiClient.get(
+      "/products/search",
+      {
+        params: {
+          store_id: storeId,
+          name: term,
+          include_inactive: true
+        }
+      }
     );
     setProducts(res.data.products || []);
   };
 
   const submit = async () => {
-    await axios.post("https://vendr-onkr.onrender.com/edit-product", null, {
-      params: { store_id: storeId, product_id: selected.product_id, name, low_stock_threshold: threshold, tracks_stock: tracksStock ? 1 : 0 }
-    });
+    await apiClient.post(
+      "/edit-product",
+      null,
+      {
+        params: {
+          store_id: storeId,
+          product_id: selected.product_id,
+          name,
+          low_stock_threshold: threshold,
+          tracks_stock: tracksStock ? 1 : 0
+        }
+      }
+    );
     alert(t("updated"));
     setSelected(null);
   };
@@ -494,17 +532,31 @@ function ArchiveProduct({ storeId }) {
   const [products, setProducts] = useState([]);
 
   const searchProducts = async (term) => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/products/search",
-      { params: { store_id: storeId, name: term, include_inactive: true } }
+    const res = await apiClient.get(
+      "/products/search",
+      {
+        params: {
+          store_id: storeId,
+          name: term,
+          include_inactive: true
+        }
+      }
     );
     setProducts(res.data.products || []);
   };
 
   const archive = async (p) => {
-    await axios.post("https://vendr-onkr.onrender.com/archive-product", null, {
-      params: { store_id: storeId, product_id: p.product_id, is_active: !p.is_active }
-    });
+    await apiClient.post(
+      "/archive-product",
+      null,
+      {
+        params: {
+          store_id: storeId,
+          product_id: p.product_id,
+          is_active: !p.is_active
+        }
+      }
+    );
 
     alert(t("updated"));
 
@@ -959,20 +1011,29 @@ function StockTransfer({ storeId }) {
   const [note, setNote] = useState("");
 
   const searchProducts = async (term) => {
-    const res = await axios.get("https://vendr-onkr.onrender.com/products/search", {
-      params: { store_id: storeId, name: term }
-    });
+    const res = await apiClient.get(
+      "/products/search",
+      {
+        params: {
+          store_id: storeId,
+          name: term
+        }
+      }
+    );
     setProducts(res.data.products || []);
   };
 
   const submit = async () => {
-    await axios.post("https://vendr-onkr.onrender.com/stock-transfer", {
-      store_id: storeId,
-      product_id: selected.product_id,
-      quantity,
-      direction,
-      note
-    });
+    await apiClient.post(
+      "/stock-transfer",
+      {
+        store_id: storeId,
+        product_id: selected.product_id,
+        quantity,
+        direction,
+        note
+      }
+    );
 
     alert("Stock transfer recorded.");
     setSelected(null);
