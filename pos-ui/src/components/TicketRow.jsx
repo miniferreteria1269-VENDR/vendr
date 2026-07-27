@@ -6,11 +6,10 @@ function TicketRow({
   ticketType,
   disabled = false
 }) {
-  const quantity =
-    Math.max(
-      Number(item.quantity) || 1,
-      1
-    );
+  const quantity = Math.max(
+    Number(item.quantity) || 1,
+    1
+  );
 
   const price =
     Number(item.price) || 0;
@@ -73,8 +72,8 @@ function TicketRow({
         display: "grid",
 
         gridTemplateColumns:
-          "minmax(120px, 1fr) " +
-          "minmax(150px, 190px) " +
+          "minmax(150px, 1fr) " +
+          "190px " +
           "90px " +
           "90px " +
           "42px",
@@ -82,7 +81,8 @@ function TicketRow({
         gap: 7,
         alignItems: "center",
         marginBottom: 6,
-        minWidth: 0
+
+        minWidth: 620
       }}
     >
       {/* PRODUCT */}
@@ -118,12 +118,16 @@ function TicketRow({
           disabled={disabled}
           onChange={event => {
             const nextQuantity =
-              Number(event.target.value);
+              Number(
+                event.target.value
+              );
 
             updateItemField(
               index,
               "quantity",
-              Number.isFinite(nextQuantity)
+              Number.isFinite(
+                nextQuantity
+              )
                 ? Math.max(
                     nextQuantity,
                     1
