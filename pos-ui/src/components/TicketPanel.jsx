@@ -330,10 +330,17 @@ function TicketPanel({
             style={{
               marginTop: 12,
               padding: 14,
+
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
+              overflow: "hidden",
+
               borderRadius: 12,
               background: "#0b1220",
               border:
                 `1px solid ${COLORS.primary}`,
+
               fontSize: 22,
               fontWeight: "bold",
               color: COLORS.primary,
