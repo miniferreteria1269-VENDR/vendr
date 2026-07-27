@@ -7,50 +7,54 @@ function TicketRow({
   disabled = false
 }) {
   const quantity =
-    Number(item.quantity) || 1;
+    Math.max(
+      Number(item.quantity) || 1,
+      1
+    );
+
+  const price =
+    Number(item.price) || 0;
 
   const lineTotal =
-    Number(item.price || 0) *
-    quantity;
+    price * quantity;
 
-  const decreaseQuantity = () => {
+  const changeQuantity = amount => {
     if (disabled) {
       return;
     }
 
-    const nextQuantity =
+    updateItemField(
+      index,
+      "quantity",
       Math.max(
-        quantity - 1,
+        quantity + amount,
         1
-      );
-
-    updateItemField(
-      index,
-      "quantity",
-      nextQuantity
+      )
     );
   };
 
-  const increaseQuantity = () => {
-    if (disabled) {
-      return;
-    }
-
-    updateItemField(
-      index,
-      "quantity",
-      quantity + 1
-    );
-  };
-
-  const buttonBase = {
-    width: 42,
-    minWidth: 42,
-    height: 42,
-    border: "none",
-    borderRadius: 8,
+  const fieldStyle = {
+    width: "100%",
+    minWidth: 0,
+    height: 40,
+    boxSizing: "border-box",
+    background: "#2a2f3a",
+    border: "1px solid #3a4250",
+    borderRadius: 6,
     color: "white",
-    fontSize: 22,
+    padding: "6px 8px",
+    textAlign: "center",
+    fontSize: 15
+  };
+
+  const quantityButtonStyle = {
+    width: 40,
+    minWidth: 40,
+    height: 40,
+    padding: 0,
+    border: "none",
+    borderRadius: 7,
+    fontSize: 20,
     fontWeight: "bold",
     cursor:
       disabled
@@ -63,63 +67,49 @@ function TicketRow({
     touchAction: "manipulation"
   };
 
-  const numberInputStyle = {
-    width: "100%",
-    minWidth: 0,
-    height: 42,
-    boxSizing: "border-box",
-    textAlign: "center",
-    borderRadius: 8,
-    border:
-      "1px solid #3a4250",
-    background: "#2a2f3a",
-    color: "white",
-    fontSize: 16
-  };
-
   return (
     <div
       style={{
         display: "grid",
+
         gridTemplateColumns:
-          "minmax(120px, 1fr)",
-        gap: 8,
-        marginBottom: 6
+          "minmax(120px, 1fr) " +
+          "minmax(150px, 190px) " +
+          "90px " +
+          "90px " +
+          "42px",
+
+        gap: 7,
+        alignItems: "center",
+        marginBottom: 6,
+        minWidth: 0
       }}
     >
+      {/* PRODUCT */}
       <div
+        title={item.name}
         style={{
-          fontWeight: 500,
-          wordBreak: "break-word"
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          fontWeight: 500
         }}
       >
         {item.name}
       </div>
 
-      {/* QUANTITY CONTROLS */}
+      {/* QUANTITY, MINUS, PLUS */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns:
-            "42px minmax(60px, 90px) 42px",
-          gap: 6,
-          alignItems: "center"
+            "minmax(55px, 1fr) 40px 40px",
+          gap: 5,
+          alignItems: "center",
+          minWidth: 0
         }}
       >
-        <button
-          type="button"
-          onClick={decreaseQuantity}
-          disabled={disabled}
-          aria-label="Decrease quantity"
-          style={{
-            ...buttonBase,
-            background: "#d6a400",
-            color: "#111"
-          }}
-        >
-          −
-        </button>
-
         <input
           type="number"
           min="1"
@@ -127,97 +117,84 @@ function TicketRow({
           value={item.quantity}
           disabled={disabled}
           onChange={event => {
-            const value =
-              Number(
-                event.target.value
-              );
+            const nextQuantity =
+              Number(event.target.value);
 
             updateItemField(
               index,
               "quantity",
-              Number.isFinite(value)
-                ? Math.max(value, 1)
+              Number.isFinite(nextQuantity)
+                ? Math.max(
+                    nextQuantity,
+                    1
+                  )
                 : 1
             );
           }}
-          style={numberInputStyle}
+          style={fieldStyle}
         />
 
         <button
           type="button"
-          onClick={increaseQuantity}
+          onClick={() =>
+            changeQuantity(-1)
+          }
+          disabled={disabled}
+          aria-label="Decrease quantity"
+          style={{
+            ...quantityButtonStyle,
+            background: "#d6a400",
+            color: "#111"
+          }}
+        >
+          −
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            changeQuantity(1)
+          }
           disabled={disabled}
           aria-label="Increase quantity"
           style={{
-            ...buttonBase,
-            background: "#2e9d50"
+            ...quantityButtonStyle,
+            background: "#2e9d50",
+            color: "white"
           }}
         >
           +
         </button>
       </div>
 
-      {/* COST / LINE TOTAL */}
+      {/* PRICE OR COST */}
       {ticketType === "intake" ? (
-        <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              marginBottom: 4,
-              color: "#9da7b3"
-            }}
-          >
-            Cost
-          </label>
-
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={item.cost}
-            disabled={disabled}
-            onChange={event =>
-              updateItemField(
-                index,
-                "cost",
-                Number(
-                  event.target.value
-                )
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={item.cost}
+          disabled={disabled}
+          aria-label="Cost"
+          onChange={event =>
+            updateItemField(
+              index,
+              "cost",
+              Number(
+                event.target.value
               )
-            }
-            style={numberInputStyle}
-          />
-        </div>
+            )
+          }
+          style={fieldStyle}
+        />
       ) : (
-        <div
-          style={{
-            fontWeight: "bold"
-          }}
-        >
-          ${lineTotal.toFixed(2)}
-        </div>
-      )}
-
-      {/* PRICE */}
-      <div>
-        <label
-          style={{
-            display: "block",
-            fontSize: 12,
-            marginBottom: 4,
-            color: "#9da7b3"
-          }}
-        >
-          Price
-        </label>
-
         <input
           type="number"
           min="0"
           step="0.01"
           value={item.price}
           disabled={disabled}
+          aria-label="Price"
           onChange={event =>
             updateItemField(
               index,
@@ -227,10 +204,22 @@ function TicketRow({
               )
             )
           }
-          style={numberInputStyle}
+          style={fieldStyle}
         />
+      )}
+
+      {/* ROW TOTAL */}
+      <div
+        style={{
+          textAlign: "right",
+          fontWeight: "bold",
+          whiteSpace: "nowrap"
+        }}
+      >
+        ${lineTotal.toFixed(2)}
       </div>
 
+      {/* REMOVE */}
       <button
         type="button"
         onClick={() =>
@@ -239,12 +228,15 @@ function TicketRow({
         disabled={disabled}
         aria-label="Remove item"
         style={{
+          width: 42,
+          minWidth: 42,
+          height: 40,
+          padding: 0,
           background: "#e53935",
           color: "white",
           border: "none",
-          borderRadius: 8,
-          minHeight: 42,
-          padding: "8px 12px",
+          borderRadius: 7,
+          fontSize: 17,
           cursor:
             disabled
               ? "default"
@@ -252,7 +244,9 @@ function TicketRow({
           opacity:
             disabled
               ? 0.6
-              : 1
+              : 1,
+          touchAction:
+            "manipulation"
         }}
       >
         ✕
