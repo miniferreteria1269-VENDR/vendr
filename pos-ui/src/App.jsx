@@ -956,182 +956,269 @@ const finalizeIntake = async () => {
 // UI
 // -------------------------------------------------
 
-return (
-  <div
-    style={{
-      fontFamily:
-        "system-ui, -apple-system, sans-serif",
-
-      background: COLORS.bg,
-      color: COLORS.text,
-
-      width: "100%",
-      maxWidth: "100%",
-
-      height: "100dvh",
-      minHeight: "100dvh",
-
-      overflowX: "hidden",
-      overflowY: "hidden",
-
-      display: "flex",
-      flexDirection: "column",
-
-      minWidth: 0,
-      boxSizing: "border-box"
-    }}
-  >
-    {/* HEADER */}
+  return (
     <div
       style={{
-        padding: 12,
+        fontFamily:
+          "system-ui, -apple-system, sans-serif",
 
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
+        background: COLORS.bg,
+        color: COLORS.text,
 
         width: "100%",
-        minWidth: 0,
-        flexShrink: 0,
-        boxSizing: "border-box",
+        maxWidth: "100%",
 
-        borderBottom:
-          `1px solid ${COLORS.border}`
+        height: "100dvh",
+        minHeight: "100dvh",
+
+        overflowX: "hidden",
+        overflowY: "hidden",
+
+        display: "flex",
+        flexDirection: "column",
+
+        minWidth: 0,
+        boxSizing: "border-box"
       }}
     >
+      {/* HEADER */}
       <div
         style={{
+          padding: 12,
+
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+
+          width: "100%",
           minWidth: 0,
-          overflow: "hidden"
+          flexShrink: 0,
+          boxSizing: "border-box",
+
+          borderBottom:
+            `1px solid ${COLORS.border}`
         }}
       >
         <div
           style={{
-            fontWeight: 600,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            minWidth: 0,
+            overflow: "hidden"
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 600,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            }}
+          >
+            {user.store_name ||
+              `${t("store")} ${storeId}`}
+          </div>
+
+          <SyncStatus
+            storeId={storeId}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          style={{
+            background:
+              COLORS.panelAlt,
+
+            border: "none",
+            color: COLORS.text,
+
+            padding: "6px 10px",
+            borderRadius: 6,
+            cursor: "pointer",
+
+            flex: "0 0 auto",
             whiteSpace: "nowrap"
           }}
         >
-          {user.store_name ||
-            `${t("store")} ${storeId}`}
-        </div>
-
-        <SyncStatus
-          storeId={storeId}
-        />
+          {t("logout")}
+        </button>
       </div>
 
-      <button
-        type="button"
-        onClick={handleLogout}
-        style={{
-          background:
-            COLORS.panelAlt,
-
-          border: "none",
-          color: COLORS.text,
-
-          padding: "6px 10px",
-          borderRadius: 6,
-          cursor: "pointer",
-
-          flex: "0 0 auto",
-          whiteSpace: "nowrap"
-        }}
-      >
-        {t("logout")}
-      </button>
-    </div>
-
-    {/* NAVIGATION */}
-    <div
-      style={{
-        width: "100%",
-        maxWidth: "100%",
-        minWidth: 0,
-
-        overflowX: "auto",
-        overflowY: "hidden",
-
-        flexShrink: 0,
-        boxSizing: "border-box",
-
-        borderBottom:
-          `1px solid ${COLORS.border}`,
-
-        WebkitOverflowScrolling:
-          "touch",
-
-        touchAction: "pan-x",
-        overscrollBehaviorX:
-          "contain",
-
-        scrollbarWidth:
-          "thin"
-      }}
-    >
+      {/* NAVIGATION */}
       <div
         style={{
-          display: "flex",
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
 
-          width: "max-content",
-          minWidth: "100%",
+          overflowX: "auto",
+          overflowY: "hidden",
 
-          gap: 8,
-          padding: "8px 10px",
+          flexShrink: 0,
+          boxSizing: "border-box",
 
-          boxSizing: "border-box"
+          borderBottom:
+            `1px solid ${COLORS.border}`,
+
+          WebkitOverflowScrolling:
+            "touch",
+
+          touchAction: "pan-x",
+          overscrollBehaviorX:
+            "contain",
+
+          scrollbarWidth:
+            "thin"
         }}
       >
-        {[
-          "pos",
-          "sales",
-          "inventory",
-          "products",
-          "analysis",
-          "diagnostics",
-          "cash"
-        ].map(navView => (
-          <button
-            key={navView}
-            type="button"
-            onClick={() =>
-              setView(navView)
-            }
-            style={{
-              background:
-                view === navView
-                  ? COLORS.primary
-                  : COLORS.panelAlt,
+        <div
+          style={{
+            display: "flex",
 
-              color: "white",
-              border: "none",
-              borderRadius: 8,
+            width: "max-content",
+            minWidth: "100%",
 
-              padding:
-                "8px 12px",
+            gap: 8,
+            padding: "8px 10px",
 
-              cursor:
-                "pointer",
+            boxSizing: "border-box"
+          }}
+        >
+          {[
+            "pos",
+            "sales",
+            "inventory",
+            "products",
+            "analysis",
+            "diagnostics",
+            "cash"
+          ].map(navView => (
+            <button
+              key={navView}
+              type="button"
+              onClick={() =>
+                setView(navView)
+              }
+              style={{
+                background:
+                  view === navView
+                    ? COLORS.primary
+                    : COLORS.panelAlt,
 
-              flex:
-                "0 0 auto",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
 
-              whiteSpace:
-                "nowrap"
-            }}
-          >
-            {t(
-              navView === "sales"
-                ? "history"
-                : navView
-            ).toUpperCase()}
-          </button>
-        ))}
+                padding:
+                  "8px 12px",
+
+                cursor:
+                  "pointer",
+
+                flex:
+                  "0 0 auto",
+
+                whiteSpace:
+                  "nowrap"
+              }}
+            >
+              {t(
+                navView === "sales"
+                  ? "history"
+                  : navView
+              ).toUpperCase()}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* POS */}
+      {view === "pos" && (
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+            gap: 12,
+            padding: 12
+          }}
+        >
+          <ProductPanel
+            products={products}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            addItem={addItem}
+            storeId={storeId}
+          />
+
+          <TicketPanel
+            tickets={tickets}
+            activeTicket={activeTicket}
+            setActiveTicket={setActiveTicket}
+            currentTicket={currentTicket}
+            createTicket={createTicket}
+            removeItem={removeItem}
+            updateItemField={updateItemField}
+            cancelTicket={cancelTicket}
+            renameTicket={renameTicket}
+            finalizeSale={finalizeSale}
+            finalizeIntake={finalizeIntake}
+            intakePaid={intakePaid}
+            setIntakePaid={setIntakePaid}
+            discountValue={discountValue}
+            setDiscountValue={setDiscountValue}
+            discountType={discountType}
+            setDiscountType={setDiscountType}
+          />
+        </div>
+      )}
+
+      {/* HISTORY */}
+      {view === "sales" && (
+        <HistoryPanel
+          storeId={storeId}
+        />
+      )}
+
+      {/* INVENTORY */}
+      {view === "inventory" && (
+        <InventoryReport
+          storeId={storeId}
+        />
+      )}
+
+      {/* DIAGNOSTICS */}
+      {view === "diagnostics" && (
+        <ProductDiagnostics
+          storeId={storeId}
+        />
+      )}
+
+      {/* PRODUCT MANAGEMENT */}
+      {view === "products" && (
+        <ProductManagement
+          storeId={storeId}
+        />
+      )}
+
+      {/* ANALYSIS */}
+      {view === "analysis" && (
+        <SalesAnalysisPanel
+          storeId={storeId}
+        />
+      )}
+
+      {/* CASH */}
+      {view === "cash" && (
+        <CashPanel
+          storeId={storeId}
+          products={products}
+        />
+      )}
     </div>
   );
-}  
+}
+
 export default App;
