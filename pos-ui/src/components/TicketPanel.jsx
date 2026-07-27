@@ -81,11 +81,19 @@ function TicketPanel({
     <div
       style={{
         flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+
         background: COLORS.panel,
         borderRadius: 14,
         padding: 16,
+
         display: "flex",
         flexDirection: "column",
+
+        overflow: "hidden",
+        boxSizing: "border-box",
+
         color: COLORS.text
       }}
     >
@@ -187,7 +195,9 @@ function TicketPanel({
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            minHeight: 0
+            minHeight: 0,
+            minWidth: 0,
+            overflow: "hidden"
           }}
         >
           <h3
@@ -235,40 +245,53 @@ function TicketPanel({
               minHeight: 0,
               minWidth: 0,
 
-              overflowY: "auto",
               overflowX: "auto",
+              overflowY: "auto",
 
               WebkitOverflowScrolling:
                 "touch",
 
               touchAction: "pan-x pan-y",
+              overscrollBehavior: "contain",
 
-              paddingBottom: 6
+              paddingBottom: 8
             }}
-          >   
-            {currentTicket.items.map(
-              (item, index) => (
-                <div
-                  key={`${item.product_id}-${index}`}
-                  style={rowWrapper}
-                >
-                  <TicketRow
-                    item={item}
-                    index={index}
-                    removeItem={removeItem}
-                    updateItemField={
-                      updateItemField
-                    }
-                    ticketType={
-                      currentTicket.type
-                    }
-                    disabled={
-                      intakeIsFinalizing
-                    }
-                  />
-                </div>
-              )
-            )}
+          >
+            <div
+              style={{
+                width: "max-content",
+                minWidth: "100%"
+              }}
+            >
+              {currentTicket.items.map(
+                (item, index) => (
+                  <div
+                    key={`${item.product_id}-${index}`}
+                    style={{
+                      ...rowWrapper,
+                      width: 620,
+                      minWidth: 620,
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    <TicketRow
+                      item={item}
+                      index={index}
+                      removeItem={removeItem}
+                      updateItemField={
+                        updateItemField
+                      }
+                      ticketType={
+                        currentTicket.type
+                      }
+                      disabled={
+                        intakeIsFinalizing
+                      }
+                    />
+                  </div>
+                )
+              )}
+            </div>
           </div>
 
           {/* DISCOUNT */}
@@ -332,8 +355,10 @@ function TicketPanel({
               padding: 14,
 
               width: "100%",
+              maxWidth: "100%",
               minWidth: 0,
               boxSizing: "border-box",
+              flexShrink: 0,
               overflow: "hidden",
 
               borderRadius: 12,
@@ -344,7 +369,8 @@ function TicketPanel({
               fontSize: 22,
               fontWeight: "bold",
               color: COLORS.primary,
-              textAlign: "right"
+              textAlign: "center",
+              whiteSpace: "nowrap"
             }}
           >
             ${total.toFixed(2)}
@@ -368,7 +394,9 @@ function TicketPanel({
             style={{
               marginTop: 12,
               display: "flex",
-              gap: 8
+              gap: 8,
+              flexWrap: "wrap",
+              flexShrink: 0
             }}
           >
             {currentTicket.type === "sale" && (
