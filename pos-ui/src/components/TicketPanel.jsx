@@ -472,7 +472,6 @@ function TicketPanel({
             </div>
           </div>
           </div>
-        </div>
       )}
     </div>
   );
