@@ -5050,12 +5050,24 @@ def product_movement_summary(
 def sales_history(
     store_id: int,
     start_date: str = None,
-    end_date: str = None
+    end_date: str = None,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
-    conn = db()
-    cursor = conn.cursor()
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
 
     try:
+        conn = db()
+        cursor = conn.cursor()
+
         query = """
             SELECT
                 ticket_id,
@@ -5086,12 +5098,13 @@ def sales_history(
 
             WHERE store_id = %s
               AND event_type = 'sale'
+              AND ticket_id IS NOT NULL
         """
 
         params = [store_id]
 
-        # Filter according to the business's local
-        # calendar date, not the UTC calendar date.
+        # Filter by the business's local calendar date,
+        # rather than the UTC calendar date.
         if start_date:
             query += """
                 AND (
@@ -5101,7 +5114,9 @@ def sales_history(
                 )::date >= %s::date
             """
 
-            params.append(start_date)
+            params.append(
+                start_date
+            )
 
         if end_date:
             query += """
@@ -5112,7 +5127,9 @@ def sales_history(
                 )::date <= %s::date
             """
 
-            params.append(end_date)
+            params.append(
+                end_date
+            )
 
         query += """
             GROUP BY ticket_id
@@ -5143,21 +5160,34 @@ def sales_history(
                     row[0],
 
                 "datetime":
-                    row[1],
+                    (
+                        row[1].isoformat()
+                        if row[1]
+                        else None
+                    ),
 
                 "items":
                     int(row[2] or 0),
 
                 "revenue":
-                    revenue,
+                    round(
+                        revenue,
+                        2
+                    ),
 
                 "profit":
-                    revenue - cost
+                    round(
+                        revenue - cost,
+                        2
+                    )
             })
 
         return {
             "sales": history
         }
+
+    except HTTPException:
+        raise
 
     except Exception as error:
         print(
@@ -5167,13 +5197,18 @@ def sales_history(
 
         raise HTTPException(
             status_code=500,
-            detail="Unable to load sales history"
+            detail=(
+                "Unable to load sales history"
+            )
         )
 
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
 
+        if conn:
+            conn.close()
+            
 @app.get("/intake-ticket-details")
 def intake_ticket_details(store_id: int, ticket_id: int):
     conn = db()
