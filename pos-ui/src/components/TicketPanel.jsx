@@ -200,17 +200,89 @@ function TicketPanel({
             overflow: "hidden"
           }}
         >
-          <h3
+          <div
             style={{
-              marginTop: 0,
-              marginBottom: 10
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: 10,
+              flexWrap: "wrap",
+              flexShrink: 0
             }}
           >
-            {currentTicket.label ||
-              (currentTicket.type === "sale"
-                ? t("sale_ticket")
-                : t("intake_ticket"))}
-          </h3>
+            <h3
+              style={{
+                margin: 0
+              }}
+            >
+              {currentTicket.label ||
+                (currentTicket.type === "sale"
+                  ? t("sale_ticket")
+                  : t("intake_ticket"))}
+            </h3>
+
+            {currentTicket.type === "sale" && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  minWidth: 0,
+                  flexWrap: "wrap"
+                }}
+              >
+                <select
+                  value={discountType}
+                  onChange={event =>
+                    setDiscountType(
+                      event.target.value
+                    )
+                  }
+                  style={{
+                    ...inputStyle,
+                    width: 58
+                  }}
+                >
+                  <option value="percent">
+                    %
+                  </option>
+
+                  <option value="amount">
+                    $
+                  </option>
+                </select>
+
+                <input
+                  type="number"
+                  min="0"
+                  value={discountValue}
+                  onChange={event =>
+                    setDiscountValue(
+                      Number(
+                        event.target.value
+                      )
+                    )
+                  }
+                  style={{
+                    ...inputStyle,
+                    width: 120
+                  }}
+                />
+
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: COLORS.textDim,
+                    whiteSpace: "nowrap"
+                  }}
+                >
+                  {t("discount")}: -$
+                  {discountAmount.toFixed(2)}
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* INTAKE PAID */}
           {currentTicket.type === "intake" && (
@@ -294,163 +366,111 @@ function TicketPanel({
             </div>
           </div>
 
-          {/* DISCOUNT */}
-          {currentTicket.type === "sale" && (
-            <div style={{ marginTop: 10 }}>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6
-                }}
-              >
-                <select
-                  value={discountType}
-                  onChange={event =>
-                    setDiscountType(
-                      event.target.value
-                    )
-                  }
-                  style={inputStyle}
-                >
-                  <option value="percent">
-                    %
-                  </option>
-
-                  <option value="amount">
-                    $
-                  </option>
-                </select>
-
-                <input
-                  type="number"
-                  min="0"
-                  value={discountValue}
-                  onChange={event =>
-                    setDiscountValue(
-                      Number(
-                        event.target.value
-                      )
-                    )
-                  }
-                  style={inputStyle}
-                />
-              </div>
-
-              <div
-                style={{
-                  fontSize: 12,
-                  color: COLORS.textDim
-                }}
-              >
-                {t("discount")}: -$
-                {discountAmount.toFixed(2)}
-              </div>
-            </div>
-          )}
-
-          {/* TOTAL */}
-          <div
-            style={{
-              marginTop: 12,
-              padding: 14,
-
-              width: "100%",
-              maxWidth: "100%",
-              minWidth: 0,
-              boxSizing: "border-box",
-              flexShrink: 0,
-              overflow: "hidden",
-
-              borderRadius: 12,
-              background: "#0b1220",
-              border:
-                `1px solid ${COLORS.primary}`,
-
-              fontSize: 22,
-              fontWeight: "bold",
-              color: COLORS.primary,
-              textAlign: "center",
-              whiteSpace: "nowrap"
-            }}
-          >
-            ${total.toFixed(2)}
-          </div>
-
           {/* WARNING */}
           {currentTicket.type === "sale" &&
             profit < 0 && (
               <div
                 style={{
                   color: COLORS.danger,
-                  marginTop: 6
+                  marginTop: 6,
+                  flexShrink: 0
                 }}
               >
                 ⚠ {t("loss_on_sale")}
               </div>
             )}
 
-          {/* ACTIONS */}
+          {/* FOOTER: ACTIONS + TOTAL */}
           <div
             style={{
               marginTop: 12,
               display: "flex",
-              gap: 8,
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
               flexWrap: "wrap",
               flexShrink: 0
             }}
           >
-            {currentTicket.type === "sale" && (
-              <button
-                type="button"
-                onClick={finalizeSale}
-                style={btnPrimary}
-              >
-                {t("finalize_sale")}
-              </button>
-            )}
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap"
+              }}
+            >
+              {currentTicket.type === "sale" && (
+                <button
+                  type="button"
+                  onClick={finalizeSale}
+                  style={btnPrimary}
+                >
+                  {t("finalize_sale")}
+                </button>
+              )}
 
-            {currentTicket.type ===
-              "intake" && (
+              {currentTicket.type === "intake" && (
+                <button
+                  type="button"
+                  onClick={finalizeIntake}
+                  disabled={finalizingIntake}
+                  style={{
+                    ...btnPrimary,
+                    opacity:
+                      finalizingIntake
+                        ? 0.6
+                        : 1,
+                    cursor:
+                      finalizingIntake
+                        ? "default"
+                        : "pointer"
+                  }}
+                >
+                  {finalizingIntake
+                    ? t("loading")
+                    : t("finalize_intake")}
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={finalizeIntake}
-                disabled={finalizingIntake}
+                onClick={cancelTicket}
+                disabled={intakeIsFinalizing}
                 style={{
-                  ...btnPrimary,
+                  ...btnDanger,
                   opacity:
-                    finalizingIntake
+                    intakeIsFinalizing
                       ? 0.6
                       : 1,
                   cursor:
-                    finalizingIntake
+                    intakeIsFinalizing
                       ? "default"
                       : "pointer"
                 }}
               >
-                {finalizingIntake
-                  ? t("loading")
-                  : t("finalize_intake")}
+                {t("cancel")}
               </button>
-            )}
+            </div>
 
-            <button
-              type="button"
-              onClick={cancelTicket}
-              disabled={intakeIsFinalizing}
+            <div
               style={{
-                ...btnDanger,
-                opacity:
-                  intakeIsFinalizing
-                    ? 0.6
-                    : 1,
-                cursor:
-                  intakeIsFinalizing
-                    ? "default"
-                    : "pointer"
+                minWidth: 180,
+                padding: "10px 16px",
+                boxSizing: "border-box",
+                borderRadius: 10,
+                background: "#0b1220",
+                border:
+                  `1px solid ${COLORS.primary}`,
+                color: COLORS.primary,
+                fontSize: 22,
+                fontWeight: "bold",
+                textAlign: "right",
+                whiteSpace: "nowrap"
               }}
             >
-              {t("cancel")}
-            </button>
+              ${total.toFixed(2)}
+            </div>
+          </div>
           </div>
         </div>
       )}
