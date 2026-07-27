@@ -7557,83 +7557,146 @@ def create_cash_event(data: CashEventRequest):
             conn.close()
 
 @app.post("/returns")
-def process_return(data: ReturnRequest):
-    conn = db()
-    cursor = conn.cursor()
+def process_return(
+    data: ReturnRequest,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # -------------------------------------------------
+    # AUTHORIZATION
+    # -------------------------------------------------
+    if current_user.store_id != data.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
 
     try:
+        conn = db()
+        cursor = conn.cursor()
+
         # -------------------------------------------------
         # VALIDATION
         # -------------------------------------------------
         if data.amount <= 0:
             raise HTTPException(
                 status_code=400,
-                detail="Return/refund amount must be greater than zero"
+                detail=(
+                    "Return/refund amount must be "
+                    "greater than zero"
+                )
             )
 
         for item in data.items:
             if item.quantity <= 0:
                 raise HTTPException(
                     status_code=400,
-                    detail="Returned quantity must be greater than zero"
+                    detail=(
+                        "Returned quantity must be "
+                        "greater than zero"
+                    )
                 )
 
-            if item.cost < 0 or item.price < 0:
+            if (
+                item.cost < 0
+                or item.price < 0
+            ):
                 raise HTTPException(
                     status_code=400,
-                    detail="Returned item cost and price cannot be negative"
+                    detail=(
+                        "Returned item cost and price "
+                        "cannot be negative"
+                    )
                 )
 
-        event_type = "return" if data.items else "refund"
+        event_type = (
+            "return"
+            if data.items
+            else "refund"
+        )
 
         # -------------------------------------------------
         # IDEMPOTENCY CHECK
         # -------------------------------------------------
         if data.client_event_id:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT ticket_id
                 FROM events
                 WHERE store_id = %s
                   AND client_event_id = %s
+                  AND event_type = 'return'
                 LIMIT 1
-            """, (
-                data.store_id,
-                data.client_event_id
-            ))
+                """,
+                (
+                    data.store_id,
+                    data.client_event_id
+                )
+            )
 
-            existing_event = cursor.fetchone()
+            existing_event = (
+                cursor.fetchone()
+            )
 
             if existing_event:
                 return {
-                    "message": "Return/refund already recorded",
-                    "status": "already_processed",
-                    "type": event_type,
-                    "ticket_id": existing_event[0],
-                    "client_event_id": data.client_event_id
+                    "message":
+                        "Return/refund already recorded",
+
+                    "status":
+                        "already_processed",
+
+                    "type":
+                        event_type,
+
+                    "ticket_id":
+                        existing_event[0],
+
+                    "client_event_id":
+                        data.client_event_id
                 }
 
-            # Refund-only operations do not create a product
-            # event, so cash_events must also be checked.
-            cursor.execute("""
+            # Refund-only operations do not create a
+            # product event, so cash_events must also
+            # be checked.
+            cursor.execute(
+                """
                 SELECT reference_id
                 FROM cash_events
                 WHERE store_id = %s
                   AND client_event_id = %s
                 LIMIT 1
-            """, (
-                data.store_id,
-                data.client_event_id
-            ))
+                """,
+                (
+                    data.store_id,
+                    data.client_event_id
+                )
+            )
 
-            existing_cash = cursor.fetchone()
+            existing_cash = (
+                cursor.fetchone()
+            )
 
             if existing_cash:
                 return {
-                    "message": "Return/refund already recorded",
-                    "status": "already_processed",
-                    "type": event_type,
-                    "ticket_id": existing_cash[0],
-                    "client_event_id": data.client_event_id
+                    "message":
+                        "Return/refund already recorded",
+
+                    "status":
+                        "already_processed",
+
+                    "type":
+                        event_type,
+
+                    "ticket_id":
+                        existing_cash[0],
+
+                    "client_event_id":
+                        data.client_event_id
                 }
 
         # -------------------------------------------------
@@ -7642,27 +7705,39 @@ def process_return(data: ReturnRequest):
         ticket_id = None
 
         if data.items:
-            # Use the same lock as sales because both draw
-            # ticket IDs from the events table.
+            # Sales and returns both use ticket IDs
+            # generated from the events table.
             cursor.execute(
-                "SELECT pg_advisory_xact_lock(%s)",
+                """
+                SELECT pg_advisory_xact_lock(%s)
+                """,
                 (1269001,)
             )
 
-            cursor.execute("""
-                SELECT COALESCE(MAX(ticket_id), 0)
+            cursor.execute(
+                """
+                SELECT COALESCE(
+                    MAX(ticket_id),
+                    0
+                )
                 FROM events
-            """)
+                """
+            )
 
-            ticket_id = cursor.fetchone()[0] + 1
+            ticket_id = (
+                cursor.fetchone()[0] + 1
+            )
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
 
         # -------------------------------------------------
         # PROCESS RETURNED ITEMS
         # -------------------------------------------------
         for item in data.items:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT
                     name,
                     tracks_stock
@@ -7670,25 +7745,42 @@ def process_return(data: ReturnRequest):
                 WHERE product_id = %s
                   AND store_id = %s
                   AND is_active = 1
-            """, (
-                item.product_id,
-                data.store_id
-            ))
+                """,
+                (
+                    item.product_id,
+                    data.store_id
+                )
+            )
 
             product = cursor.fetchone()
 
             if not product:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Product {item.product_id} not found"
+                    detail=(
+                        f"Product {item.product_id} "
+                        "not found"
+                    )
                 )
 
             name, tracks_stock = product
 
-            cost = round(float(item.cost), 2)
-            price = round(float(item.price), 2)
+            quantity = int(
+                item.quantity
+            )
 
-            cursor.execute("""
+            cost = round(
+                float(item.cost),
+                2
+            )
+
+            price = round(
+                float(item.price),
+                2
+            )
+
+            cursor.execute(
+                """
                 INSERT INTO events (
                     store_id,
                     event_type,
@@ -7709,43 +7801,55 @@ def process_return(data: ReturnRequest):
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s
                 )
-            """, (
-                data.store_id,
-                "return",
-                item.product_id,
-                name,
-                item.quantity,
-                cost,
-                price,
-                now,
-                ticket_id,
-                data.note,
-                data.client_event_id,
-                data.device_id,
-                data.client_created_at
-            ))
+                """,
+                (
+                    data.store_id,
+                    "return",
+                    item.product_id,
+                    name,
+                    quantity,
+                    cost,
+                    price,
+                    now,
+                    ticket_id,
+                    data.note,
+                    data.client_event_id,
+                    data.device_id,
+                    data.client_created_at
+                )
+            )
 
-            if tracks_stock == 1:
-                cursor.execute("""
+            if (
+                tracks_stock == 1
+                or tracks_stock is True
+            ):
+                cursor.execute(
+                    """
                     UPDATE products
-                    SET stock = COALESCE(stock, 0) + %s
+                    SET stock =
+                        COALESCE(stock, 0) + %s
                     WHERE product_id = %s
                       AND store_id = %s
                       AND tracks_stock = 1
-                """, (
-                    item.quantity,
-                    item.product_id,
-                    data.store_id
-                ))
+                    """,
+                    (
+                        quantity,
+                        item.product_id,
+                        data.store_id
+                    )
+                )
 
         # -------------------------------------------------
         # GET ORGANIZATION
         # -------------------------------------------------
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT organization_id
             FROM stores
             WHERE store_id = %s
-        """, (data.store_id,))
+            """,
+            (data.store_id,)
+        )
 
         store = cursor.fetchone()
 
@@ -7755,16 +7859,13 @@ def process_return(data: ReturnRequest):
                 detail="Store not found"
             )
 
-        organization_id = (
-            store[0]
-            if store[0] is not None
-            else None
-        )
+        organization_id = store[0]
 
         # -------------------------------------------------
         # RECORD CASH OUTFLOW
         # -------------------------------------------------
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO cash_events (
                 organization_id,
                 store_id,
@@ -7784,104 +7885,169 @@ def process_return(data: ReturnRequest):
                 %s, %s, %s, %s,
                 %s, %s, %s, %s
             )
-        """, (
-            organization_id,
-            data.store_id,
-            event_type,
-            -1,
-            round(float(data.amount), 2),
-            "Devolucion",
-            data.note,
-            ticket_id,
-            now,
-            data.client_event_id,
-            data.device_id,
-            data.client_created_at
-        ))
+            """,
+            (
+                organization_id,
+                data.store_id,
+                event_type,
+                -1,
+                round(
+                    float(data.amount),
+                    2
+                ),
+                "Devolucion",
+                data.note,
+                ticket_id,
+                now,
+                data.client_event_id,
+                data.device_id,
+                data.client_created_at
+            )
+        )
 
         conn.commit()
 
         return {
-            "message": "Return/refund recorded",
-            "status": "accepted",
-            "type": event_type,
-            "ticket_id": ticket_id,
-            "client_event_id": data.client_event_id
+            "message":
+                "Return/refund recorded",
+
+            "status":
+                "accepted",
+
+            "type":
+                event_type,
+
+            "ticket_id":
+                ticket_id,
+
+            "client_event_id":
+                data.client_event_id
         }
 
     except psycopg2.errors.UniqueViolation:
-        conn.rollback()
+        if conn:
+            conn.rollback()
 
-        if data.client_event_id:
-            cursor.execute("""
+        if (
+            cursor
+            and data.client_event_id
+        ):
+            cursor.execute(
+                """
                 SELECT ticket_id
                 FROM events
                 WHERE store_id = %s
                   AND client_event_id = %s
+                  AND event_type = 'return'
                 LIMIT 1
-            """, (
-                data.store_id,
-                data.client_event_id
-            ))
+                """,
+                (
+                    data.store_id,
+                    data.client_event_id
+                )
+            )
 
-            existing_event = cursor.fetchone()
+            existing_event = (
+                cursor.fetchone()
+            )
 
             if existing_event:
                 return {
-                    "message": "Return/refund already recorded",
-                    "status": "already_processed",
-                    "type": "return" if data.items else "refund",
-                    "ticket_id": existing_event[0],
-                    "client_event_id": data.client_event_id
+                    "message":
+                        "Return/refund already recorded",
+
+                    "status":
+                        "already_processed",
+
+                    "type":
+                        (
+                            "return"
+                            if data.items
+                            else "refund"
+                        ),
+
+                    "ticket_id":
+                        existing_event[0],
+
+                    "client_event_id":
+                        data.client_event_id
                 }
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT reference_id
                 FROM cash_events
                 WHERE store_id = %s
                   AND client_event_id = %s
                 LIMIT 1
-            """, (
-                data.store_id,
-                data.client_event_id
-            ))
+                """,
+                (
+                    data.store_id,
+                    data.client_event_id
+                )
+            )
 
-            existing_cash = cursor.fetchone()
+            existing_cash = (
+                cursor.fetchone()
+            )
 
             if existing_cash:
                 return {
-                    "message": "Return/refund already recorded",
-                    "status": "already_processed",
-                    "type": "return" if data.items else "refund",
-                    "ticket_id": existing_cash[0],
-                    "client_event_id": data.client_event_id
+                    "message":
+                        "Return/refund already recorded",
+
+                    "status":
+                        "already_processed",
+
+                    "type":
+                        (
+                            "return"
+                            if data.items
+                            else "refund"
+                        ),
+
+                    "ticket_id":
+                        existing_cash[0],
+
+                    "client_event_id":
+                        data.client_event_id
                 }
 
         raise HTTPException(
             status_code=409,
-            detail="Duplicate return/refund event"
+            detail=(
+                "Duplicate return/refund event"
+            )
         )
 
     except HTTPException:
-        conn.rollback()
+        if conn:
+            conn.rollback()
+
         raise
 
     except Exception as error:
-        conn.rollback()
+        if conn:
+            conn.rollback()
 
         print(
-            "🔥 RETURN ERROR:",
-            str(error)
+            "RETURN ERROR:",
+            repr(error)
         )
 
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail=(
+                "Unable to record return/refund"
+            )
         )
 
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
         
 @app.get("/cash-movements")
 def cash_movements(
