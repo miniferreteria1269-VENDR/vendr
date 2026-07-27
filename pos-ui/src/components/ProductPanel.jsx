@@ -66,15 +66,21 @@ function ProductPanel({
     searchTerm.trim() === "" ? quickItems : products;
 
   return (
-    <div style={{
-      width: "40%",
-      background: COLORS.panel,
-      borderRadius: 14,
-      padding: 16,
-      display: "flex",
-      flexDirection: "column",
-      color: COLORS.text
-    }}>
+    <div
+      style={{
+        width: "34%",
+        minWidth: 240,
+        flexShrink: 0,
+        boxSizing: "border-box",
+
+        background: COLORS.panel,
+        borderRadius: 14,
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        color: COLORS.text
+      }}
+    >
 
       {/* SEARCH */}
       <input
