@@ -3089,24 +3089,40 @@ def intake_product(store_id:int,product_id:int,quantity:int,cost:float,price:flo
 def intake_history(
     store_id: int,
     start_date: str,
-    end_date: str
+    end_date: str,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
-    conn = db()
-    cursor = conn.cursor()
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
 
     try:
+        conn = db()
+        cursor = conn.cursor()
+
         cursor.execute(
             """
             SELECT
                 ticket_id,
+
                 MIN(
                     event_datetime::timestamptz
                 ) AS intake_datetime,
+
                 COUNT(*) AS product_lines,
+
                 COALESCE(
                     SUM(quantity),
                     0
                 ) AS total_units,
+
                 COALESCE(
                     SUM(
                         quantity *
@@ -3185,6 +3201,9 @@ def intake_history(
             ]
         }
 
+    except HTTPException:
+        raise
+
     except Exception as error:
         print(
             "INTAKE HISTORY ERROR:",
@@ -3197,8 +3216,11 @@ def intake_history(
         )
 
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 # -----------------------------
 # LOSS
