@@ -1014,166 +1014,178 @@ const finalizeIntake = async () => {
         </button>
       </div>
 
-      {/* NAVIGATION */}
-      <div
-        style={{
-          padding: 10,
-          display: "flex",
-          gap: 8,
-          borderBottom:
-            `1px solid ${COLORS.border}`
-        }}
-      >
-        {[
-          "pos",
-          "sales",
-          "inventory",
-          "products",
-          "analysis",
-          "diagnostics",
-          "cash"
-        ].map(navView => (
-          <button
-            key={navView}
-            onClick={() =>
-              setView(navView)
-            }
-            style={{
-              background:
-                view === navView
-                  ? COLORS.primary
-                  : COLORS.panelAlt,
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 12px",
-              cursor: "pointer"
-            }}
-          >
-            {t(
-              navView === "sales"
-                ? "history"
-                : navView
-            ).toUpperCase()}
-          </button>
-        ))}
-      </div>
+{/* NAVIGATION */}
+<div
+  style={{
+    padding: "8px 10px",
+    display: "flex",
+    gap: 8,
+    borderBottom:
+      `1px solid ${COLORS.border}`,
 
-      {/* POS */}
-      {view === "pos" && (
-        <div
-          style={{
-            display: "flex",
-            flex: 1,
-            overflow: "hidden",
-            gap: 12,
-            padding: 12
-          }}
-        >
-          <ProductPanel
-            products={products}
-            searchTerm={searchTerm}
-            setSearchTerm={
-              setSearchTerm
-            }
-            addItem={addItem}
-            storeId={storeId}
-          />
+    overflowX: "auto",
+    overflowY: "hidden",
 
-          <TicketPanel
-            tickets={tickets}
-            activeTicket={
-              activeTicket
-            }
-            setActiveTicket={
-              setActiveTicket
-            }
-            currentTicket={
-              currentTicket
-            }
-            createTicket={
-              createTicket
-            }
-            removeItem={removeItem}
-            updateItemField={
-              updateItemField
-            }
-            cancelTicket={
-              cancelTicket
-            }
-            renameTicket={
-              renameTicket
-            }
-            finalizeSale={
-              finalizeSale
-            }
-            finalizeIntake={
-              finalizeIntake
-            }
-            intakePaid={intakePaid}
-            setIntakePaid={
-              setIntakePaid
-            }
-            discountValue={
-              discountValue
-            }
-            setDiscountValue={
-              setDiscountValue
-            }
-            discountType={
-              discountType
-            }
-            setDiscountType={
-              setDiscountType
-            }
-          />
-        </div>
-      )}
+    flexShrink: 0,
+    WebkitOverflowScrolling:
+      "touch",
 
-      {/* HISTORY */}
-      {view === "sales" && (
-        <HistoryPanel
-          storeId={storeId}
-        />
-      )}
+    scrollbarWidth: "thin"
+  }}
+>
+  {[
+    "pos",
+    "sales",
+    "inventory",
+    "products",
+    "analysis",
+    "diagnostics",
+    "cash"
+  ].map(navView => (
+    <button
+      key={navView}
+      type="button"
+      onClick={() =>
+        setView(navView)
+      }
+      style={{
+        background:
+          view === navView
+            ? COLORS.primary
+            : COLORS.panelAlt,
 
-      {/* INVENTORY */}
-      {view === "inventory" && (
-        <InventoryReport
-          storeId={storeId}
-        />
-      )}
+        color: "white",
+        border: "none",
+        borderRadius: 8,
+        padding: "8px 12px",
+        cursor: "pointer",
 
-      {/* DIAGNOSTICS */}
-      {view === "diagnostics" && (
-        <ProductDiagnostics
-          storeId={storeId}
-        />
-      )}
+        flexShrink: 0,
+        whiteSpace: "nowrap"
+      }}
+    >
+      {t(
+        navView === "sales"
+          ? "history"
+          : navView
+      ).toUpperCase()}
+    </button>
+  ))}
+</div>
 
-      {/* PRODUCT MANAGEMENT */}
-      {view === "products" && (
-        <ProductManagement
-          storeId={storeId}
-        />
-      )}
+{/* POS */}
+{view === "pos" && (
+  <div
+    style={{
+      display: "flex",
+      flex: 1,
+      minHeight: 0,
+      overflow: "hidden",
+      gap: 12,
+      padding: 12
+    }}
+  >
+    <ProductPanel
+      products={products}
+      searchTerm={searchTerm}
+      setSearchTerm={
+        setSearchTerm
+      }
+      addItem={addItem}
+      storeId={storeId}
+    />
 
-      {/* ANALYSIS */}
-      {view === "analysis" && (
-        <SalesAnalysisPanel
-          storeId={storeId}
-        />
-      )}
+    <TicketPanel
+      tickets={tickets}
+      activeTicket={
+        activeTicket
+      }
+      setActiveTicket={
+        setActiveTicket
+      }
+      currentTicket={
+        currentTicket
+      }
+      createTicket={
+        createTicket
+      }
+      removeItem={removeItem}
+      updateItemField={
+        updateItemField
+      }
+      cancelTicket={
+        cancelTicket
+      }
+      renameTicket={
+        renameTicket
+      }
+      finalizeSale={
+        finalizeSale
+      }
+      finalizeIntake={
+        finalizeIntake
+      }
+      intakePaid={intakePaid}
+      setIntakePaid={
+        setIntakePaid
+      }
+      discountValue={
+        discountValue
+      }
+      setDiscountValue={
+        setDiscountValue
+      }
+      discountType={
+        discountType
+      }
+      setDiscountType={
+        setDiscountType
+      }
+    />
+  </div>
+)}
 
-      {/* CASH */}
-      {view === "cash" && (
-        <CashPanel
-          storeId={storeId}
-          products={products}
-        />
-      )}
-    </div>
-  );
-}
+{/* HISTORY */}
+{view === "sales" && (
+  <HistoryPanel
+    storeId={storeId}
+  />
+)}
+
+{/* INVENTORY */}
+{view === "inventory" && (
+  <InventoryReport
+    storeId={storeId}
+  />
+)}
+
+{/* DIAGNOSTICS */}
+{view === "diagnostics" && (
+  <ProductDiagnostics
+    storeId={storeId}
+  />
+)}
+
+{/* PRODUCT MANAGEMENT */}
+{view === "products" && (
+  <ProductManagement
+    storeId={storeId}
+  />
+)}
+
+{/* ANALYSIS */}
+{view === "analysis" && (
+  <SalesAnalysisPanel
+    storeId={storeId}
+  />
+)}
+
+{/* CASH */}
+{view === "cash" && (
+  <CashPanel
+    storeId={storeId}
+    products={products}
+  />
+)}
 
 export default App;
