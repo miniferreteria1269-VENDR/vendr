@@ -5279,12 +5279,28 @@ def sales_history(
             conn.close()
             
 @app.get("/intake-ticket-details")
-def intake_ticket_details(store_id: int, ticket_id: int):
-    conn = db()
-    cursor = conn.cursor()
+def intake_ticket_details(
+    store_id: int,
+    ticket_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
 
     try:
-        cursor.execute("""
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
             SELECT
                 event_id,
                 product_id,
@@ -5299,7 +5315,12 @@ def intake_ticket_details(store_id: int, ticket_id: int):
               AND ticket_id = %s
               AND event_type = 'intake'
             ORDER BY event_id ASC
-        """, (store_id, ticket_id))
+            """,
+            (
+                store_id,
+                ticket_id
+            )
+        )
 
         rows = cursor.fetchall()
 
@@ -5314,38 +5335,109 @@ def intake_ticket_details(store_id: int, ticket_id: int):
         total_cost = 0.0
 
         for row in rows:
-            quantity = row[3] or 0
-            unit_cost = float(row[4] or 0)
-            line_cost = quantity * unit_cost
+            quantity = int(
+                row[3] or 0
+            )
+
+            unit_cost = float(
+                row[4] or 0
+            )
+
+            price_at_time = float(
+                row[5] or 0
+            )
+
+            line_cost = round(
+                quantity * unit_cost,
+                2
+            )
 
             total_units += quantity
             total_cost += line_cost
 
             items.append({
-                "event_id": row[0],
-                "product_id": row[1],
-                "product_name": row[2],
-                "quantity": quantity,
-                "unit_cost": unit_cost,
-                "price_at_time": float(row[5] or 0),
-                "line_cost": round(line_cost, 2),
-                "datetime": row[6],
-                "note": row[7]
+                "event_id":
+                    row[0],
+
+                "product_id":
+                    row[1],
+
+                "product_name":
+                    row[2],
+
+                "quantity":
+                    quantity,
+
+                "unit_cost":
+                    unit_cost,
+
+                "price_at_time":
+                    price_at_time,
+
+                "line_cost":
+                    line_cost,
+
+                "datetime": (
+                    row[6].isoformat()
+                    if row[6]
+                    else None
+                ),
+
+                "note":
+                    row[7]
             })
 
         return {
-            "ticket_id": ticket_id,
-            "store_id": store_id,
-            "datetime": rows[0][6],
-            "product_lines": len(items),
-            "total_units": total_units,
-            "total_cost": round(total_cost, 2),
-            "items": items
+            "ticket_id":
+                ticket_id,
+
+            "store_id":
+                store_id,
+
+            "datetime": (
+                rows[0][6].isoformat()
+                if rows[0][6]
+                else None
+            ),
+
+            "product_lines":
+                len(items),
+
+            "total_units":
+                total_units,
+
+            "total_cost":
+                round(
+                    total_cost,
+                    2
+                ),
+
+            "items":
+                items
         }
 
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "INTAKE TICKET DETAILS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load intake ticket details"
+            )
+        )
+
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.get("/product-diagnostics")
 def product_diagnostics(store_id: int):
