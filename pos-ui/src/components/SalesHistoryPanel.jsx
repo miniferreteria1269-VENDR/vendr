@@ -4,16 +4,13 @@ import {
 } from "react";
 
 import { useLang } from "../LanguageContext";
-import axios from "axios";
+import apiClient from "../apiClient";
 
 import {
   COLORS,
   card,
   input
 } from "../uiStyles";
-
-const API =
-  "https://vendr-onkr.onrender.com";
 
 const getLocalDateValue = () => {
   const now = new Date();
@@ -112,8 +109,8 @@ function SalesHistoryPanel({
 
     try {
       const response =
-        await axios.get(
-          `${API}/sales-history`,
+        await apiClient.get(
+          "/sales-history",
           {
             params: {
               store_id: storeId,
@@ -147,8 +144,8 @@ function SalesHistoryPanel({
   const openTicket = async ticketId => {
     try {
       const response =
-        await axios.get(
-          `${API}/ticket-details`,
+        await apiClient.get(
+          "/ticket-details",
           {
             params: {
               store_id: storeId,
