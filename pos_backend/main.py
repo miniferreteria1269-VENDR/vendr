@@ -5308,7 +5308,7 @@ def intake_ticket_details(
                 quantity,
                 cost_at_time,
                 price_at_time,
-                event_datetime,
+                event_datetime::timestamptz,
                 note
             FROM events
             WHERE store_id = %s
