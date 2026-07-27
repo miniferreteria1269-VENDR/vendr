@@ -6634,50 +6634,146 @@ async def import_products(
     }
 
 @app.get("/ticket-details")
-def ticket_details(store_id: int, ticket_id: int):
+def ticket_details(
+    store_id: int,
+    ticket_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        SELECT
-            product_name_at_time,
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                product_name_at_time,
+                quantity,
+                price_at_time,
+                cost_at_time
+            FROM events
+            WHERE store_id = %s
+              AND ticket_id = %s
+              AND event_type = 'sale'
+            ORDER BY event_id ASC
+            """,
+            (
+                store_id,
+                ticket_id
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        if not rows:
+            raise HTTPException(
+                status_code=404,
+                detail="Sale ticket not found"
+            )
+
+        items = []
+        total = 0.0
+        cost_total = 0.0
+
+        for (
+            name,
             quantity,
-            price_at_time,
-            cost_at_time
-        FROM events
-        WHERE store_id = %s
-        AND ticket_id = %s
-        AND event_type = 'sale'
-    """, (store_id, ticket_id))
+            price,
+            cost
+        ) in rows:
+            numeric_quantity = int(
+                quantity or 0
+            )
 
-    rows = cursor.fetchall()
-    conn.close()
+            numeric_price = float(
+                price or 0
+            )
 
-    items = []
-    total = 0
-    cost_total = 0
+            numeric_cost = float(
+                cost or 0
+            )
 
-    for name, qty, price, cost in rows:
+            line_total = round(
+                numeric_quantity *
+                numeric_price,
+                2
+            )
 
-        line_total = qty * price
-        total += line_total
-        cost_total += qty * cost
+            total += line_total
 
-        items.append({
-            "name": name,
-            "quantity": qty,
-            "price": price,
-            "line_total": line_total
-        })
+            cost_total += (
+                numeric_quantity *
+                numeric_cost
+            )
 
-    return {
-        "ticket_id": ticket_id,
-        "items": items,
-        "total": total,
-        "profit": total - cost_total
-    }
+            items.append({
+                "name":
+                    name,
 
+                "quantity":
+                    numeric_quantity,
+
+                "price":
+                    numeric_price,
+
+                "line_total":
+                    line_total
+            })
+
+        total = round(
+            total,
+            2
+        )
+
+        profit = round(
+            total - cost_total,
+            2
+        )
+
+        return {
+            "ticket_id":
+                ticket_id,
+
+            "items":
+                items,
+
+            "total":
+                total,
+
+            "profit":
+                profit
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "TICKET DETAILS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load ticket details"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 from datetime import datetime, timezone
 from fastapi import HTTPException
