@@ -5862,6 +5862,71 @@ def edit_product(
         cursor.close()
         conn.close()
 
+@app.get("/cash-balance")
+def cash_balance(
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT COALESCE(
+                SUM(
+                    amount * direction
+                ),
+                0
+            )
+            FROM cash_events
+            WHERE store_id = %s
+            """,
+            (store_id,)
+        )
+
+        balance = cursor.fetchone()[0]
+
+        return {
+            "store_id": store_id,
+            "balance": round(
+                float(balance or 0),
+                2
+            )
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "CASH BALANCE ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load cash balance"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.post("/archive-product")
 def archive_product(store_id: int, product_id: int, is_active: bool):
 
