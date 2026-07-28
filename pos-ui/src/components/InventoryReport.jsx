@@ -73,8 +73,8 @@ function InventoryReport({ storeId }) {
   };
 
   const loadLowStock = async () => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/low-stock",
+    const res = await apiClient.get(
+      "/low-stock",
       {
         params: {
           store_id: storeId,
@@ -86,8 +86,8 @@ function InventoryReport({ storeId }) {
   };
 
   const loadPareto = async () => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/inventory-pareto",
+    const res = await apiClient.get(
+      "/inventory-pareto",
       {
         params: {
           store_id: storeId,
@@ -99,8 +99,8 @@ function InventoryReport({ storeId }) {
   };
 
   const loadDeadStock = async () => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/dead-stock",
+    const res = await apiClient.get(
+      "/dead-stock",
       {
         params: {
           store_id: storeId,
@@ -113,8 +113,8 @@ function InventoryReport({ storeId }) {
   };
 
   const loadServices = async () => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/service-report",
+    const res = await apiClient.get(
+      "/service-report",
       {
         params: {
           store_id: storeId,
