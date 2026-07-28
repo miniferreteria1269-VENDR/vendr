@@ -7775,68 +7775,232 @@ def login(
 def service_report(
     store_id: int,
     start_date: str = None,
-    end_date: str = None
+    end_date: str = None,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    query = """
-        SELECT
-            e.product_id,
-            e.product_name_at_time,
-            SUM(e.quantity) as instances,
-            SUM(e.quantity * e.cost_at_time) as cost,
-            SUM(e.quantity * e.price_at_time) as revenue
-        FROM events e
-        JOIN products p
-        ON e.product_id = p.product_id
-        AND e.store_id = p.store_id
-        WHERE e.store_id = %s
-        AND e.event_type = 'sale'
-        AND p.tracks_stock = 0
-    """
+    try:
+        # ---------------------------------------------
+        # OPTIONAL DATE VALIDATION
+        # ---------------------------------------------
+        parsed_start = None
+        parsed_end = None
 
-    params = [store_id]
+        if start_date:
+            try:
+                parsed_start = date.fromisoformat(
+                    start_date
+                )
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "start_date must use "
+                        "YYYY-MM-DD format"
+                    )
+                )
 
-    # -----------------------------
-    # DATE FILTERING
-    # -----------------------------
+        if end_date:
+            try:
+                parsed_end = date.fromisoformat(
+                    end_date
+                )
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "end_date must use "
+                        "YYYY-MM-DD format"
+                    )
+                )
 
-    if start_date:
-        query += " AND e.event_datetime::timestamp >= %s::timestamp"
-        params.append(start_date)
+        if (
+            parsed_start
+            and parsed_end
+            and parsed_end < parsed_start
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "end_date must not be before "
+                    "start_date"
+                )
+            )
 
-    if end_date:
-        query += " AND e.event_datetime::timestamp < %s::timestamp"
-        params.append(end_date + " 23:59:59")
+        conn = db()
+        cursor = conn.cursor()
 
-    query += """
-        GROUP BY e.product_id, e.product_name_at_time
-        ORDER BY revenue DESC
-    """
+        query = """
+            SELECT
+                e.product_id,
+                e.product_name_at_time,
 
-    cursor.execute(query, params)
+                COALESCE(
+                    SUM(e.quantity),
+                    0
+                ) AS instances,
 
-    rows = cursor.fetchall()
-    conn.close()
+                COALESCE(
+                    SUM(
+                        e.quantity *
+                        e.cost_at_time
+                    ),
+                    0
+                ) AS cost,
 
-    services = []
+                COALESCE(
+                    SUM(
+                        e.quantity *
+                        e.price_at_time
+                    ),
+                    0
+                ) AS revenue
 
-    for r in rows:
-        cost = r[3] or 0
-        revenue = r[4] or 0
+            FROM events e
 
-        services.append({
-            "product_id": r[0],
-            "name": r[1],
-            "instances": r[2] or 0,
-            "cost": cost,
-            "revenue": revenue,
-            "profit": revenue - cost
-        })
+            JOIN products p
+              ON e.product_id =
+                 p.product_id
+             AND e.store_id =
+                 p.store_id
 
-    return {"services": services}
+            WHERE e.store_id = %s
+              AND e.event_type = 'sale'
+              AND p.tracks_stock = 0
+        """
+
+        params = [store_id]
+
+        # ---------------------------------------------
+        # DATE FILTERING
+        # ---------------------------------------------
+        if start_date:
+            query += """
+                AND (
+                    e.event_datetime::timestamptz
+                    AT TIME ZONE
+                    'America/El_Salvador'
+                )::date >= %s::date
+            """
+
+            params.append(
+                start_date
+            )
+
+        if end_date:
+            query += """
+                AND (
+                    e.event_datetime::timestamptz
+                    AT TIME ZONE
+                    'America/El_Salvador'
+                )::date <= %s::date
+            """
+
+            params.append(
+                end_date
+            )
+
+        query += """
+            GROUP BY
+                e.product_id,
+                e.product_name_at_time
+
+            ORDER BY
+                revenue DESC,
+                LOWER(
+                    e.product_name_at_time
+                ) ASC
+        """
+
+        cursor.execute(
+            query,
+            params
+        )
+
+        rows = cursor.fetchall()
+
+        services = []
+
+        for row in rows:
+            instances = int(
+                row[2] or 0
+            )
+
+            cost = round(
+                float(row[3] or 0),
+                2
+            )
+
+            revenue = round(
+                float(row[4] or 0),
+                2
+            )
+
+            profit = round(
+                revenue - cost,
+                2
+            )
+
+            services.append({
+                "product_id":
+                    row[0],
+
+                "name":
+                    row[1],
+
+                "instances":
+                    instances,
+
+                "cost":
+                    cost,
+
+                "revenue":
+                    revenue,
+
+                "profit":
+                    profit
+            })
+
+        return {
+            "services":
+                services
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "SERVICE REPORT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load service report"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 
