@@ -5013,7 +5013,7 @@ def product_movement_summary(
             WHERE p.tracks_stock = 1
 
             ORDER BY
-                LOWER(product_name) ASC
+                product_name ASC
             """,
             (
                 start_date,
