@@ -2429,104 +2429,261 @@ def create_product(
     initial_stock: int,
     cost: float,
     price: float,
-    tracks_stock: bool = Query(True),  # ✅ FIXED TYPE
-    low_stock_threshold: int = 0
+    tracks_stock: bool = Query(True),
+    low_stock_threshold: int = 0,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
-    print(">>> tracks_stock received:", tracks_stock, type(tracks_stock))
-
-    # -----------------------------
-    # Normalize tracks_stock (SAFE)
-    # -----------------------------
-    if isinstance(tracks_stock, str):
-        tracks_stock = tracks_stock.lower() in ["1", "true", "yes"]
-    elif isinstance(tracks_stock, int):
-        tracks_stock = tracks_stock == 1
-    elif isinstance(tracks_stock, bool):
-        pass
-    else:
-        tracks_stock = True
-
-    conn = db()
-    cursor = conn.cursor()
-
-    # -----------------------------
-    # Normalize name
-    # -----------------------------
-    if not name or str(name).strip().lower() in ["", "none", "nan"]:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Invalid product name")
-
-    name = name.strip()
-    name_key = name.lower()
-
-    # -----------------------------
-    # Prevent duplicates (EVENT-BASED)
-    # -----------------------------
-    cursor.execute("""
-        SELECT 1
-        FROM events
-        WHERE store_id = %s
-        AND event_type = 'create'
-        AND LOWER(product_name_at_time) = LOWER(%s)
-    """, (store_id, name_key))
-
-    if cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=400, detail="Product already exists")
-
-    # -----------------------------
-    # Generate next product_id (EVENT-BASED)
-    # -----------------------------
-    cursor.execute("""
-        SELECT COALESCE(MAX(product_id), 0)
-        FROM events
-        WHERE store_id = %s
-    """, (store_id,))
-
-    product_id = cursor.fetchone()[0] + 1
-
-    now = datetime.now(timezone.utc).isoformat()
-
-    # -----------------------------
-    # CREATE EVENT
-    # -----------------------------
-    cursor.execute("""
-        INSERT INTO events (
-            store_id,
-            event_type,
-            product_id,
-            product_name_at_time,
-            quantity,
-            cost_at_time,
-            price_at_time,
-            tracks_stock,
-            low_stock_threshold,
-            event_datetime
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
         )
-        VALUES (%s, 'create', %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        store_id,
-        product_id,
-        name,
-        initial_stock,
-        cost,
-        price,
-        tracks_stock,  # ✅ BOOLEAN
-        low_stock_threshold,
-        now
-    ))
 
-    conn.commit()
-    conn.close()
+    conn = None
+    cursor = None
 
-    # -----------------------------
-    # Rebuild products table
-    # -----------------------------
-    from pos_backend.rebuild_products import rebuild_products
-    rebuild_products(store_id)
+    try:
+        # ---------------------------------------------
+        # VALIDATION
+        # ---------------------------------------------
+        normalized_name = str(
+            name or ""
+        ).strip()
 
-    return {"product_id": product_id}
+        if (
+            not normalized_name
+            or normalized_name.lower()
+            in (
+                "none",
+                "nan"
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid product name"
+            )
 
+        if initial_stock < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Initial stock cannot be negative"
+                )
+            )
+
+        if cost < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Cost cannot be negative"
+            )
+
+        if price < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Price cannot be negative"
+            )
+
+        if low_stock_threshold < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Low-stock threshold cannot "
+                    "be negative"
+                )
+            )
+
+        normalized_tracks_stock = bool(
+            tracks_stock
+        )
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VALIDATE STORE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT 1
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (store_id,)
+        )
+
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        # ---------------------------------------------
+        # PREVENT DUPLICATE PRODUCT NAMES
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT 1
+            FROM products
+            WHERE store_id = %s
+              AND LOWER(TRIM(name)) =
+                  LOWER(TRIM(%s))
+            LIMIT 1
+            """,
+            (
+                store_id,
+                normalized_name
+            )
+        )
+
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=400,
+                detail="Product already exists"
+            )
+
+        # ---------------------------------------------
+        # SERIALIZE PRODUCT ID GENERATION
+        #
+        # Prevents simultaneous creation requests from
+        # receiving the same MAX(product_id) + 1.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT pg_advisory_xact_lock(%s)
+            """,
+            (
+                2269000 + store_id,
+            )
+        )
+
+        cursor.execute(
+            """
+            SELECT COALESCE(
+                MAX(product_id),
+                0
+            )
+            FROM events
+            WHERE store_id = %s
+            """,
+            (store_id,)
+        )
+
+        product_id = (
+            cursor.fetchone()[0] + 1
+        )
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        # ---------------------------------------------
+        # CREATE EVENT
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO events (
+                store_id,
+                event_type,
+                product_id,
+                product_name_at_time,
+                quantity,
+                cost_at_time,
+                price_at_time,
+                tracks_stock,
+                low_stock_threshold,
+                event_datetime
+            )
+            VALUES (
+                %s,
+                'create',
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+            """,
+            (
+                store_id,
+                product_id,
+                normalized_name,
+                int(initial_stock),
+                round(
+                    float(cost),
+                    2
+                ),
+                round(
+                    float(price),
+                    2
+                ),
+                normalized_tracks_stock,
+                int(low_stock_threshold),
+                now
+            )
+        )
+
+        conn.commit()
+
+        # ---------------------------------------------
+        # REBUILD PRODUCTS TABLE
+        # ---------------------------------------------
+        from pos_backend.rebuild_products import (
+            rebuild_products
+        )
+
+        rebuild_products(
+            store_id
+        )
+
+        return {
+            "status":
+                "accepted",
+
+            "product_id":
+                product_id,
+
+            "store_id":
+                store_id,
+
+            "name":
+                normalized_name
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CREATE PRODUCT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create product"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+            
 @app.get("/users")
 def get_users(store_id: int | None = None):
     conn = db()
