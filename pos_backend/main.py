@@ -5549,68 +5549,170 @@ def product_diagnostics(store_id: int):
     finally:
         cursor.close()
         conn.close()
+
 @app.get("/stock-report")
-def stock_report(store_id: int, name: str = None):
+def stock_report(
+    store_id: int,
+    name: str = None,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    query = """
-        SELECT
-            name,
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        query = """
+            SELECT
+                name,
+                stock,
+                cost,
+                price
+            FROM products
+            WHERE store_id = %s
+              AND is_active = 1
+              AND tracks_stock = 1
+        """
+
+        params = [store_id]
+
+        if name:
+            query += """
+                AND LOWER(name) LIKE %s
+            """
+
+            params.append(
+                f"%{name.strip().lower()}%"
+            )
+
+        query += """
+            ORDER BY LOWER(name) ASC
+        """
+
+        cursor.execute(
+            query,
+            params
+        )
+
+        rows = cursor.fetchall()
+
+        products = []
+        total_cost_value = 0.0
+        total_price_value = 0.0
+
+        for (
+            product_name,
             stock,
             cost,
             price
-        FROM products
-        WHERE store_id = %s
-        AND is_active = 1
-        AND tracks_stock = 1
-    """
+        ) in rows:
+            numeric_stock = int(
+                stock or 0
+            )
 
-    params = [store_id]
+            numeric_cost = float(
+                cost or 0
+            )
 
-    if name:
-        query += " AND LOWER(name) LIKE %s"
-        params.append("%" + name.lower() + "%")
+            numeric_price = float(
+                price or 0
+            )
 
-    query += " ORDER BY name"
+            investment = round(
+                numeric_stock *
+                numeric_cost,
+                2
+            )
 
-    cursor.execute(query, params)
+            valuation = round(
+                numeric_stock *
+                numeric_price,
+                2
+            )
 
-    rows = cursor.fetchall()
+            total_cost_value += (
+                investment
+            )
 
-    conn.close()
+            total_price_value += (
+                valuation
+            )
 
-    products = []
-    total_cost_value = 0
-    total_price_value = 0
+            products.append({
+                "name":
+                    product_name,
 
-    for name, stock, cost, price in rows:
+                "quantity":
+                    numeric_stock,
 
-        stock = stock or 0
-        cost = cost or 0
-        price = price or 0
+                "cost":
+                    round(
+                        numeric_cost,
+                        2
+                    ),
 
-        investment = stock * cost
-        valuation = stock * price
+                "price":
+                    round(
+                        numeric_price,
+                        2
+                    ),
 
-        total_cost_value += investment
-        total_price_value += valuation
+                "investment":
+                    investment,
 
-        products.append({
-            "name": name,
-            "quantity": stock,
-            "cost": cost,
-            "price": price,
-            "investment": investment,
-            "valuation": valuation
-        })
+                "valuation":
+                    valuation
+            })
 
-    return {
-        "products": products,
-        "total_inventory_cost": total_cost_value,
-        "total_inventory_price": total_price_value
-    }
+        return {
+            "products":
+                products,
+
+            "total_inventory_cost":
+                round(
+                    total_cost_value,
+                    2
+                ),
+
+            "total_inventory_price":
+                round(
+                    total_price_value,
+                    2
+                )
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "STOCK REPORT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load stock report"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 @app.get("/inventory-pareto")
