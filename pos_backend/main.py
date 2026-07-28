@@ -3610,37 +3610,203 @@ def record_loss(
 # -----------------------------
 
 @app.post("/price-change")
-def change_price(store_id:int,product_id:int,cost:float,price:float):
+def change_price(
+    store_id: int,
+    product_id: int,
+    cost: float,
+    price: float,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn=db()
-    cursor=conn.cursor()
+    # ---------------------------------------------
+    # VALIDATION
+    # ---------------------------------------------
+    if cost < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cost cannot be negative"
+        )
 
-    now = datetime.now(timezone.utc).isoformat()
+    if price < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Price cannot be negative"
+        )
 
-    cursor.execute("""
-        SELECT name FROM products
-        WHERE product_id=%s AND store_id=%s
-    """,(product_id,store_id))
+    conn = None
+    cursor = None
 
-    name=cursor.fetchone()[0]
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        INSERT INTO events
-        (store_id,event_type,product_id,product_name_at_time,
-        cost_at_time,price_at_time,event_datetime)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """,(store_id,"price_change",product_id,name,cost,price,now))
+        cursor.execute(
+            """
+            SELECT
+                name,
+                is_active
+            FROM products
+            WHERE product_id = %s
+              AND store_id = %s
+            """,
+            (
+                product_id,
+                store_id
+            )
+        )
 
-    cursor.execute("""
-        UPDATE products
-        SET cost=%s, price=%s
-        WHERE product_id=%s AND store_id=%s
-    """,(cost,price,product_id,store_id))
+        product = cursor.fetchone()
 
-    conn.commit()
-    conn.close()
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found"
+            )
 
-    return {"message":"Price updated"}
+        product_name, is_active = product
+
+        if not is_active:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot change the price "
+                    "of an archived product"
+                )
+            )
+
+        numeric_cost = round(
+            float(cost),
+            2
+        )
+
+        numeric_price = round(
+            float(price),
+            2
+        )
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        # ---------------------------------------------
+        # RECORD PRICE CHANGE EVENT
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO events (
+                store_id,
+                event_type,
+                product_id,
+                product_name_at_time,
+                cost_at_time,
+                price_at_time,
+                event_datetime
+            )
+            VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s
+            )
+            RETURNING event_id
+            """,
+            (
+                store_id,
+                "price_change",
+                product_id,
+                product_name,
+                numeric_cost,
+                numeric_price,
+                now
+            )
+        )
+
+        event_id = cursor.fetchone()[0]
+
+        # ---------------------------------------------
+        # UPDATE PRODUCT
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            UPDATE products
+            SET
+                cost = %s,
+                price = %s
+            WHERE product_id = %s
+              AND store_id = %s
+              AND is_active = 1
+            RETURNING
+                cost,
+                price
+            """,
+            (
+                numeric_cost,
+                numeric_price,
+                product_id,
+                store_id
+            )
+        )
+
+        updated = cursor.fetchone()
+
+        if not updated:
+            raise HTTPException(
+                status_code=404,
+                detail="Active product not found"
+            )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Price updated",
+            "event_id": event_id,
+            "product_id": product_id,
+            "product_name": product_name,
+            "cost": round(
+                float(updated[0] or 0),
+                2
+            ),
+            "price": round(
+                float(updated[1] or 0),
+                2
+            )
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "PRICE CHANGE ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update price"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.post("/intake-ticket")
 def intake_ticket(
