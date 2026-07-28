@@ -8091,22 +8091,39 @@ def process_return(
 def cash_movements(
     store_id: int,
     start_date: str,
-    end_date: str
+    end_date: str,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
-    conn = db()
-    cursor = conn.cursor()
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
 
     try:
+        conn = db()
+        cursor = conn.cursor()
+
         cursor.execute(
             """
             SELECT
-                created_at,
+                created_at::timestamptz,
                 amount,
                 direction,
                 type,
                 category,
                 note
+
             FROM cash_events
+
             WHERE store_id = %s
 
               AND (
@@ -8138,35 +8155,40 @@ def cash_movements(
         movements = []
 
         for row in rows:
+            created_at = row[0]
+
             movements.append({
                 "datetime": (
-                    row[0].isoformat()
-                    if hasattr(
-                        row[0],
-                        "isoformat"
-                    )
-                    else str(row[0])
+                    created_at.isoformat()
+                    if created_at
+                    else None
                 ),
 
                 "amount":
-                    float(row[1] or 0),
+                    round(
+                        float(row[1] or 0),
+                        2
+                    ),
 
                 "direction":
-                    int(row[2] or 1),
+                    int(row[2]),
 
                 "type":
                     str(row[3] or ""),
 
                 "category":
-                    row[4] or "",
+                    str(row[4] or ""),
 
                 "note":
-                    row[5] or ""
+                    str(row[5] or "")
             })
 
         return {
             "movements": movements
         }
+
+    except HTTPException:
+        raise
 
     except Exception as error:
         print(
@@ -8182,9 +8204,12 @@ def cash_movements(
         )
 
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
 
+        if conn:
+            conn.close()
+            
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
     rebuild_products(store_id)
