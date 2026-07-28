@@ -2,7 +2,7 @@ import {
   useState
 } from "react";
 
-import axios from "axios";
+import apiClient from "../apiClient";
 
 import {
   useLang
@@ -14,9 +14,6 @@ import {
   input,
   btnPrimary
 } from "../uiStyles";
-
-const API =
-  "https://vendr-onkr.onrender.com";
 
 const getLocalDateValue = () => {
   const now = new Date();
@@ -83,8 +80,8 @@ function ProductMovementSummary({
 
     try {
       const response =
-        await axios.get(
-          `${API}/product-movement-summary`,
+        await apiClient.get(
+          "/product-movement-summary",
           {
             params: {
               store_id:
@@ -93,9 +90,6 @@ function ProductMovementSummary({
               start_date:
                 startDate,
 
-              // Send the selected final date
-              // unchanged. The backend should
-              // construct the exclusive boundary.
               end_date:
                 endDate
             }
