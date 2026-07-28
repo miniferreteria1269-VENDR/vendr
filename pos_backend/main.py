@@ -6495,88 +6495,175 @@ def edit_product(
     product_id: int,
     name: str,
     low_stock_threshold: int,
-    tracks_stock: bool
+    tracks_stock: bool,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
-    if low_stock_threshold < 0:
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
         raise HTTPException(
-            status_code=400,
-            detail="Low stock threshold cannot be negative"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
         )
 
-    if not name or not name.strip():
+    normalized_name = str(
+        name or ""
+    ).strip()
+
+    if not normalized_name:
         raise HTTPException(
             status_code=400,
             detail="Product name is required"
         )
 
-    if isinstance(tracks_stock, bool):
-        tracks_stock_value = 1 if tracks_stock else 0
-    elif isinstance(tracks_stock, str):
-        tracks_stock_value = (
-            1
-            if tracks_stock.lower() in ["1", "true", "yes"]
-            else 0
+    if low_stock_threshold < 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Low stock threshold cannot be negative"
+            )
         )
-    else:
-        tracks_stock_value = 1 if tracks_stock else 0
 
-    conn = db()
-    cursor = conn.cursor()
+    tracks_stock_value = (
+        1
+        if bool(tracks_stock)
+        else 0
+    )
+
+    conn = None
+    cursor = None
 
     try:
-        cursor.execute("""
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # PREVENT DUPLICATE ACTIVE PRODUCT NAMES
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT 1
+            FROM products
+            WHERE store_id = %s
+              AND product_id != %s
+              AND is_active = 1
+              AND LOWER(TRIM(name)) =
+                  LOWER(TRIM(%s))
+            LIMIT 1
+            """,
+            (
+                store_id,
+                product_id,
+                normalized_name
+            )
+        )
+
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Another active product already "
+                    "uses this name"
+                )
+            )
+
+        # ---------------------------------------------
+        # UPDATE PRODUCT
+        # ---------------------------------------------
+        cursor.execute(
+            """
             UPDATE products
             SET
                 name = %s,
                 low_stock_threshold = %s,
                 lst_reviewed = CASE
-                    WHEN %s > 0 THEN TRUE
+                    WHEN %s > 0
+                    THEN TRUE
                     ELSE FALSE
                 END,
                 tracks_stock = %s
             WHERE product_id = %s
               AND store_id = %s
+              AND is_active = 1
             RETURNING
                 product_id,
                 name,
                 low_stock_threshold,
                 lst_reviewed,
                 tracks_stock
-        """, (
-            name.strip(),
-            low_stock_threshold,
-            low_stock_threshold,
-            tracks_stock_value,
-            product_id,
-            store_id
-        ))
+            """,
+            (
+                normalized_name,
+                int(low_stock_threshold),
+                int(low_stock_threshold),
+                tracks_stock_value,
+                product_id,
+                store_id
+            )
+        )
 
         row = cursor.fetchone()
 
         if not row:
             raise HTTPException(
                 status_code=404,
-                detail="Product not found"
+                detail="Active product not found"
             )
 
         conn.commit()
 
         return {
-            "message": "Product updated",
-            "product_id": row[0],
-            "name": row[1],
-            "low_stock_threshold": row[2],
-            "lst_reviewed": row[3],
-            "tracks_stock": row[4]
+            "status":
+                "accepted",
+
+            "message":
+                "Product updated",
+
+            "product_id":
+                row[0],
+
+            "name":
+                row[1],
+
+            "low_stock_threshold":
+                int(row[2] or 0),
+
+            "lst_reviewed":
+                bool(row[3]),
+
+            "tracks_stock":
+                int(row[4] or 0)
         }
 
-    except Exception:
-        conn.rollback()
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
         raise
 
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "EDIT PRODUCT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update product"
+        )
+
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.get("/cash-balance")
 def cash_balance(
