@@ -4705,15 +4705,24 @@ def get_low_stock(
 def product_movement_summary(
     store_id: int,
     start_date: str,
-    end_date: str
+    end_date: str,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
     conn = None
     cursor = None
 
     try:
-        conn = db()
-        cursor = conn.cursor()
-
         # ---------------------------------------------
         # VALIDATE DATE RANGE
         # ---------------------------------------------
@@ -4742,6 +4751,9 @@ def product_movement_summary(
                     "start_date"
                 )
             )
+
+        conn = db()
+        cursor = conn.cursor()
 
         # ---------------------------------------------
         # PRODUCT MOVEMENT SUMMARY
@@ -5001,7 +5013,7 @@ def product_movement_summary(
             WHERE p.tracks_stock = 1
 
             ORDER BY
-                product_name
+                LOWER(product_name) ASC
             """,
             (
                 start_date,
@@ -5169,7 +5181,7 @@ def product_movement_summary(
 
         if conn:
             conn.close()
-
+            
 @app.get("/sales-history")
 def sales_history(
     store_id: int,
