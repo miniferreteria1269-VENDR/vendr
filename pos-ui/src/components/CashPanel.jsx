@@ -1,7 +1,13 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import {
+  useEffect,
+  useState
+} from "react";
 
-import { useLang } from "../LanguageContext";
+import apiClient from "../apiClient";
+
+import {
+  useLang
+} from "../LanguageContext";
 
 import ReturnModal from "./ReturnModal";
 import RevenueModal from "./RevenueModal";
@@ -21,28 +27,36 @@ import {
   btnDanger
 } from "../uiStyles";
 
-const API = "https://vendr-onkr.onrender.com";
-
 function CashPanel({
   storeId,
   products
 }) {
   const { t } = useLang();
 
-  const [balance, setBalance] =
-    useState(0);
+  const [
+    balance,
+    setBalance
+  ] = useState(0);
 
-  const [showReturn, setShowReturn] =
-    useState(false);
+  const [
+    showReturn,
+    setShowReturn
+  ] = useState(false);
 
-  const [showRevenue, setShowRevenue] =
-    useState(false);
+  const [
+    showRevenue,
+    setShowRevenue
+  ] = useState(false);
 
-  const [showExpense, setShowExpense] =
-    useState(false);
+  const [
+    showExpense,
+    setShowExpense
+  ] = useState(false);
 
-  const [showSummary, setShowSummary] =
-    useState(false);
+  const [
+    showSummary,
+    setShowSummary
+  ] = useState(false);
 
   const loadBalance = async () => {
     if (!storeId) {
@@ -50,18 +64,20 @@ function CashPanel({
     }
 
     try {
-      const response = await axios.get(
-        `${API}/test-cash-balance`,
-        {
-          params: {
-            store_id: storeId
+      const response =
+        await apiClient.get(
+          "/cash-balance",
+          {
+            params: {
+              store_id: storeId
+            }
           }
-        }
-      );
+        );
 
-      const confirmedBalance = Number(
-        response.data.balance || 0
-      );
+      const confirmedBalance =
+        Number(
+          response.data.balance || 0
+        );
 
       await cacheConfirmedCashBalance(
         storeId,
@@ -99,8 +115,12 @@ function CashPanel({
             storeId
           );
 
-        if (displayedBalance !== null) {
-          setBalance(displayedBalance);
+        if (
+          displayedBalance !== null
+        ) {
+          setBalance(
+            displayedBalance
+          );
         }
       } catch (offlineError) {
         console.error(
@@ -151,7 +171,10 @@ function CashPanel({
             marginTop: 6
           }}
         >
-          ${Number(balance).toFixed(2)}
+          $
+          {Number(
+            balance
+          ).toFixed(2)}
         </div>
       </div>
 
