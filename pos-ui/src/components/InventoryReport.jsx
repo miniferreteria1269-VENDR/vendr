@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLang } from "../LanguageContext";
 import ProductMovementSummary from "./ProductMovementSummary";
 import { StockAdjustment } from "./ProductManagement";
-import axios from "axios";
+import apiClient from "../apiClient";
 import {
   COLORS,
   card,
@@ -35,27 +35,40 @@ function InventoryReport({ storeId }) {
   const formatMoney = (value) => Number(value || 0).toFixed(2);
 
   const loadInventory = async () => {
-    const res = await axios.get(
-      "https://vendr-onkr.onrender.com/stock-report",
+    const res = await apiClient.get(
+      "/stock-report",
       {
         params: {
           store_id: storeId,
-          name: searchTerm || undefined,
-        },
+          name:
+            searchTerm ||
+            undefined
+        }
       }
     );
 
-    const sorted = (res.data.products || []).sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, {
-        sensitivity: "base",
-      })
+    const sorted = (
+      res.data.products || []
+    ).sort((a, b) =>
+      a.name.localeCompare(
+        b.name,
+        undefined,
+        {
+          sensitivity: "base"
+        }
+      )
     );
 
     setProducts(sorted);
 
     setTotals({
-      cost: res.data.total_inventory_cost || 0,
-      price: res.data.total_inventory_price || 0,
+      cost:
+        res.data
+          .total_inventory_cost || 0,
+
+      price:
+        res.data
+          .total_inventory_price || 0
     });
   };
 
