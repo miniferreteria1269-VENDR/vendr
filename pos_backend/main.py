@@ -5783,164 +5783,369 @@ def stock_report(
 
 
 @app.get("/inventory-pareto")
-def inventory_pareto(store_id: int):
+def inventory_pareto(
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        SELECT
-            p.product_id,
-            p.name,
-            COALESCE(p.stock, 0) as stock,
-            COALESCE(p.cost, 0) as cost,
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-            -- Investment (current stock value)
-            COALESCE(p.stock * p.cost, 0) as investment,
+        cursor.execute(
+            """
+            SELECT
+                p.product_id,
+                p.name,
 
-            -- Revenue (from sales events)
-            COALESCE(SUM(
-                CASE 
-                    WHEN e.event_type = 'sale' 
-                    THEN e.quantity * e.price_at_time
-                    ELSE 0 
-                END
-            ), 0) as revenue,
+                COALESCE(
+                    p.stock,
+                    0
+                ) AS stock,
 
-            -- Cost of goods sold
-            COALESCE(SUM(
-                CASE 
-                    WHEN e.event_type = 'sale' 
-                    THEN e.quantity * e.cost_at_time
-                    ELSE 0 
-                END
-            ), 0) as cost_of_sales
+                COALESCE(
+                    p.cost,
+                    0
+                ) AS cost,
 
-        FROM products p
+                -- Investment:
+                -- current inventory held at cost
+                COALESCE(
+                    p.stock * p.cost,
+                    0
+                ) AS investment,
 
-        LEFT JOIN events e
-        ON p.product_id = e.product_id
-        AND e.store_id = p.store_id
+                -- Revenue from sale events
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN e.event_type = 'sale'
+                            THEN
+                                e.quantity *
+                                e.price_at_time
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS revenue,
 
-        WHERE p.store_id = %s
-        AND p.is_active = 1
+                -- Cost of goods sold
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN e.event_type = 'sale'
+                            THEN
+                                e.quantity *
+                                e.cost_at_time
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS cost_of_sales
 
-        GROUP BY p.product_id, p.name, p.stock, p.cost
-    """, (store_id,))
+            FROM products p
 
-    rows = cursor.fetchall()
-    conn.close()
+            LEFT JOIN events e
+              ON p.product_id =
+                 e.product_id
+             AND p.store_id =
+                 e.store_id
 
-    results = []
+            WHERE p.store_id = %s
+              AND p.is_active = 1
 
-    for row in rows:
+            GROUP BY
+                p.product_id,
+                p.name,
+                p.stock,
+                p.cost
 
-        investment = row[4] or 0
-        revenue = row[5] or 0
-        cost_of_sales = row[6] or 0
-        profit = revenue - cost_of_sales
+            ORDER BY
+                LOWER(p.name) ASC
+            """,
+            (store_id,)
+        )
 
-        results.append({
-            "product_id": row[0],
-            "name": row[1],
-            "investment": investment,
-            "revenue": revenue,
-            "profit": profit
-        })
+        rows = cursor.fetchall()
 
-    return {"products": results}
+        results = []
+
+        for row in rows:
+            investment = round(
+                float(row[4] or 0),
+                2
+            )
+
+            revenue = round(
+                float(row[5] or 0),
+                2
+            )
+
+            cost_of_sales = round(
+                float(row[6] or 0),
+                2
+            )
+
+            profit = round(
+                revenue - cost_of_sales,
+                2
+            )
+
+            results.append({
+                "product_id":
+                    row[0],
+
+                "name":
+                    row[1],
+
+                "investment":
+                    investment,
+
+                "revenue":
+                    revenue,
+
+                "profit":
+                    profit
+            })
+
+        return {
+            "products":
+                results
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "INVENTORY PARETO ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load inventory "
+                "Pareto report"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 
 @app.get("/dead-stock")
-def dead_stock(store_id: int, days: int = 90):
+def dead_stock(
+    store_id: int,
+    days: int = 90,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    if days < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Days cannot be negative"
+        )
+
+    conn = None
+    cursor = None
 
     try:
-        cursor.execute("""
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
             SELECT
                 p.product_id,
                 p.name,
                 p.stock,
                 p.cost,
+
                 MAX(
                     CASE
                         WHEN e.event_datetime IS NOT NULL
-                        AND e.event_datetime <> ''
-                        THEN e.event_datetime::timestamp
+                         AND e.event_datetime <> ''
+                        THEN
+                            e.event_datetime::timestamptz
                         ELSE NULL
                     END
                 ) AS last_sale
+
             FROM products p
+
             LEFT JOIN events e
-                ON p.product_id = e.product_id
-                AND e.event_type = 'sale'
-                AND e.store_id = p.store_id
+              ON p.product_id =
+                 e.product_id
+             AND p.store_id =
+                 e.store_id
+             AND e.event_type = 'sale'
+
             WHERE p.store_id = %s
-                AND p.is_active = 1
-            GROUP BY p.product_id, p.name, p.stock, p.cost
+              AND p.is_active = 1
+
+            GROUP BY
+                p.product_id,
+                p.name,
+                p.stock,
+                p.cost
+
             HAVING
                 MAX(
                     CASE
                         WHEN e.event_datetime IS NOT NULL
-                        AND e.event_datetime <> ''
-                        THEN e.event_datetime::timestamp
+                         AND e.event_datetime <> ''
+                        THEN
+                            e.event_datetime::timestamptz
                         ELSE NULL
                     END
                 ) IS NULL
-                OR MAX(
+
+                OR
+
+                MAX(
                     CASE
                         WHEN e.event_datetime IS NOT NULL
-                        AND e.event_datetime <> ''
-                        THEN e.event_datetime::timestamp
+                         AND e.event_datetime <> ''
+                        THEN
+                            e.event_datetime::timestamptz
                         ELSE NULL
                     END
-                ) <= NOW() - (%s * INTERVAL '1 day')
-            ORDER BY (p.stock * p.cost) DESC
-        """, (store_id, days))
+                ) <=
+                    NOW() -
+                    (%s * INTERVAL '1 day')
+
+            ORDER BY
+                (
+                    COALESCE(p.stock, 0) *
+                    COALESCE(p.cost, 0)
+                ) DESC,
+                LOWER(p.name) ASC
+            """,
+            (
+                store_id,
+                days
+            )
+        )
 
         rows = cursor.fetchall()
 
-    except Exception as e:
-        print("DEAD STOCK ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        results = []
+
+        now_utc = datetime.now(
+            timezone.utc
+        )
+
+        for row in rows:
+            product_id = row[0]
+            name = row[1]
+
+            stock = int(
+                row[2] or 0
+            )
+
+            cost = float(
+                row[3] or 0
+            )
+
+            last_sale = row[4]
+
+            investment = round(
+                stock * cost,
+                2
+            )
+
+            days_since_sale = None
+
+            if last_sale:
+                days_since_sale = (
+                    now_utc - last_sale
+                ).days
+
+            results.append({
+                "product_id":
+                    product_id,
+
+                "name":
+                    name,
+
+                "stock":
+                    stock,
+
+                "cost":
+                    round(
+                        cost,
+                        2
+                    ),
+
+                "investment":
+                    investment,
+
+                "last_sale": (
+                    last_sale.isoformat()
+                    if last_sale
+                    else None
+                ),
+
+                "days_since_sale":
+                    days_since_sale
+            })
+
+        return {
+            "products":
+                results
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "DEAD STOCK ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load dead-stock report"
+            )
+        )
 
     finally:
-        conn.close()
+        if cursor:
+            cursor.close()
 
-    results = []
-
-    for row in rows:
-
-        product_id = row[0]
-        name = row[1]
-        stock = row[2] or 0
-        cost = row[3] or 0
-        last_sale = row[4]
-
-        investment = stock * cost
-
-        days_since_sale = None
-
-        if last_sale:
-            if last_sale.tzinfo is None:
-                last_sale = last_sale.replace(tzinfo=timezone.utc)
-
-            days_since_sale = (datetime.now(timezone.utc) - last_sale).days
-
-        results.append({
-            "product_id": product_id,
-            "name": name,
-            "stock": stock,
-            "cost": cost,
-            "investment": investment,
-            "last_sale": last_sale,
-            "days_since_sale": days_since_sale
-        })
-
-    return {"products": results}
+        if conn:
+            conn.close()
 
 @app.post("/edit-product")
 def edit_product(
