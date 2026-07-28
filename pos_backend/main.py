@@ -5570,12 +5570,30 @@ def intake_ticket_details(
             conn.close()
 
 @app.get("/product-diagnostics")
-def product_diagnostics(store_id: int):
-    conn = db()
-    cursor = conn.cursor()
+def product_diagnostics(
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
 
     try:
-        cursor.execute("""
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
             SELECT
                 product_id,
                 name,
@@ -5599,86 +5617,190 @@ def product_diagnostics(store_id: int):
                     AND lst_reviewed = FALSE
                  )
               )
-            ORDER BY LOWER(name)
-        """, (store_id,))
+            ORDER BY LOWER(name) ASC
+            """,
+            (store_id,)
+        )
 
         rows = cursor.fetchall()
+
         products = []
 
         for row in rows:
             product_id = row[0]
             name = row[1]
-            stock = row[2] or 0
-            cost = float(row[3] or 0)
-            price = float(row[4] or 0)
-            is_active = row[5]
-            tracks_stock = row[6]
-            low_stock_threshold = row[7] or 0
-            lst_reviewed = bool(row[8])
+
+            stock = int(
+                row[2] or 0
+            )
+
+            cost = round(
+                float(row[3] or 0),
+                2
+            )
+
+            price = round(
+                float(row[4] or 0),
+                2
+            )
+
+            is_active = int(
+                row[5] or 0
+            )
+
+            tracks_stock = int(
+                row[6] or 0
+            )
+
+            low_stock_threshold = int(
+                row[7] or 0
+            )
+
+            lst_reviewed = bool(
+                row[8]
+            )
 
             issues = []
 
             if price < cost:
                 issues.append({
-                    "type": "price_below_cost",
-                    "label": "Price below cost",
-                    "recommended_action": "price_change"
+                    "type":
+                        "price_below_cost",
+
+                    "label":
+                        "Price below cost",
+
+                    "recommended_action":
+                        "price_change"
                 })
 
             if cost == 0:
                 issues.append({
-                    "type": "zero_cost",
-                    "label": "Cost is zero",
-                    "recommended_action": "price_change"
+                    "type":
+                        "zero_cost",
+
+                    "label":
+                        "Cost is zero",
+
+                    "recommended_action":
+                        "price_change"
                 })
 
             if price == 0:
                 issues.append({
-                    "type": "zero_price",
-                    "label": "Price is zero",
-                    "recommended_action": "price_change"
+                    "type":
+                        "zero_price",
+
+                    "label":
+                        "Price is zero",
+
+                    "recommended_action":
+                        "price_change"
                 })
 
             if stock < 0:
                 issues.append({
-                    "type": "negative_stock",
-                    "label": "Stock is negative",
-                    "recommended_action": "stock_adjustment"
+                    "type":
+                        "negative_stock",
+
+                    "label":
+                        "Stock is negative",
+
+                    "recommended_action":
+                        "stock_adjustment"
                 })
 
-            if low_stock_threshold == 0 and not lst_reviewed:
+            if (
+                low_stock_threshold == 0
+                and not lst_reviewed
+            ):
                 issues.append({
-                    "type": "lst_unreviewed",
-                    "label": "Low stock threshold requires review",
-                    "recommended_action": "review_lst"
+                    "type":
+                        "lst_unreviewed",
+
+                    "label":
+                        (
+                            "Low stock threshold "
+                            "requires review"
+                        ),
+
+                    "recommended_action":
+                        "review_lst"
                 })
 
             products.append({
-                "product_id": product_id,
-                "name": name,
-                "stock": stock,
-                "cost": cost,
-                "price": price,
-                "is_active": is_active,
-                "tracks_stock": tracks_stock,
-                "low_stock_threshold": low_stock_threshold,
-                "lst_reviewed": lst_reviewed,
-                "issues": issues
+                "product_id":
+                    product_id,
+
+                "name":
+                    name,
+
+                "stock":
+                    stock,
+
+                "cost":
+                    cost,
+
+                "price":
+                    price,
+
+                "is_active":
+                    is_active,
+
+                "tracks_stock":
+                    tracks_stock,
+
+                "low_stock_threshold":
+                    low_stock_threshold,
+
+                "lst_reviewed":
+                    lst_reviewed,
+
+                "issues":
+                    issues
             })
 
         return {
-            "store_id": store_id,
-            "product_count": len(products),
-            "issue_count": sum(
-                len(product["issues"])
-                for product in products
-            ),
-            "products": products
+            "store_id":
+                store_id,
+
+            "product_count":
+                len(products),
+
+            "issue_count":
+                sum(
+                    len(
+                        product["issues"]
+                    )
+                    for product in products
+                ),
+
+            "products":
+                products
         }
 
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "PRODUCT DIAGNOSTICS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load product diagnostics"
+            )
+        )
+
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.get("/stock-report")
 def stock_report(
@@ -6445,8 +6567,20 @@ def review_lst(data: ReviewLSTRequest):
 def sales_analysis(
     store_id: int,
     start_date: date,
-    end_date: date
+    end_date: date,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
     conn = None
     cursor = None
 
@@ -6471,22 +6605,72 @@ def sales_analysis(
 
         return {
             "summary": {
-                "revenue": summary["revenue"],
-                "profit": summary["gross_profit"],
-                "tickets": summary["tickets"],
+                "revenue":
+                    round(
+                        float(
+                            summary["revenue"] or 0
+                        ),
+                        2
+                    ),
+
+                "profit":
+                    round(
+                        float(
+                            summary["gross_profit"] or 0
+                        ),
+                        2
+                    ),
+
+                "tickets":
+                    int(
+                        summary["tickets"] or 0
+                    ),
+
                 "avg_daily_revenue":
-                    summary["average_daily_revenue"],
+                    round(
+                        float(
+                            summary[
+                                "average_daily_revenue"
+                            ] or 0
+                        ),
+                        2
+                    ),
+
                 "avg_daily_profit":
-                    summary["average_daily_profit"],
+                    round(
+                        float(
+                            summary[
+                                "average_daily_profit"
+                            ] or 0
+                        ),
+                        2
+                    ),
+
                 "avg_ticket_value":
-                    summary["average_ticket"]
+                    round(
+                        float(
+                            summary[
+                                "average_ticket"
+                            ] or 0
+                        ),
+                        2
+                    )
             },
+
             "top_revenue_products":
-                analysis["top_revenue_products"],
+                analysis[
+                    "top_revenue_products"
+                ],
+
             "top_profit_products":
-                analysis["top_profit_products"],
+                analysis[
+                    "top_profit_products"
+                ],
+
             "top_volume_products":
-                analysis["top_volume_products"]
+                analysis[
+                    "top_volume_products"
+                ]
         }
 
     except HTTPException:
@@ -6494,13 +6678,15 @@ def sales_analysis(
 
     except Exception as error:
         print(
-            "🔥 SALES ANALYSIS ERROR:",
+            "SALES ANALYSIS ERROR:",
             repr(error)
         )
 
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail=(
+                "Unable to load sales analysis"
+            )
         )
 
     finally:
