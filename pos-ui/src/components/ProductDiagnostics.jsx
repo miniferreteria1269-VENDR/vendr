@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import apiClient from "../apiClient";
 import * as XLSX from "xlsx";
 import { useLang } from "../LanguageContext";
 import {
@@ -10,7 +10,6 @@ import {
   btnSecondary,
 } from "../uiStyles";
 
-const API = "https://vendr-onkr.onrender.com";
 
 const FILTERS = [
   { key: "all", labelKey: "all" },
@@ -49,7 +48,7 @@ function ProductDiagnostics({ storeId }) {
     setErrorMessage("");
 
     try {
-      const res = await axios.get(`${API}/product-diagnostics`, {
+      const res = await apiClient.get("/product-diagnostics", {
         params: {
           store_id: storeId,
         },
@@ -315,7 +314,7 @@ function ProductDiagnostics({ storeId }) {
     setErrorMessage("");
 
     try {
-      await axios.post(`${API}/price-change`, null, {
+      await apiClient.post("/price-change", null, {
         params: {
           store_id: storeId,
           product_id: selectedProduct.product_id,
@@ -374,7 +373,7 @@ function ProductDiagnostics({ storeId }) {
     setErrorMessage("");
 
     try {
-      await axios.post(`${API}/stock-adjustment`, {
+      await apiClient.post("/stock-adjustment", {
         store_id: storeId,
         product_id: selectedProduct.product_id,
         quantity: Math.abs(difference),
@@ -421,7 +420,7 @@ function ProductDiagnostics({ storeId }) {
     setErrorMessage("");
 
     try {
-      await axios.post(`${API}/review-lst`, {
+      await apiClient.post("/review-lst", {
         store_id: storeId,
         product_id: selectedProduct.product_id,
         low_stock_threshold: parsedLST,
