@@ -7092,26 +7092,92 @@ def cash_balance(
             conn.close()
 
 @app.post("/archive-product")
-def archive_product(store_id: int, product_id: int, is_active: bool):
+def archive_product(
+    store_id: int,
+    product_id: int,
+    is_active: bool,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        UPDATE products
-        SET is_active = %s
-        WHERE product_id = %s
-        AND store_id = %s
-    """, (
-        1 if is_active else 0,
-        product_id,
-        store_id
-    ))
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            UPDATE products
+            SET is_active = %s
+            WHERE product_id = %s
+              AND store_id = %s
+            RETURNING
+                product_id,
+                name,
+                is_active
+            """,
+            (
+                1 if is_active else 0,
+                product_id,
+                store_id
+            )
+        )
 
-    return {"message": "Product status updated"}
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found"
+            )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Product status updated",
+            "product_id": row[0],
+            "name": row[1],
+            "is_active": bool(row[2])
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "ARCHIVE PRODUCT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update product status"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.post("/review-lst")
 def review_lst(data: ReviewLSTRequest):
