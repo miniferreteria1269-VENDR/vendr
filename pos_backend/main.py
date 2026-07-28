@@ -3384,31 +3384,226 @@ def intake_history(
 # -----------------------------
 
 @app.post("/loss")
-def record_loss(store_id:int,product_id:int,quantity:int):
+def record_loss(
+    store_id: int,
+    product_id: int,
+    quantity: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn=db()
-    cursor=conn.cursor()
+    # ---------------------------------------------
+    # VALIDATION
+    # ---------------------------------------------
+    if quantity <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Quantity must be greater than zero"
+        )
 
-    now = datetime.now(timezone.utc).isoformat()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        INSERT INTO events
-        (store_id,event_type,product_id,product_name_at_time,
-        quantity,event_datetime)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """,(store_id,"loss",product_id,None,quantity,now))
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE products
-        SET stock = stock - %s
-        WHERE product_id=%s AND store_id=%s
-    """,(quantity,product_id,store_id))
+        # ---------------------------------------------
+        # LOAD PRODUCT
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                name,
+                cost,
+                price,
+                tracks_stock
+            FROM products
+            WHERE product_id = %s
+              AND store_id = %s
+              AND is_active = 1
+            """,
+            (
+                product_id,
+                store_id
+            )
+        )
 
-    conn.commit()
-    conn.close()
+        product = cursor.fetchone()
 
-    return {"message":"Loss recorded"}
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail="Active product not found"
+            )
 
+        (
+            product_name,
+            cost,
+            price,
+            tracks_stock
+        ) = product
+
+        if (
+            tracks_stock != 1
+            and tracks_stock is not True
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Product does not track stock"
+            )
+
+        numeric_quantity = int(
+            quantity
+        )
+
+        numeric_cost = round(
+            float(cost or 0),
+            2
+        )
+
+        numeric_price = round(
+            float(price or 0),
+            2
+        )
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        # ---------------------------------------------
+        # RECORD LOSS EVENT
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO events (
+                store_id,
+                event_type,
+                product_id,
+                product_name_at_time,
+                quantity,
+                cost_at_time,
+                price_at_time,
+                event_datetime
+            )
+            VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s, %s
+            )
+            RETURNING event_id
+            """,
+            (
+                store_id,
+                "loss",
+                product_id,
+                product_name,
+                numeric_quantity,
+                numeric_cost,
+                numeric_price,
+                now
+            )
+        )
+
+        event_id = cursor.fetchone()[0]
+
+        # ---------------------------------------------
+        # REDUCE STOCK
+        #
+        # Negative stock remains permitted, matching
+        # the rest of VENDR's inventory behavior.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            UPDATE products
+            SET stock =
+                COALESCE(stock, 0) - %s
+            WHERE product_id = %s
+              AND store_id = %s
+              AND is_active = 1
+              AND tracks_stock = 1
+            RETURNING stock
+            """,
+            (
+                numeric_quantity,
+                product_id,
+                store_id
+            )
+        )
+
+        updated_product = cursor.fetchone()
+
+        if not updated_product:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Product could not be updated"
+                )
+            )
+
+        new_stock = int(
+            updated_product[0] or 0
+        )
+
+        conn.commit()
+
+        return {
+            "status":
+                "accepted",
+
+            "message":
+                "Loss recorded",
+
+            "event_id":
+                event_id,
+
+            "product_id":
+                product_id,
+
+            "product_name":
+                product_name,
+
+            "quantity":
+                numeric_quantity,
+
+            "new_stock":
+                new_stock
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "LOSS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to record loss"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 # -----------------------------
 # PRICE CHANGE
