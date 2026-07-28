@@ -4617,34 +4617,89 @@ def set_low_stock(
         conn.close()
 
 @app.get("/low-stock")
-def get_low_stock(store_id: int):
+def get_low_stock(
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        SELECT product_id, name, stock, low_stock_threshold
-        FROM products
-        WHERE store_id = %s
-        AND is_active = 1
-        AND tracks_stock = 1
-        AND stock <= low_stock_threshold
-    """, (store_id,))
+    try:
+        conn = db()
+        cursor = conn.cursor()
 
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT
+                product_id,
+                name,
+                stock,
+                low_stock_threshold
+            FROM products
+            WHERE store_id = %s
+              AND is_active = 1
+              AND tracks_stock = 1
+              AND stock <= low_stock_threshold
+            ORDER BY LOWER(name) ASC
+            """,
+            (store_id,)
+        )
 
-    low_stock = []
+        rows = cursor.fetchall()
 
-    for row in rows:
-        low_stock.append({
-            "product_id": row[0],
-            "name": row[1],
-            "stock": row[2],
-            "threshold": row[3]
-        })
+        low_stock = []
 
-    return {"low_stock": low_stock}
+        for row in rows:
+            low_stock.append({
+                "product_id":
+                    row[0],
+
+                "name":
+                    row[1],
+
+                "stock":
+                    int(row[2] or 0),
+
+                "threshold":
+                    int(row[3] or 0)
+            })
+
+        return {
+            "low_stock":
+                low_stock
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "LOW STOCK ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load low-stock report"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.get("/product-movement-summary")
 def product_movement_summary(
