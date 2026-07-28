@@ -3989,11 +3989,28 @@ def get_product(
             conn.close()
     
 @app.post("/stock-adjustment")
-def stock_adjustment(data: StockAdjustmentRequest):
+def stock_adjustment(
+    data: StockAdjustmentRequest,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != data.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
     conn = None
     cursor = None
 
     try:
+        # ---------------------------------------------
+        # VALIDATION
+        # ---------------------------------------------
         if data.quantity <= 0:
             raise HTTPException(
                 status_code=400,
@@ -4041,8 +4058,12 @@ def stock_adjustment(data: StockAdjustmentRequest):
 
             if existing:
                 return {
-                    "status": "already_processed",
-                    "event_id": existing[0],
+                    "status":
+                        "already_processed",
+
+                    "event_id":
+                        existing[0],
+
                     "client_event_id":
                         data.client_event_id
                 }
@@ -4051,6 +4072,9 @@ def stock_adjustment(data: StockAdjustmentRequest):
             timezone.utc
         ).isoformat()
 
+        # ---------------------------------------------
+        # LOAD PRODUCT
+        # ---------------------------------------------
         cursor.execute(
             """
             SELECT
@@ -4077,7 +4101,12 @@ def stock_adjustment(data: StockAdjustmentRequest):
                 detail="Product not found"
             )
 
-        name, cost, price, tracks_stock = product
+        (
+            name,
+            cost,
+            price,
+            tracks_stock
+        ) = product
 
         if tracks_stock != 1:
             raise HTTPException(
@@ -4087,6 +4116,10 @@ def stock_adjustment(data: StockAdjustmentRequest):
                 )
             )
 
+        quantity = int(
+            data.quantity
+        )
+
         event_type = (
             "stock_adjustment_positive"
             if data.direction == "positive"
@@ -4094,9 +4127,9 @@ def stock_adjustment(data: StockAdjustmentRequest):
         )
 
         stock_delta = (
-            data.quantity
+            quantity
             if data.direction == "positive"
-            else -data.quantity
+            else -quantity
         )
 
         note_parts = []
@@ -4117,6 +4150,9 @@ def stock_adjustment(data: StockAdjustmentRequest):
             else None
         )
 
+        # ---------------------------------------------
+        # RECORD EVENT
+        # ---------------------------------------------
         cursor.execute(
             """
             INSERT INTO events (
@@ -4145,9 +4181,15 @@ def stock_adjustment(data: StockAdjustmentRequest):
                 event_type,
                 data.product_id,
                 name,
-                data.quantity,
-                cost,
-                price,
+                quantity,
+                round(
+                    float(cost or 0),
+                    2
+                ),
+                round(
+                    float(price or 0),
+                    2
+                ),
                 now,
                 adjustment_note,
                 data.client_event_id,
@@ -4158,6 +4200,9 @@ def stock_adjustment(data: StockAdjustmentRequest):
 
         event_id = cursor.fetchone()[0]
 
+        # ---------------------------------------------
+        # UPDATE STOCK
+        # ---------------------------------------------
         cursor.execute(
             """
             UPDATE products
@@ -4177,13 +4222,27 @@ def stock_adjustment(data: StockAdjustmentRequest):
         conn.commit()
 
         return {
-            "status": "accepted",
-            "event_id": event_id,
-            "event_type": event_type,
-            "product_id": data.product_id,
-            "product_name": name,
-            "quantity": data.quantity,
-            "stock_delta": stock_delta,
+            "status":
+                "accepted",
+
+            "event_id":
+                event_id,
+
+            "event_type":
+                event_type,
+
+            "product_id":
+                data.product_id,
+
+            "product_name":
+                name,
+
+            "quantity":
+                quantity,
+
+            "stock_delta":
+                stock_delta,
+
             "client_event_id":
                 data.client_event_id
         }
@@ -4193,8 +4252,8 @@ def stock_adjustment(data: StockAdjustmentRequest):
             conn.rollback()
 
         if (
-            cursor and
-            data.client_event_id
+            cursor
+            and data.client_event_id
         ):
             cursor.execute(
                 """
@@ -4220,8 +4279,10 @@ def stock_adjustment(data: StockAdjustmentRequest):
                 return {
                     "status":
                         "already_processed",
+
                     "event_id":
                         existing[0],
+
                     "client_event_id":
                         data.client_event_id
                 }
@@ -4244,13 +4305,15 @@ def stock_adjustment(data: StockAdjustmentRequest):
             conn.rollback()
 
         print(
-            "🔥 STOCK ADJUSTMENT ERROR:",
+            "STOCK ADJUSTMENT ERROR:",
             repr(error)
         )
 
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail=(
+                "Unable to record stock adjustment"
+            )
         )
 
     finally:
