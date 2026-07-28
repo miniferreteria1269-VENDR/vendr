@@ -3388,6 +3388,7 @@ def record_loss(
     store_id: int,
     product_id: int,
     quantity: int,
+    notes: str = None,
     current_user: AuthenticatedUser = Depends(
         get_current_user
     )
@@ -3409,6 +3410,15 @@ def record_loss(
             status_code=400,
             detail="Quantity must be greater than zero"
         )
+
+    normalized_note = (
+        str(notes).strip()
+        if notes is not None
+        else None
+    )
+
+    if normalized_note == "":
+        normalized_note = None
 
     conn = None
     cursor = None
@@ -3493,11 +3503,13 @@ def record_loss(
                 quantity,
                 cost_at_time,
                 price_at_time,
-                event_datetime
+                event_datetime,
+                note
             )
             VALUES (
                 %s, %s, %s, %s,
-                %s, %s, %s, %s
+                %s, %s, %s, %s,
+                %s
             )
             RETURNING event_id
             """,
@@ -3509,7 +3521,8 @@ def record_loss(
                 numeric_quantity,
                 numeric_cost,
                 numeric_price,
-                now
+                now,
+                normalized_note
             )
         )
 
@@ -3574,6 +3587,9 @@ def record_loss(
             "quantity":
                 numeric_quantity,
 
+            "note":
+                normalized_note,
+
             "new_stock":
                 new_stock
         }
@@ -3604,7 +3620,6 @@ def record_loss(
 
         if conn:
             conn.close()
-
 # -----------------------------
 # PRICE CHANGE
 # -----------------------------
