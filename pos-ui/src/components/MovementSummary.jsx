@@ -4,16 +4,13 @@ import {
 } from "react";
 
 import { useLang } from "../LanguageContext";
-import axios from "axios";
+import apiClient from "../apiClient";
 
 import {
   COLORS,
   card,
   input
 } from "../uiStyles";
-
-const API =
-  "https://vendr-onkr.onrender.com";
 
 const getLocalDateValue = () => {
   const now = new Date();
@@ -116,8 +113,8 @@ function MovementSummary({
 
     try {
       const response =
-        await axios.get(
-          `${API}/cash-movements`,
+        await apiClient.get(
+          "/cash-movements",
           {
             params: {
               store_id:
@@ -293,7 +290,7 @@ function MovementSummary({
 
             const direction =
               Number(
-                movement.direction || 1
+                movement.direction ?? 1
               );
 
             const realAmount =
@@ -389,7 +386,8 @@ function MovementSummary({
                     fontWeight: "bold",
                     color: isPositive
                       ? "#4caf50"
-                      : "#ff5252"
+                      : "#ff5252",
+                    whiteSpace: "nowrap"
                   }}
                 >
                   {isPositive
