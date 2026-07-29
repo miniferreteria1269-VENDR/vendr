@@ -51,8 +51,10 @@ export const savePendingEvent = async ({
     };
   } catch (error) {
     if (
-      error instanceof Dexie.ConstraintError ||
-      error?.name === "ConstraintError"
+      error instanceof
+        Dexie.ConstraintError ||
+      error?.name ===
+        "ConstraintError"
     ) {
       return {
         created: false
@@ -260,4 +262,25 @@ export const migratePendingSalesToEvents =
     }
 
     return migrated;
+  };
+
+/**
+ * Returns the number of events currently waiting
+ * to synchronize.
+ */
+export const getPendingEventCount =
+  async () => {
+    return offlineDb.pendingEvents.count();
+  };
+
+/**
+ * Returns true when at least one event is waiting
+ * to synchronize.
+ */
+export const hasPendingEvents =
+  async () => {
+    const count =
+      await getPendingEventCount();
+
+    return count > 0;
   };
