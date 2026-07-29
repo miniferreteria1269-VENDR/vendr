@@ -15,6 +15,14 @@ const getSyncErrorMessage = error => {
   );
 };
 
+const isConnectionError = error => {
+  return (
+    !navigator.onLine ||
+    error?.code === "ECONNABORTED" ||
+    error?.code === "ERR_NETWORK"
+  );
+};
+
 export const syncPendingEvents = async () => {
   if (syncInProgress) {
     return {
@@ -97,7 +105,7 @@ export const syncPendingEvents = async () => {
           }
         );
 
-        if (!navigator.onLine) {
+        if (isConnectionError(error)) {
           results.offline = true;
           break;
         }
