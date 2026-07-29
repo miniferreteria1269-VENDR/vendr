@@ -4,7 +4,10 @@ import axios from "axios";
 
 const apiClient = axios.create({
   baseURL:
-    "https://vendr-onkr.onrender.com"
+    "https://vendr-onkr.onrender.com",
+
+  // Prevent requests from remaining pending forever.
+  timeout: 10000
 });
 
 apiClient.interceptors.request.use(
