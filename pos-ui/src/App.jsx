@@ -303,100 +303,177 @@ function App() {
   // -------------------------------------------------
 
   useEffect(() => {
-    const runSync = async () => {
-      if (!navigator.onLine || !storeId) {
-        return;
+  let syncInProgress = false;
+
+  const runSync = async () => {
+    /*
+     * Do not synchronize without a store,
+     * without internet, or while another
+     * synchronization attempt is running.
+     */
+    if (
+      !storeId ||
+      !navigator.onLine ||
+      syncInProgress
+    ) {
+      return;
+    }
+
+    syncInProgress = true;
+
+    try {
+      /*
+       * Move any legacy pendingSales records into
+       * the generic pendingEvents queue.
+       */
+      const migrated =
+        await migratePendingSalesToEvents();
+
+      if (migrated > 0) {
+        console.log(
+          `Migrated ${migrated} legacy pending event(s).`
+        );
       }
 
-      try {
-        // Move any legacy pendingSales records into
-        // the new generic pendingEvents queue.
-        const migrated =
-          await migratePendingSalesToEvents();
+      const results =
+        await syncPendingEvents();
 
-        if (migrated > 0) {
-          console.log(
-            `Migrated ${migrated} legacy pending sale(s).`
-          );
-        }
+      if (results.synced > 0) {
+        console.log(
+          `Synced ${results.synced} pending event(s).`
+        );
 
-        const results =
-          await syncPendingEvents();
+        const syncedIds = new Set(
+          results.syncedClientEventIds
+        );
 
-        if (results.synced > 0) {
-          console.log(
-            `Synced ${results.synced} pending event(s).`
-          );
-
-          const syncedIds = new Set(
-            results.syncedClientEventIds
-          );
-
-          // At this stage, every generic event being synced
-          // is still a sale, so matching open sale tickets
-          // can be safely removed.
-          setTickets(previousTickets => {
-            const remainingTickets =
-              previousTickets.filter(
-                ticket =>
-                  !ticket.client_event_id ||
-                 !syncedIds.has(
-                    ticket.client_event_id
-                  )
-              );
-
-            setActiveTicket(
-              previousActiveTicket => {
-                const activeStillExists =
-                  remainingTickets.some(
-                    ticket =>
-                      ticket.id ===
-                      previousActiveTicket
-                  );
-
-                if (activeStillExists) {
-                  return previousActiveTicket;
-                }
-
-                return remainingTickets.length > 0
-                  ? remainingTickets[0].id
-                  : null;
-              }
+        /*
+         * Remove tickets whose events were
+         * successfully synchronized.
+         */
+        setTickets(previousTickets => {
+          const remainingTickets =
+            previousTickets.filter(
+              ticket =>
+                !ticket.client_event_id ||
+                !syncedIds.has(
+                  ticket.client_event_id
+                )
             );
 
-            return remainingTickets;
-          });
+          setActiveTicket(
+            previousActiveTicket => {
+              const activeStillExists =
+                remainingTickets.some(
+                  ticket =>
+                    ticket.id ===
+                    previousActiveTicket
+                );
 
-          await loadProducts();
-        }
+              if (activeStillExists) {
+                return previousActiveTicket;
+              }
 
-        if (results.failed > 0) {
-          console.warn(
-            `${results.failed} pending event(s) could not be synchronized.`
+              return remainingTickets.length > 0
+                ? remainingTickets[0].id
+                : null;
+            }
           );
-        }
-      } catch (error) {
-        console.error(
-          "PENDING EVENTS SYNC ERROR:",
+
+          return remainingTickets;
+        });
+
+        await loadProducts();
+      }
+
+      if (results.failed > 0) {
+        console.warn(
+          `${results.failed} pending event(s) remain unsynchronized.`
+        );
+      }
+    } catch (error) {
+      /*
+       * A failed retry is expected when Render
+       * or the network is unavailable. The event
+       * remains safely stored for the next attempt.
+       */
+      if (
+        error.code === "ECONNABORTED"
+      ) {
+        console.warn(
+          "PENDING EVENT SYNC TIMED OUT. WILL RETRY."
+        );
+      } else {
+        console.warn(
+          "PENDING EVENT SYNC UNAVAILABLE. WILL RETRY:",
           error
         );
       }
-    };
+    } finally {
+      syncInProgress = false;
+    }
+  };
 
-    runSync();
+  /*
+   * Attempt synchronization immediately whenever
+   * the user/store session is restored.
+   */
+  runSync();
 
-    window.addEventListener(
+  /*
+   * Retry every 30 seconds. The overlap guard
+   * prevents two attempts from running together.
+   */
+  const retryInterval =
+    window.setInterval(
+      runSync,
+      30000
+    );
+
+  /*
+   * Retry immediately when the browser detects
+   * that internet connectivity has returned.
+   */
+  window.addEventListener(
+    "online",
+    runSync
+  );
+
+  /*
+   * Also retry when the cashier returns to the tab.
+   * Browsers often throttle intervals in background
+   * tabs, so this avoids waiting for the next cycle.
+   */
+  const handleVisibilityChange = () => {
+    if (
+      document.visibilityState ===
+      "visible"
+    ) {
+      runSync();
+    }
+  };
+
+  document.addEventListener(
+    "visibilitychange",
+    handleVisibilityChange
+  );
+
+  return () => {
+    window.clearInterval(
+      retryInterval
+    );
+
+    window.removeEventListener(
       "online",
       runSync
     );
 
-    return () => {
-      window.removeEventListener(
-        "online",
-        runSync
-      );
-    };
-  }, [storeId]);
+    document.removeEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+  };
+}, [storeId]);
 
   // -------------------------------------------------
   // TICKETS
