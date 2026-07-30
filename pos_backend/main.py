@@ -11107,13 +11107,13 @@ def get_product_supplier_summary(
             LEFT JOIN product_suppliers ps
                 ON ps.store_id = p.store_id
                AND ps.product_id = p.product_id
-               AND ps.is_preferred = 1
+               AND ps.is_preferred = TRUE
 
             LEFT JOIN suppliers s
                 ON s.supplier_id = ps.supplier_id
 
             WHERE p.store_id = %s
-              AND p.is_active = 1
+              AND p.is_active = TRUE
 
             ORDER BY
                 LOWER(p.name) ASC
