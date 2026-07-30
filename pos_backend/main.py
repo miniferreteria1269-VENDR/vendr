@@ -10345,6 +10345,213 @@ def cash_movements(
 
         if conn:
             conn.close()
+
+@app.post("/suppliers")
+def create_supplier(
+    supplier_name: str,
+    contact_name: str | None = None,
+    phone: str | None = None,
+    whatsapp: str | None = None,
+    email: str | None = None,
+    address: str | None = None,
+    notes: str | None = None,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+
+        supplier_name = str(
+            supplier_name or ""
+        ).strip()
+
+        if (
+            not supplier_name
+            or supplier_name.lower()
+            in (
+                "none",
+                "nan"
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid supplier name"
+            )
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # DETERMINE OWNER
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT organization_id
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (
+                current_user.store_id,
+            )
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        organization_id = row[0]
+
+        if organization_id is None:
+            owner_store_id = current_user.store_id
+        else:
+            owner_store_id = None
+
+        # ---------------------------------------------
+        # DUPLICATE CHECK
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT 1
+            FROM suppliers
+            WHERE
+                LOWER(TRIM(supplier_name))
+                    = LOWER(TRIM(%s))
+            AND
+                COALESCE(
+                    organization_id,
+                    -store_id
+                )
+                =
+                COALESCE(
+                    %s,
+                    -%s
+                )
+            AND
+                is_active = TRUE
+            LIMIT 1
+            """,
+            (
+                supplier_name,
+                organization_id,
+                owner_store_id
+            )
+        )
+
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=400,
+                detail="Supplier already exists"
+            )
+
+        # ---------------------------------------------
+        # INSERT
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO suppliers (
+                organization_id,
+                store_id,
+                supplier_name,
+                contact_name,
+                phone,
+                whatsapp,
+                email,
+                address,
+                notes
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+            RETURNING
+                supplier_id,
+                organization_id,
+                store_id,
+                supplier_name,
+                contact_name,
+                phone,
+                whatsapp,
+                email,
+                address,
+                notes,
+                is_active,
+                created_at
+            """,
+            (
+                organization_id,
+                owner_store_id,
+                supplier_name,
+                contact_name,
+                phone,
+                whatsapp,
+                email,
+                address,
+                notes
+            )
+        )
+
+        supplier = cursor.fetchone()
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Supplier created",
+            "supplier": {
+                "supplier_id": supplier[0],
+                "organization_id": supplier[1],
+                "store_id": supplier[2],
+                "supplier_name": supplier[3],
+                "contact_name": supplier[4],
+                "phone": supplier[5],
+                "whatsapp": supplier[6],
+                "email": supplier[7],
+                "address": supplier[8],
+                "notes": supplier[9],
+                "is_active": supplier[10],
+                "created_at": supplier[11]
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CREATE SUPPLIER ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create supplier"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
             
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
