@@ -70,7 +70,7 @@ function ProductManagement({ storeId }) {
         {pmView === "transfer" && <StockTransfer storeId={storeId} />}
         {pmView === "archive" && <ArchiveProduct storeId={storeId} />}
         {pmView === "suppliers" && (
-            <ProductSupplierManagement />
+          <ProductSupplierManagement storeId={storeId} />
         )}
         {pmView === "import" && <ProductImporter storeId={storeId} />}
       </div>
