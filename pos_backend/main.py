@@ -10553,6 +10553,9 @@ def create_supplier(
         if conn:
             conn.close()
 
+from fastapi import Depends, HTTPException
+
+
 @app.get("/suppliers")
 def get_suppliers(
     current_user: AuthenticatedUser = Depends(
@@ -10616,19 +10619,23 @@ def get_suppliers(
             WHERE
                 is_active = TRUE
             AND
-                COALESCE(
-                    organization_id,
-                    -store_id
+            (
+                (
+                    %s IS NOT NULL
+                    AND organization_id = %s
                 )
-                =
-                COALESCE(
-                    %s,
-                    -%s
+                OR
+                (
+                    %s IS NULL
+                    AND store_id = %s
                 )
+            )
             ORDER BY
                 supplier_name ASC
             """,
             (
+                organization_id,
+                organization_id,
                 organization_id,
                 owner_store_id
             )
