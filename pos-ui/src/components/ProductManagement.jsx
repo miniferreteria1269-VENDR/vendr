@@ -5,7 +5,7 @@ import {
   savePendingEvent,
   submitPendingEvent
 } from "../offlineEvents";
-
+import ProductSupplierManagement from "./ProductSupplierManagement";
 import {
   searchCachedProducts,
   applyLocalStockAdjustmentToCatalog
@@ -70,7 +70,7 @@ function ProductManagement({ storeId }) {
         {pmView === "transfer" && <StockTransfer storeId={storeId} />}
         {pmView === "archive" && <ArchiveProduct storeId={storeId} />}
         {pmView === "suppliers" && (
-            <ProductSuppliers storeId={storeId} />
+            <ProductSupplierManagement />
         )}
         {pmView === "import" && <ProductImporter storeId={storeId} />}
       </div>
