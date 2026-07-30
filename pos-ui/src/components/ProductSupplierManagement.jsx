@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import apiClient from "../apiClient";
 
-export default function ProductSupplierManagement() {
+export default function ProductSupplierManagement({ storeId }) {
   const [products, setProducts] = useState([]);
   const [selectedProductId, setSelectedProductId] = useState(null);
 
@@ -11,8 +11,10 @@ export default function ProductSupplierManagement() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+    if (storeId) {
+      loadProducts();
+    }
+  }, [storeId]);
 
   async function loadProducts() {
     setLoading(true);
@@ -20,13 +22,18 @@ export default function ProductSupplierManagement() {
 
     try {
       const response = await apiClient.get(
-        "/product-supplier-summary"
+        "/product-supplier-summary",
+        {
+          params: {
+            store_id: storeId
+          }
+        }
       );
 
       setProducts(response.data.products || []);
     } catch (err) {
       console.error(
-        "Failed to load product-supplier summary:",
+        "Failed to load product supplier summary:",
         err
       );
 
@@ -40,11 +47,9 @@ export default function ProductSupplierManagement() {
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
 
-    if (!term) {
-      return products;
-    }
+    if (!term) return products;
 
-    return products.filter((product) =>
+    return products.filter(product =>
       String(product.product_name || "")
         .toLowerCase()
         .includes(term)
@@ -53,12 +58,12 @@ export default function ProductSupplierManagement() {
 
   const selectedProduct =
     products.find(
-      (product) =>
-        product.product_id === selectedProductId
+      product => product.product_id === selectedProductId
     ) || null;
 
   return (
     <div>
+
       <h3 style={{ marginTop: 0 }}>
         Product Suppliers
       </h3>
@@ -67,9 +72,7 @@ export default function ProductSupplierManagement() {
         type="text"
         placeholder="Search products..."
         value={search}
-        onChange={(event) =>
-          setSearch(event.target.value)
-        }
+        onChange={(e) => setSearch(e.target.value)}
         style={{
           width: "100%",
           maxWidth: 420,
@@ -79,7 +82,9 @@ export default function ProductSupplierManagement() {
         }}
       />
 
-      {loading && <p>Loading products...</p>}
+      {loading && (
+        <p>Loading products...</p>
+      )}
 
       {error && (
         <p style={{ color: "#ff6b6b" }}>
@@ -88,6 +93,7 @@ export default function ProductSupplierManagement() {
       )}
 
       {!loading && !error && (
+
         <div
           style={{
             overflowX: "auto",
@@ -95,14 +101,18 @@ export default function ProductSupplierManagement() {
             borderRadius: 6
           }}
         >
+
           <table
             style={{
               width: "100%",
               borderCollapse: "collapse"
             }}
           >
+
             <thead>
+
               <tr>
+
                 <th style={headerCellStyle}>
                   Product
                 </th>
@@ -118,12 +128,17 @@ export default function ProductSupplierManagement() {
                 <th style={headerCellStyle}>
                   Supply Cycle
                 </th>
+
               </tr>
+
             </thead>
 
             <tbody>
+
               {filteredProducts.length === 0 ? (
+
                 <tr>
+
                   <td
                     colSpan={4}
                     style={{
@@ -133,32 +148,38 @@ export default function ProductSupplierManagement() {
                   >
                     No products found.
                   </td>
+
                 </tr>
+
               ) : (
-                filteredProducts.map((product) => {
+
+                filteredProducts.map(product => {
+
                   const isSelected =
-                    product.product_id ===
-                    selectedProductId;
+                    product.product_id === selectedProductId;
 
                   const additionalSuppliers =
-                    Number(product.supplier_count || 0) -
-                    1;
+                    Math.max(
+                      (product.supplier_count || 0) - 1,
+                      0
+                    );
 
                   return (
+
                     <tr
                       key={product.product_id}
                       onClick={() =>
-                        setSelectedProductId(
-                          product.product_id
-                        )
+                        setSelectedProductId(product.product_id)
                       }
                       style={{
                         cursor: "pointer",
-                        backgroundColor: isSelected
-                          ? "#26354d"
-                          : "transparent"
+                        backgroundColor:
+                          isSelected
+                            ? "#26354d"
+                            : "transparent"
                       }}
                     >
+
                       <td style={bodyCellStyle}>
                         {product.product_name}
                       </td>
@@ -166,9 +187,7 @@ export default function ProductSupplierManagement() {
                       <td style={bodyCellStyle}>
                         {product.preferred_supplier_name ? (
                           <>
-                            {
-                              product.preferred_supplier_name
-                            }
+                            {product.preferred_supplier_name}
 
                             {additionalSuppliers > 0 && (
                               <span>
@@ -176,6 +195,7 @@ export default function ProductSupplierManagement() {
                                 (+{additionalSuppliers})
                               </span>
                             )}
+
                           </>
                         ) : (
                           "—"
@@ -184,24 +204,30 @@ export default function ProductSupplierManagement() {
 
                       <td style={bodyCellStyle}>
                         {product.last_cost != null
-                          ? `$${Number(
-                              product.last_cost
-                            ).toFixed(2)}`
+                          ? `$${Number(product.last_cost).toFixed(2)}`
                           : "—"}
                       </td>
 
                       <td style={bodyCellStyle}>
-                        {product.supply_cycle ||
-                          product.lead_time_days ||
+                        {product.supply_cycle ??
+                          product.lead_time_days ??
                           "—"}
                       </td>
+
                     </tr>
+
                   );
+
                 })
+
               )}
+
             </tbody>
+
           </table>
+
         </div>
+
       )}
 
       <div
@@ -211,8 +237,11 @@ export default function ProductSupplierManagement() {
           borderTop: "1px solid #303642"
         }}
       >
+
         {selectedProduct ? (
+
           <>
+
             <h3 style={{ marginTop: 0 }}>
               {selectedProduct.product_name}
             </h3>
@@ -220,13 +249,19 @@ export default function ProductSupplierManagement() {
             <p style={{ marginBottom: 0 }}>
               Supplier management panel coming next.
             </p>
+
           </>
+
         ) : (
+
           <p style={{ margin: 0 }}>
             Select a product to manage its suppliers.
           </p>
+
         )}
+
       </div>
+
     </div>
   );
 }
