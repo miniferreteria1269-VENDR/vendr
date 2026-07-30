@@ -2497,8 +2497,38 @@ def create_product(
                 )
             )
 
-        normalized_tracks_stock = bool(
+        normalized_stock = int(
+            initial_stock
+        )
+
+        normalized_cost = round(
+            float(cost),
+            2
+        )
+
+        normalized_price = round(
+            float(price),
+            2
+        )
+
+        normalized_threshold = int(
+            low_stock_threshold
+        )
+
+        # events.tracks_stock is BOOLEAN
+        tracks_stock_bool = bool(
             tracks_stock
+        )
+
+        # products.tracks_stock is INTEGER
+        tracks_stock_value = (
+            1
+            if tracks_stock_bool
+            else 0
+        )
+
+        lst_reviewed = (
+            normalized_threshold > 0
         )
 
         conn = db()
@@ -2513,7 +2543,9 @@ def create_product(
             FROM stores
             WHERE store_id = %s
             """,
-            (store_id,)
+            (
+                store_id,
+            )
         )
 
         if not cursor.fetchone():
@@ -2530,6 +2562,7 @@ def create_product(
             SELECT 1
             FROM products
             WHERE store_id = %s
+              AND is_active = 1
               AND LOWER(TRIM(name)) =
                   LOWER(TRIM(%s))
             LIMIT 1
@@ -2548,9 +2581,6 @@ def create_product(
 
         # ---------------------------------------------
         # SERIALIZE PRODUCT ID GENERATION
-        #
-        # Prevents simultaneous creation requests from
-        # receiving the same MAX(product_id) + 1.
         # ---------------------------------------------
         cursor.execute(
             """
@@ -2570,19 +2600,22 @@ def create_product(
             FROM events
             WHERE store_id = %s
             """,
-            (store_id,)
+            (
+                store_id,
+            )
         )
 
         product_id = (
-            cursor.fetchone()[0] + 1
+            int(cursor.fetchone()[0]) + 1
         )
 
-        now = datetime.now(
+        event_datetime = datetime.now(
             timezone.utc
-        ).isoformat()
+        )
 
         # ---------------------------------------------
-        # CREATE EVENT
+        # WRITE CREATE EVENT
+        # events.tracks_stock expects BOOLEAN
         # ---------------------------------------------
         cursor.execute(
             """
@@ -2610,51 +2643,115 @@ def create_product(
                 %s,
                 %s
             )
+            RETURNING event_id
             """,
             (
                 store_id,
                 product_id,
                 normalized_name,
-                int(initial_stock),
-                round(
-                    float(cost),
-                    2
-                ),
-                round(
-                    float(price),
-                    2
-                ),
-                normalized_tracks_stock,
-                int(low_stock_threshold),
-                now
+                normalized_stock,
+                normalized_cost,
+                normalized_price,
+                tracks_stock_bool,
+                normalized_threshold,
+                event_datetime
             )
         )
 
+        event_id = cursor.fetchone()[0]
+
+        # ---------------------------------------------
+        # INSERT PRODUCT PROJECTION
+        # products.tracks_stock expects INTEGER
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO products (
+                product_id,
+                store_id,
+                name,
+                stock,
+                cost,
+                price,
+                tracks_stock,
+                low_stock_threshold,
+                lst_reviewed,
+                is_active,
+                created_at
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                NOW()
+            )
+            RETURNING
+                product_id,
+                name,
+                stock,
+                cost,
+                price,
+                tracks_stock,
+                low_stock_threshold,
+                lst_reviewed,
+                is_active
+            """,
+            (
+                product_id,
+                store_id,
+                normalized_name,
+                normalized_stock,
+                normalized_cost,
+                normalized_price,
+                tracks_stock_value,
+                normalized_threshold,
+                lst_reviewed,
+                1
+            )
+        )
+
+        product_row = cursor.fetchone()
+
+        # Event and projection commit together.
         conn.commit()
 
-        # ---------------------------------------------
-        # REBUILD PRODUCTS TABLE
-        # ---------------------------------------------
-        from pos_backend.rebuild_products import (
-            rebuild_products
-        )
-
-        rebuild_products(
-            store_id
-        )
-
         return {
-            "status":
-                "accepted",
-
-            "product_id":
-                product_id,
-
-            "store_id":
-                store_id,
-
-            "name":
-                normalized_name
+            "status": "accepted",
+            "message": "Product created",
+            "event_id": event_id,
+            "product": {
+                "product_id": product_row[0],
+                "store_id": store_id,
+                "name": product_row[1],
+                "stock": int(
+                    product_row[2] or 0
+                ),
+                "cost": float(
+                    product_row[3] or 0
+                ),
+                "price": float(
+                    product_row[4] or 0
+                ),
+                "tracks_stock": int(
+                    product_row[5] or 0
+                ),
+                "low_stock_threshold": int(
+                    product_row[6] or 0
+                ),
+                "lst_reviewed": bool(
+                    product_row[7]
+                ),
+                "is_active": int(
+                    product_row[8] or 0
+                )
+            }
         }
 
     except HTTPException:
@@ -2662,6 +2759,23 @@ def create_product(
             conn.rollback()
 
         raise
+
+    except psycopg2.IntegrityError as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CREATE PRODUCT INTEGRITY ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Product could not be created "
+                "because of a database conflict"
+            )
+        )
 
     except Exception as error:
         if conn:
