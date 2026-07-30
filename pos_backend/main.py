@@ -10552,6 +10552,133 @@ def create_supplier(
 
         if conn:
             conn.close()
+
+@app.get("/suppliers")
+def get_suppliers(
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # DETERMINE OWNER
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT organization_id
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (
+                current_user.store_id,
+            )
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        organization_id = row[0]
+
+        if organization_id is None:
+            owner_store_id = current_user.store_id
+        else:
+            owner_store_id = None
+
+        # ---------------------------------------------
+        # GET SUPPLIERS
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                supplier_id,
+                supplier_name,
+                contact_name,
+                phone,
+                whatsapp,
+                email,
+                address,
+                notes,
+                is_active,
+                created_at
+            FROM suppliers
+            WHERE
+                is_active = TRUE
+            AND
+                COALESCE(
+                    organization_id,
+                    -store_id
+                )
+                =
+                COALESCE(
+                    %s,
+                    -%s
+                )
+            ORDER BY
+                supplier_name ASC
+            """,
+            (
+                organization_id,
+                owner_store_id
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        suppliers = []
+
+        for row in rows:
+            suppliers.append({
+                "supplier_id": row[0],
+                "supplier_name": row[1],
+                "contact_name": row[2],
+                "phone": row[3],
+                "whatsapp": row[4],
+                "email": row[5],
+                "address": row[6],
+                "notes": row[7],
+                "is_active": row[8],
+                "created_at": row[9]
+            })
+
+        return {
+            "status": "accepted",
+            "suppliers": suppliers
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "GET SUPPLIERS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve suppliers"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
             
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
