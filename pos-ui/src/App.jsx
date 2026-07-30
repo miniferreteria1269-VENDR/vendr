@@ -14,6 +14,7 @@ import ProductDiagnostics from "./components/ProductDiagnostics";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
+import SupplierManagement from "./components/SupplierManagement";
 
 import {
   cacheProducts,
@@ -1166,6 +1167,7 @@ const finalizeIntake = async () => {
             "pos",
             "sales",
             "inventory",
+            "suppliers",
             "products",
             "analysis",
             "diagnostics",
@@ -1279,6 +1281,11 @@ const finalizeIntake = async () => {
           storeId={storeId}
         />
       )}
+
+      {/* SUPPLIERS */}
+      {view === "suppliers" && (
+        <SupplierManagement />
+      )}  
 
       {/* ANALYSIS */}
       {view === "analysis" && (
