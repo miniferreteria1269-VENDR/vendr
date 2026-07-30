@@ -11098,6 +11098,9 @@ def get_product_supplier_summary(
                 (
                     SELECT COUNT(*)
                     FROM product_suppliers ps2
+                    INNER JOIN suppliers s2
+                        ON s2.supplier_id = ps2.supplier_id
+                       AND s2.is_active = TRUE
                     WHERE ps2.store_id = p.store_id
                       AND ps2.product_id = p.product_id
                 ) AS supplier_count
@@ -11111,9 +11114,10 @@ def get_product_supplier_summary(
 
             LEFT JOIN suppliers s
                 ON s.supplier_id = ps.supplier_id
+               AND s.is_active = TRUE
 
             WHERE p.store_id = %s
-              AND p.is_active = TRUE
+              AND p.is_active = 1
 
             ORDER BY
                 LOWER(p.name) ASC
@@ -11165,7 +11169,6 @@ def get_product_supplier_summary(
 
         if conn:
             conn.close()
-
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
     rebuild_products(store_id)
