@@ -11065,18 +11065,27 @@ def assign_supplier_to_product(
 
 @app.get("/product-supplier-summary")
 def get_product_supplier_summary(
-    current_user: User = Depends(get_current_user)
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
     try:
+        conn = db()
+        cursor = conn.cursor()
 
         cursor.execute(
             """
             SELECT
-
                 p.product_id,
                 p.name,
 
@@ -11089,66 +11098,73 @@ def get_product_supplier_summary(
                 (
                     SELECT COUNT(*)
                     FROM product_suppliers ps2
-                    WHERE
-                        ps2.store_id = p.store_id
-                    AND
-                        ps2.product_id = p.product_id
+                    WHERE ps2.store_id = p.store_id
+                      AND ps2.product_id = p.product_id
                 ) AS supplier_count
 
             FROM products p
 
             LEFT JOIN product_suppliers ps
-                ON
-                    ps.store_id = p.store_id
-                AND
-                    ps.product_id = p.product_id
-                AND
-                    ps.is_preferred = TRUE
+                ON ps.store_id = p.store_id
+               AND ps.product_id = p.product_id
+               AND ps.is_preferred = 1
 
             LEFT JOIN suppliers s
-                ON
-                    s.supplier_id = ps.supplier_id
+                ON s.supplier_id = ps.supplier_id
 
-            WHERE
-
-                p.store_id = %s
-
-            AND
-                p.is_active = TRUE
+            WHERE p.store_id = %s
+              AND p.is_active = 1
 
             ORDER BY
-                p.name;
+                LOWER(p.name) ASC
             """,
-            (
-                current_user.store_id,
-            )
+            (store_id,)
         )
 
         rows = cursor.fetchall()
 
-        summary = []
+        products = []
 
         for row in rows:
-
-            summary.append({
+            products.append({
                 "product_id": row[0],
                 "product_name": row[1],
                 "preferred_supplier_id": row[2],
                 "preferred_supplier_name": row[3],
-                "last_cost": row[4],
+                "last_cost": (
+                    float(row[4])
+                    if row[4] is not None
+                    else None
+                ),
                 "lead_time_days": row[5],
-                "supplier_count": row[6]
+                "supplier_count": int(row[6] or 0)
             })
 
         return {
             "status": "accepted",
-            "products": summary
+            "products": products
         }
 
-    finally:
+    except HTTPException:
+        raise
 
-        cursor.close()
-        conn.close()
+    except Exception as error:
+        print(
+            "GET PRODUCT SUPPLIER SUMMARY ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load product supplier summary"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
