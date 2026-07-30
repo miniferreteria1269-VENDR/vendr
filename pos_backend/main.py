@@ -347,6 +347,31 @@ password_hash = (
     PasswordHash.recommended()
 )
 
+def verify_product(
+    cursor,
+    store_id: int,
+    product_id: int
+):
+    cursor.execute(
+        """
+        SELECT 1
+        FROM products
+        WHERE
+            store_id = %s
+        AND
+            product_id = %s
+        """,
+        (
+            store_id,
+            product_id
+        )
+    )
+
+    if not cursor.fetchone():
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found"
+        )
 
 def hash_password(
     plain_password: str
@@ -10684,6 +10709,122 @@ def get_suppliers(
         raise HTTPException(
             status_code=500,
             detail="Unable to retrieve suppliers"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.get("/products/{product_id}/suppliers")
+def get_product_suppliers(
+    product_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VERIFY PRODUCT
+        # ---------------------------------------------
+        verify_product(
+            cursor,
+            current_user.store_id,
+            product_id
+        )
+
+        # ---------------------------------------------
+        # GET SUPPLIERS
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+
+                s.supplier_id,
+                s.supplier_name,
+                s.contact_name,
+                s.phone,
+                s.whatsapp,
+                s.email,
+
+                ps.is_preferred,
+                ps.supplier_sku,
+                ps.last_cost,
+                ps.lead_time_days
+
+            FROM product_suppliers ps
+
+            INNER JOIN suppliers s
+                ON s.supplier_id = ps.supplier_id
+
+            WHERE
+                ps.store_id = %s
+            AND
+                ps.product_id = %s
+            AND
+                s.is_active = TRUE
+
+            ORDER BY
+
+                ps.is_preferred DESC,
+                s.supplier_name ASC
+            """,
+            (
+                current_user.store_id,
+                product_id
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        suppliers = []
+
+        for row in rows:
+
+            suppliers.append({
+
+                "supplier_id": row[0],
+                "supplier_name": row[1],
+                "contact_name": row[2],
+                "phone": row[3],
+                "whatsapp": row[4],
+                "email": row[5],
+
+                "is_preferred": row[6],
+                "supplier_sku": row[7],
+                "last_cost": row[8],
+                "lead_time_days": row[9]
+
+            })
+
+        return {
+            "status": "accepted",
+            "suppliers": suppliers
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "GET PRODUCT SUPPLIERS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve product suppliers"
         )
 
     finally:
