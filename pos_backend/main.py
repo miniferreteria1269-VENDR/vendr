@@ -8297,171 +8297,509 @@ def growth_analysis_data(
 @app.post("/import-products")
 async def import_products(
     store_id: int,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
-
-    # -----------------------------
-    # Read file
-    # -----------------------------
-    try:
-        if file.filename.endswith(".xlsx"):
-            df = pd.read_excel(file.file)
-
-        elif file.filename.endswith(".csv"):
-            df = pd.read_csv(file.file)
-
-        else:
-            raise HTTPException(status_code=400, detail="Invalid file format")
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"File read error: {str(e)}")
-
-    # -----------------------------
-    # Normalize column names
-    # -----------------------------
-    df.columns = [str(col).strip().lower() for col in df.columns]
-
-    # -----------------------------
-    # Validate structure
-    # -----------------------------
-    missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
-
-    if missing:
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
         raise HTTPException(
-            status_code=400,
-            detail=f"Missing required columns: {missing}"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
         )
 
-    conn = db()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    created = 0
-    rejected = []
+    try:
+        # ---------------------------------------------
+        # VALIDATE FILE
+        # ---------------------------------------------
+        filename = str(
+            file.filename or ""
+        ).strip().lower()
 
-    # -----------------------------
-    # Get next product_id
-    # -----------------------------
-    cursor.execute(
-        "SELECT COALESCE(MAX(product_id), 0) FROM events WHERE store_id = %s",
-        (store_id,)
-    )
-
-    next_product_id = cursor.fetchone()[0] + 1
-
-    now = datetime.now(timezone.utc).isoformat()
-
-    # -----------------------------
-    # Process rows
-    # -----------------------------
-    for i, row in df.iterrows():
-
-        try:
-            # -----------------------------
-            # NAME (required)
-            # -----------------------------
-            name = str(row["name"]).strip()
-
-            if not name:
-                raise ValueError("Missing product name")
-
-            # -----------------------------
-            # DUPLICATE CHECK
-            # -----------------------------
-            cursor.execute(
-                """
-                SELECT 1 FROM products
-                WHERE store_id = %s
-                AND LOWER(name) = LOWER(%s)
-                """,
-                (store_id, name)
+        if not filename:
+            raise HTTPException(
+                status_code=400,
+                detail="File name is missing"
             )
 
-            if cursor.fetchone():
-                raise ValueError("Duplicate product name")
-
-            # -----------------------------
-            # PARSE NUMBERS (STRICT)
-            # -----------------------------
-            try:
-                initial_stock = int(row["initial_stock"])
-            except:
-                raise ValueError("Invalid initial_stock")
-
-            try:
-                cost = float(row["cost"])
-            except:
-                raise ValueError("Invalid cost")
-
-            try:
-                price = float(row["price"])
-            except:
-                raise ValueError("Invalid price")
-
-            # -----------------------------
-            # BOOLEAN (tracks_stock)
-            # -----------------------------
-            tracks_stock_raw = str(row["tracks_stock"]).strip().lower()
-
-            if tracks_stock_raw not in ["true", "false"]:
-                raise ValueError("tracks_stock must be TRUE or FALSE")
-
-            tracks_stock = tracks_stock_raw == "true"
-
-            # -----------------------------
-            # LOW STOCK (optional)
-            # -----------------------------
-            try:
-                low_stock_threshold = int(row["low_stock_threshold"])
-            except:
-                low_stock_threshold = 0
-
-            # -----------------------------
-            # INSERT EVENT
-            # -----------------------------
-            cursor.execute("""
-                INSERT INTO events (
-                    store_id,
-                    event_type,
-                    product_id,
-                    product_name_at_time,
-                    quantity,
-                    cost_at_time,
-                    price_at_time,
-                    event_datetime
+        if not (
+            filename.endswith(".xlsx")
+            or filename.endswith(".csv")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Invalid file format. "
+                    "Use .xlsx or .csv"
                 )
-                VALUES (%s, 'create', %s, %s, %s, %s, %s, %s)
-            """, (
+            )
+
+        # ---------------------------------------------
+        # READ FILE
+        # ---------------------------------------------
+        try:
+            if filename.endswith(".xlsx"):
+                df = pd.read_excel(
+                    file.file
+                )
+            else:
+                df = pd.read_csv(
+                    file.file
+                )
+
+        except Exception as error:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "File read error: "
+                    f"{str(error)}"
+                )
+            )
+
+        if df.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="The import file is empty"
+            )
+
+        # ---------------------------------------------
+        # NORMALIZE COLUMN NAMES
+        # ---------------------------------------------
+        df.columns = [
+            str(column).strip().lower()
+            for column in df.columns
+        ]
+
+        # ---------------------------------------------
+        # VALIDATE FILE STRUCTURE
+        # ---------------------------------------------
+        missing_columns = [
+            column
+            for column in REQUIRED_COLUMNS
+            if column not in df.columns
+        ]
+
+        if missing_columns:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Missing required columns: "
+                    f"{missing_columns}"
+                )
+            )
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VALIDATE STORE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT 1
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (
                 store_id,
-                next_product_id,
-                name,
-                initial_stock,
-                cost,
-                price,
-                now
-            ))
+            )
+        )
 
-            next_product_id += 1
-            created += 1
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
 
-        except Exception as e:
-            rejected.append({
-                "row": i + 2,
-                "error": str(e)
-            })
+        # ---------------------------------------------
+        # SERIALIZE PRODUCT ID GENERATION
+        #
+        # This must use the same advisory-lock key as
+        # the normal create-product endpoint.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT pg_advisory_xact_lock(%s)
+            """,
+            (
+                2269000 + store_id,
+            )
+        )
 
-    conn.commit()
-    conn.close()
+        # ---------------------------------------------
+        # GET NEXT PRODUCT ID
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT COALESCE(
+                MAX(product_id),
+                0
+            )
+            FROM events
+            WHERE store_id = %s
+            """,
+            (
+                store_id,
+            )
+        )
 
-    # -----------------------------
-    # REBUILD PRODUCTS
-    # -----------------------------
-    
-    rebuild_products(store_id)
+        next_product_id = (
+            int(cursor.fetchone()[0]) + 1
+        )
 
-    return {
-        "created": created,
-        "rejected": rejected
-    }
+        created = 0
+        rejected = []
+
+        # ---------------------------------------------
+        # PROCESS ROWS
+        # ---------------------------------------------
+        for index, row in df.iterrows():
+            spreadsheet_row = int(index) + 2
+
+            # A savepoint prevents one failed row from
+            # aborting the entire PostgreSQL transaction.
+            cursor.execute(
+                "SAVEPOINT import_product_row"
+            )
+
+            try:
+                # -------------------------------------
+                # PRODUCT NAME
+                # -------------------------------------
+                normalized_name = str(
+                    row["name"]
+                ).strip()
+
+                if (
+                    not normalized_name
+                    or normalized_name.lower()
+                    in (
+                        "none",
+                        "nan"
+                    )
+                ):
+                    raise ValueError(
+                        "Missing or invalid product name"
+                    )
+
+                # -------------------------------------
+                # INITIAL STOCK
+                # -------------------------------------
+                try:
+                    initial_stock = int(
+                        row["initial_stock"]
+                    )
+                except (
+                    TypeError,
+                    ValueError
+                ):
+                    raise ValueError(
+                        "Invalid initial_stock"
+                    )
+
+                if initial_stock < 0:
+                    raise ValueError(
+                        "Initial stock cannot be negative"
+                    )
+
+                # -------------------------------------
+                # COST
+                # -------------------------------------
+                try:
+                    cost = round(
+                        float(row["cost"]),
+                        2
+                    )
+                except (
+                    TypeError,
+                    ValueError
+                ):
+                    raise ValueError(
+                        "Invalid cost"
+                    )
+
+                if cost < 0:
+                    raise ValueError(
+                        "Cost cannot be negative"
+                    )
+
+                # -------------------------------------
+                # PRICE
+                # -------------------------------------
+                try:
+                    price = round(
+                        float(row["price"]),
+                        2
+                    )
+                except (
+                    TypeError,
+                    ValueError
+                ):
+                    raise ValueError(
+                        "Invalid price"
+                    )
+
+                if price < 0:
+                    raise ValueError(
+                        "Price cannot be negative"
+                    )
+
+                # -------------------------------------
+                # TRACKS STOCK
+                # -------------------------------------
+                tracks_stock_raw = str(
+                    row["tracks_stock"]
+                ).strip().lower()
+
+                if tracks_stock_raw not in (
+                    "true",
+                    "false"
+                ):
+                    raise ValueError(
+                        "tracks_stock must be "
+                        "TRUE or FALSE"
+                    )
+
+                # events.tracks_stock is BOOLEAN.
+                tracks_stock_bool = (
+                    tracks_stock_raw == "true"
+                )
+
+                # products.tracks_stock is INTEGER.
+                tracks_stock_value = (
+                    1
+                    if tracks_stock_bool
+                    else 0
+                )
+
+                # -------------------------------------
+                # LOW-STOCK THRESHOLD
+                # -------------------------------------
+                threshold_raw = row.get(
+                    "low_stock_threshold",
+                    0
+                )
+
+                if pd.isna(threshold_raw):
+                    low_stock_threshold = 0
+
+                else:
+                    try:
+                        low_stock_threshold = int(
+                            threshold_raw
+                        )
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+                        raise ValueError(
+                            "Invalid low_stock_threshold"
+                        )
+
+                if low_stock_threshold < 0:
+                    raise ValueError(
+                        "Low-stock threshold cannot "
+                        "be negative"
+                    )
+
+                lst_reviewed = (
+                    low_stock_threshold > 0
+                )
+
+                # -------------------------------------
+                # PREVENT DUPLICATE NAMES
+                #
+                # Because products are inserted during
+                # the loop, this also catches duplicate
+                # names within the import file itself.
+                # -------------------------------------
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM products
+                    WHERE store_id = %s
+                      AND is_active = 1
+                      AND LOWER(TRIM(name)) =
+                          LOWER(TRIM(%s))
+                    LIMIT 1
+                    """,
+                    (
+                        store_id,
+                        normalized_name
+                    )
+                )
+
+                if cursor.fetchone():
+                    raise ValueError(
+                        "Duplicate product name"
+                    )
+
+                product_id = next_product_id
+
+                event_datetime = datetime.now(
+                    timezone.utc
+                )
+
+                # -------------------------------------
+                # INSERT CREATE EVENT
+                # -------------------------------------
+                cursor.execute(
+                    """
+                    INSERT INTO events (
+                        store_id,
+                        event_type,
+                        product_id,
+                        product_name_at_time,
+                        quantity,
+                        cost_at_time,
+                        price_at_time,
+                        tracks_stock,
+                        low_stock_threshold,
+                        event_datetime
+                    )
+                    VALUES (
+                        %s,
+                        'create',
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s
+                    )
+                    """,
+                    (
+                        store_id,
+                        product_id,
+                        normalized_name,
+                        initial_stock,
+                        cost,
+                        price,
+                        tracks_stock_bool,
+                        low_stock_threshold,
+                        event_datetime
+                    )
+                )
+
+                # -------------------------------------
+                # INSERT PRODUCT PROJECTION
+                # -------------------------------------
+                cursor.execute(
+                    """
+                    INSERT INTO products (
+                        product_id,
+                        store_id,
+                        name,
+                        stock,
+                        cost,
+                        price,
+                        tracks_stock,
+                        low_stock_threshold,
+                        lst_reviewed,
+                        is_active,
+                        created_at
+                    )
+                    VALUES (
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        NOW()
+                    )
+                    """,
+                    (
+                        product_id,
+                        store_id,
+                        normalized_name,
+                        initial_stock,
+                        cost,
+                        price,
+                        tracks_stock_value,
+                        low_stock_threshold,
+                        lst_reviewed,
+                        1
+                    )
+                )
+
+                cursor.execute(
+                    "RELEASE SAVEPOINT "
+                    "import_product_row"
+                )
+
+                next_product_id += 1
+                created += 1
+
+            except Exception as row_error:
+                cursor.execute(
+                    "ROLLBACK TO SAVEPOINT "
+                    "import_product_row"
+                )
+
+                cursor.execute(
+                    "RELEASE SAVEPOINT "
+                    "import_product_row"
+                )
+
+                rejected.append(
+                    {
+                        "row": spreadsheet_row,
+                        "error": str(row_error)
+                    }
+                )
+
+        # ---------------------------------------------
+        # COMMIT COMPLETE IMPORT
+        # ---------------------------------------------
+        conn.commit()
+
+        return {
+            "created": created,
+            "rejected_count": len(
+                rejected
+            ),
+            "rejected": rejected
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "IMPORT PRODUCTS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to import products"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.get("/ticket-details")
 def ticket_details(
