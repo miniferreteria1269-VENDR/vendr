@@ -10346,6 +10346,9 @@ def cash_movements(
         if conn:
             conn.close()
 
+from fastapi import Depends, HTTPException
+
+
 @app.post("/suppliers")
 def create_supplier(
     supplier_name: str,
@@ -10424,21 +10427,25 @@ def create_supplier(
                 LOWER(TRIM(supplier_name))
                     = LOWER(TRIM(%s))
             AND
-                COALESCE(
-                    organization_id,
-                    -store_id
-                )
-                =
-                COALESCE(
-                    %s,
-                    -%s
-                )
-            AND
                 is_active = TRUE
+            AND
+            (
+                (
+                    %s IS NOT NULL
+                    AND organization_id = %s
+                )
+                OR
+                (
+                    %s IS NULL
+                    AND store_id = %s
+                )
+            )
             LIMIT 1
             """,
             (
                 supplier_name,
+                organization_id,
+                organization_id,
                 organization_id,
                 owner_store_id
             )
