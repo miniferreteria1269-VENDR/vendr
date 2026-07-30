@@ -11063,6 +11063,93 @@ def assign_supplier_to_product(
         if conn:
             conn.close()
 
+@app.get("/product-supplier-summary")
+def get_product_supplier_summary(
+    current_user: User = Depends(get_current_user)
+):
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+
+        cursor.execute(
+            """
+            SELECT
+
+                p.product_id,
+                p.name,
+
+                s.supplier_id AS preferred_supplier_id,
+                s.supplier_name AS preferred_supplier_name,
+
+                ps.last_cost,
+                ps.lead_time_days,
+
+                (
+                    SELECT COUNT(*)
+                    FROM product_suppliers ps2
+                    WHERE
+                        ps2.store_id = p.store_id
+                    AND
+                        ps2.product_id = p.product_id
+                ) AS supplier_count
+
+            FROM products p
+
+            LEFT JOIN product_suppliers ps
+                ON
+                    ps.store_id = p.store_id
+                AND
+                    ps.product_id = p.product_id
+                AND
+                    ps.is_preferred = TRUE
+
+            LEFT JOIN suppliers s
+                ON
+                    s.supplier_id = ps.supplier_id
+
+            WHERE
+
+                p.store_id = %s
+
+            AND
+                p.is_active = TRUE
+
+            ORDER BY
+                p.name;
+            """,
+            (
+                current_user.store_id,
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        summary = []
+
+        for row in rows:
+
+            summary.append({
+                "product_id": row[0],
+                "product_name": row[1],
+                "preferred_supplier_id": row[2],
+                "preferred_supplier_name": row[3],
+                "last_cost": row[4],
+                "lead_time_days": row[5],
+                "supplier_count": row[6]
+            })
+
+        return {
+            "status": "accepted",
+            "products": summary
+        }
+
+    finally:
+
+        cursor.close()
+        conn.close()
+
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
     rebuild_products(store_id)
