@@ -45,6 +45,7 @@ function ProductManagement({ storeId }) {
           ["create", "create"],
           ["price", "price"],
           ["edit", "edit"],
+          ["suppliers", "suppliers"],
           ["loss", "loss"],
           ["transfer", "transfer"],
           ["archive", "archive"],
@@ -68,6 +69,9 @@ function ProductManagement({ storeId }) {
         {pmView === "loss" && <LogLoss storeId={storeId} />}
         {pmView === "transfer" && <StockTransfer storeId={storeId} />}
         {pmView === "archive" && <ArchiveProduct storeId={storeId} />}
+        {pmView === "suppliers" && (
+            <ProductSuppliers storeId={storeId} />
+        )}
         {pmView === "import" && <ProductImporter storeId={storeId} />}
       </div>
 
@@ -1085,5 +1089,127 @@ function StockTransfer({ storeId }) {
       )}
     </div>
   );
+}
+
+function ProductSuppliers({ storeId }) {
+
+  const { t } = useLang();
+
+  const [search, setSearch] = useState("");
+  const [products, setProducts] = useState([]);
+  const [selected, setSelected] = useState(null);
+
+  const searchProducts = async (term) => {
+
+    if (term.length < 2) {
+      setProducts([]);
+      return;
+    }
+
+    try {
+
+      const res = await apiClient.get(
+        "/products/search",
+        {
+          params: {
+            store_id: storeId,
+            name: term
+          }
+        }
+      );
+
+      setProducts(res.data.products || []);
+
+    } catch (err) {
+
+      console.error(err);
+
+    }
+
+  };
+
+  return (
+
+    <div style={{ maxWidth: 500 }}>
+
+      <h3>Product Suppliers</h3>
+
+      {!selected && (
+
+        <>
+
+          <input
+            style={{
+              ...input,
+              width: "100%",
+              marginBottom: 10
+            }}
+            placeholder={t("search_product")}
+            value={search}
+            onChange={(e) => {
+
+              setSearch(e.target.value);
+
+              searchProducts(e.target.value);
+
+            }}
+          />
+
+          {products.map(product => (
+
+            <div
+              key={product.product_id}
+              style={resultCard()}
+              onClick={() => {
+
+                setSelected(product);
+
+              }}
+            >
+
+              {product.name}
+
+            </div>
+
+          ))}
+
+        </>
+
+      )}
+
+      {selected && (
+
+        <>
+
+          <strong>{selected.name}</strong>
+
+          <br />
+          <br />
+
+          <button
+            style={btnSecondary}
+            onClick={() => {
+
+              setSelected(null);
+
+              setSearch("");
+
+              setProducts([]);
+
+            }}
+          >
+
+            {t("back")}
+
+          </button>
+
+        </>
+
+      )}
+
+    </div>
+
+  );
+
 }
 export default ProductManagement;
