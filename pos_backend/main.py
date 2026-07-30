@@ -6907,17 +6907,16 @@ def edit_product(
         low_stock_threshold
     )
 
-    # Boolean form for PostgreSQL BOOLEAN columns.
-    tracks_stock_bool = bool(
-        tracks_stock
-    )
-
-    # Integer form for response comparisons and any
-    # legacy integer-backed product columns.
+    # products.tracks_stock is INTEGER
     tracks_stock_value = (
         1
-        if tracks_stock_bool
+        if bool(tracks_stock)
         else 0
+    )
+
+    # events.tracks_stock is BOOLEAN
+    tracks_stock_bool = bool(
+        tracks_stock
     )
 
     conn = None
@@ -6964,8 +6963,8 @@ def edit_product(
             current_row[1] or 0
         )
 
-        current_tracks_stock = bool(
-            current_row[2]
+        current_tracks_stock = int(
+            current_row[2] or 0
         )
 
         name_changed = (
@@ -6979,7 +6978,7 @@ def edit_product(
 
         tracks_stock_changed = (
             current_tracks_stock !=
-            tracks_stock_bool
+            tracks_stock_value
         )
 
         # ---------------------------------------------
@@ -7014,6 +7013,7 @@ def edit_product(
 
         # ---------------------------------------------
         # UPDATE PRODUCT PROJECTION
+        # products.tracks_stock expects INTEGER
         # ---------------------------------------------
         cursor.execute(
             """
@@ -7041,7 +7041,7 @@ def edit_product(
                 normalized_name,
                 normalized_threshold,
                 normalized_threshold,
-                tracks_stock_bool,
+                tracks_stock_value,
                 product_id,
                 store_id
             )
@@ -7057,6 +7057,7 @@ def edit_product(
 
         # ---------------------------------------------
         # RECORD PRODUCT NAME CHANGE EVENT
+        # events.tracks_stock expects BOOLEAN
         # ---------------------------------------------
         if name_changed:
             cursor.execute(
@@ -7096,6 +7097,7 @@ def edit_product(
 
         # ---------------------------------------------
         # RECORD LOW STOCK THRESHOLD CHANGE EVENT
+        # events.tracks_stock expects BOOLEAN
         # ---------------------------------------------
         if threshold_changed:
             cursor.execute(
@@ -7147,7 +7149,7 @@ def edit_product(
                 row[3]
             ),
             "tracks_stock": int(
-                bool(row[4])
+                row[4] or 0
             ),
             "changes": {
                 "name": name_changed,
