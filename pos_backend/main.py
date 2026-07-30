@@ -373,6 +373,39 @@ def verify_product(
             detail="Product not found"
         )
 
+def verify_supplier(
+    cursor,
+    supplier_id: int
+):
+    cursor.execute(
+        """
+        SELECT
+            supplier_id,
+            organization_id,
+            store_id,
+            is_active
+        FROM suppliers
+        WHERE supplier_id = %s
+        """,
+        (supplier_id,)
+    )
+
+    supplier = cursor.fetchone()
+
+    if not supplier:
+        raise HTTPException(
+            status_code=404,
+            detail="Supplier not found."
+        )
+
+    if not supplier[3]:
+        raise HTTPException(
+            status_code=400,
+            detail="Supplier is inactive."
+        )
+
+    return supplier
+
 def hash_password(
     plain_password: str
 ) -> str:
@@ -2333,6 +2366,13 @@ class StockTransferRequest(BaseModel):
     quantity: int
     direction: str  # "in" or "out"
     note: Optional[str] = None
+
+class ProductSupplierAssignment(BaseModel):
+    supplier_id: int
+    is_preferred: bool = False
+    supplier_sku: str | None = None
+    last_cost: float | None = None
+    lead_time_days: int | None = None
 
 class SaleTicket(BaseModel):
     store_id: int
@@ -10834,7 +10874,195 @@ def get_product_suppliers(
 
         if conn:
             conn.close()
-            
+
+@app.post("/products/{product_id}/suppliers")
+def assign_supplier_to_product(
+    product_id: int,
+    assignment: ProductSupplierAssignment,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    conn = None
+    cursor = None
+
+    try:
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # --------------------------------------------------
+        # VERIFY PRODUCT
+        # --------------------------------------------------
+        verify_product(
+            cursor,
+            current_user.store_id,
+            product_id
+        )
+
+        # --------------------------------------------------
+        # VERIFY SUPPLIER
+        # --------------------------------------------------
+        supplier = verify_supplier(
+            cursor,
+            assignment.supplier_id
+        )
+
+        # supplier tuple:
+        # (
+        #   supplier_id,
+        #   organization_id,
+        #   store_id,
+        #   is_active
+        # )
+
+        supplier_org = supplier[1]
+        supplier_store = supplier[2]
+
+        # --------------------------------------------------
+        # VERIFY OWNERSHIP
+        # --------------------------------------------------
+        organization_id, owner_store_id = get_supplier_owner(
+            cursor,
+            current_user.store_id
+        )
+
+        if organization_id is not None:
+
+            if supplier_org != organization_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Supplier does not belong to your organization."
+                )
+
+        else:
+
+            if supplier_store != owner_store_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Supplier does not belong to your store."
+                )
+
+        # --------------------------------------------------
+        # PREVENT DUPLICATES
+        # --------------------------------------------------
+        cursor.execute(
+            """
+            SELECT 1
+            FROM product_suppliers
+            WHERE
+                store_id = %s
+            AND
+                product_id = %s
+            AND
+                supplier_id = %s
+            LIMIT 1
+            """,
+            (
+                current_user.store_id,
+                product_id,
+                assignment.supplier_id
+            )
+        )
+
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=409,
+                detail="Supplier is already assigned to this product."
+            )
+
+        # --------------------------------------------------
+        # CLEAR PREVIOUS PREFERRED SUPPLIER
+        # --------------------------------------------------
+        if assignment.is_preferred:
+
+            cursor.execute(
+                """
+                UPDATE product_suppliers
+                SET is_preferred = FALSE
+                WHERE
+                    store_id = %s
+                AND
+                    product_id = %s
+                """,
+                (
+                    current_user.store_id,
+                    product_id
+                )
+            )
+
+        # --------------------------------------------------
+        # CREATE RELATIONSHIP
+        # --------------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO product_suppliers (
+
+                store_id,
+                product_id,
+                supplier_id,
+
+                is_preferred,
+                supplier_sku,
+                last_cost,
+                lead_time_days
+
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+            """,
+            (
+                current_user.store_id,
+                product_id,
+                assignment.supplier_id,
+
+                assignment.is_preferred,
+                assignment.supplier_sku,
+                assignment.last_cost,
+                assignment.lead_time_days
+            )
+        )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Supplier assigned successfully."
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as error:
+
+        if conn:
+            conn.rollback()
+
+        print(
+            "ASSIGN PRODUCT SUPPLIER ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to assign supplier."
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
     rebuild_products(store_id)
