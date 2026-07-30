@@ -6903,6 +6903,10 @@ def edit_product(
             )
         )
 
+    normalized_threshold = int(
+        low_stock_threshold
+    )
+
     tracks_stock_value = (
         1
         if bool(tracks_stock)
@@ -6915,6 +6919,61 @@ def edit_product(
     try:
         conn = db()
         cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # LOAD CURRENT PRODUCT STATE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                name,
+                low_stock_threshold,
+                tracks_stock
+            FROM products
+            WHERE product_id = %s
+              AND store_id = %s
+              AND is_active = 1
+            FOR UPDATE
+            """,
+            (
+                product_id,
+                store_id
+            )
+        )
+
+        current_row = cursor.fetchone()
+
+        if not current_row:
+            raise HTTPException(
+                status_code=404,
+                detail="Active product not found"
+            )
+
+        current_name = str(
+            current_row[0] or ""
+        ).strip()
+
+        current_threshold = int(
+            current_row[1] or 0
+        )
+
+        current_tracks_stock = int(
+            current_row[2] or 0
+        )
+
+        name_changed = (
+            current_name != normalized_name
+        )
+
+        threshold_changed = (
+            current_threshold !=
+            normalized_threshold
+        )
+
+        tracks_stock_changed = (
+            current_tracks_stock !=
+            tracks_stock_value
+        )
 
         # ---------------------------------------------
         # PREVENT DUPLICATE ACTIVE PRODUCT NAMES
@@ -6947,7 +7006,7 @@ def edit_product(
             )
 
         # ---------------------------------------------
-        # UPDATE PRODUCT
+        # UPDATE PRODUCT PROJECTION
         # ---------------------------------------------
         cursor.execute(
             """
@@ -6973,8 +7032,8 @@ def edit_product(
             """,
             (
                 normalized_name,
-                int(low_stock_threshold),
-                int(low_stock_threshold),
+                normalized_threshold,
+                normalized_threshold,
                 tracks_stock_value,
                 product_id,
                 store_id
@@ -6989,29 +7048,107 @@ def edit_product(
                 detail="Active product not found"
             )
 
+        # ---------------------------------------------
+        # RECORD PRODUCT NAME CHANGE EVENT
+        # ---------------------------------------------
+        if name_changed:
+            cursor.execute(
+                """
+                INSERT INTO events (
+                    store_id,
+                    event_type,
+                    product_id,
+                    product_name_at_time,
+                    quantity,
+                    cost_at_time,
+                    price_at_time,
+                    tracks_stock
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                )
+                """,
+                (
+                    store_id,
+                    "product_name_change",
+                    product_id,
+                    normalized_name,
+                    0,
+                    0,
+                    0,
+                    tracks_stock_value
+                )
+            )
+
+        # ---------------------------------------------
+        # RECORD LOW STOCK THRESHOLD CHANGE EVENT
+        # ---------------------------------------------
+        if threshold_changed:
+            cursor.execute(
+                """
+                INSERT INTO events (
+                    store_id,
+                    event_type,
+                    product_id,
+                    product_name_at_time,
+                    quantity,
+                    cost_at_time,
+                    price_at_time,
+                    tracks_stock
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                )
+                """,
+                (
+                    store_id,
+                    "lst_change",
+                    product_id,
+                    normalized_name,
+                    normalized_threshold,
+                    0,
+                    0,
+                    tracks_stock_value
+                )
+            )
+
         conn.commit()
 
         return {
-            "status":
-                "accepted",
-
-            "message":
-                "Product updated",
-
-            "product_id":
-                row[0],
-
-            "name":
-                row[1],
-
-            "low_stock_threshold":
-                int(row[2] or 0),
-
-            "lst_reviewed":
-                bool(row[3]),
-
-            "tracks_stock":
-                int(row[4] or 0)
+            "status": "accepted",
+            "message": "Product updated",
+            "product_id": row[0],
+            "name": row[1],
+            "low_stock_threshold": int(
+                row[2] or 0
+            ),
+            "lst_reviewed": bool(
+                row[3]
+            ),
+            "tracks_stock": int(
+                row[4] or 0
+            ),
+            "changes": {
+                "name": name_changed,
+                "low_stock_threshold":
+                    threshold_changed,
+                "tracks_stock":
+                    tracks_stock_changed
+            }
         }
 
     except HTTPException:
@@ -7040,7 +7177,7 @@ def edit_product(
 
         if conn:
             conn.close()
-
+            
 @app.get("/cash-balance")
 def cash_balance(
     store_id: int,
