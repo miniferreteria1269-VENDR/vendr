@@ -6907,9 +6907,16 @@ def edit_product(
         low_stock_threshold
     )
 
+    # Boolean form for PostgreSQL BOOLEAN columns.
+    tracks_stock_bool = bool(
+        tracks_stock
+    )
+
+    # Integer form for response comparisons and any
+    # legacy integer-backed product columns.
     tracks_stock_value = (
         1
-        if bool(tracks_stock)
+        if tracks_stock_bool
         else 0
     )
 
@@ -6921,7 +6928,7 @@ def edit_product(
         cursor = conn.cursor()
 
         # ---------------------------------------------
-        # LOAD CURRENT PRODUCT STATE
+        # LOAD AND LOCK CURRENT PRODUCT STATE
         # ---------------------------------------------
         cursor.execute(
             """
@@ -6957,8 +6964,8 @@ def edit_product(
             current_row[1] or 0
         )
 
-        current_tracks_stock = int(
-            current_row[2] or 0
+        current_tracks_stock = bool(
+            current_row[2]
         )
 
         name_changed = (
@@ -6972,7 +6979,7 @@ def edit_product(
 
         tracks_stock_changed = (
             current_tracks_stock !=
-            tracks_stock_value
+            tracks_stock_bool
         )
 
         # ---------------------------------------------
@@ -7034,7 +7041,7 @@ def edit_product(
                 normalized_name,
                 normalized_threshold,
                 normalized_threshold,
-                tracks_stock_value,
+                tracks_stock_bool,
                 product_id,
                 store_id
             )
@@ -7083,7 +7090,7 @@ def edit_product(
                     0,
                     0,
                     0,
-                    tracks_stock_value
+                    tracks_stock_bool
                 )
             )
 
@@ -7122,7 +7129,7 @@ def edit_product(
                     normalized_threshold,
                     0,
                     0,
-                    tracks_stock_value
+                    tracks_stock_bool
                 )
             )
 
@@ -7140,7 +7147,7 @@ def edit_product(
                 row[3]
             ),
             "tracks_stock": int(
-                row[4] or 0
+                bool(row[4])
             ),
             "changes": {
                 "name": name_changed,
