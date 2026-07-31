@@ -4,6 +4,7 @@ import {
   COLORS,
   btnPrimary,
   btnSecondary,
+  btnDanger,
   input
 } from "../uiStyles";
 
@@ -27,8 +28,12 @@ export default function ProductSupplierManagement({ storeId }) {
   const [loading, setLoading] = useState(false);
   const [loadingPanel, setLoadingPanel] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [removingSupplierId, setRemovingSupplierId] = useState(null);
   const [error, setError] = useState("");
   const [panelError, setPanelError] = useState("");
+
+  const panelBusy =
+    submitting || removingSupplierId !== null;
 
   useEffect(() => {
     setSelectedProductId(null);
@@ -190,6 +195,42 @@ export default function ProductSupplierManagement({ storeId }) {
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function removeSupplier(supplier) {
+    if (selectedProductId == null || panelBusy) return;
+
+    const confirmed = window.confirm(
+      `Remove ${supplier.supplier_name} from ${selectedProduct.product_name}?`
+    );
+
+    if (!confirmed) return;
+
+    setRemovingSupplierId(supplier.supplier_id);
+    setPanelError("");
+
+    try {
+      await apiClient.delete(
+        `/products/${selectedProductId}/suppliers/${supplier.supplier_id}`
+      );
+
+      await Promise.all([
+        loadAssignedSuppliers(selectedProductId),
+        loadProducts()
+      ]);
+    } catch (err) {
+      console.error(
+        "Failed to remove supplier from product:",
+        err
+      );
+
+      setPanelError(
+        err.response?.data?.detail ||
+        "Unable to remove supplier."
+      );
+    } finally {
+      setRemovingSupplierId(null);
     }
   }
 
@@ -357,7 +398,7 @@ export default function ProductSupplierManagement({ storeId }) {
         <div
           role="presentation"
           onMouseDown={() => {
-            if (!submitting) {
+            if (!panelBusy) {
               setSelectedProductId(null);
             }
           }}
@@ -379,7 +420,7 @@ export default function ProductSupplierManagement({ storeId }) {
                 type="button"
                 aria-label="Close supplier assignment"
                 onClick={() => setSelectedProductId(null)}
-                disabled={submitting}
+                disabled={panelBusy}
                 style={modalCloseStyle}
               >
                 ×
@@ -432,6 +473,7 @@ export default function ProductSupplierManagement({ storeId }) {
                           <th style={headerCellStyle}>Supplier SKU</th>
                           <th style={headerCellStyle}>Last Cost</th>
                           <th style={headerCellStyle}>Lead Time</th>
+                          <th style={headerCellStyle}>Action</th>
                         </tr>
                       </thead>
 
@@ -471,6 +513,26 @@ export default function ProductSupplierManagement({ storeId }) {
                                 ? `${supplier.lead_time_days} days`
                                 : "—"}
                             </td>
+
+                            <td style={bodyCellStyle}>
+                              <button
+                                type="button"
+                                onClick={() => removeSupplier(supplier)}
+                                disabled={panelBusy}
+                                style={{
+                                  ...btnDanger,
+                                  opacity: panelBusy ? 0.6 : 1,
+                                  cursor: panelBusy
+                                    ? "default"
+                                    : "pointer",
+                                  whiteSpace: "nowrap"
+                                }}
+                              >
+                                {removingSupplierId === supplier.supplier_id
+                                  ? "Removing..."
+                                  : "Remove"}
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -506,7 +568,7 @@ export default function ProductSupplierManagement({ storeId }) {
                             event.target.value
                           )
                         }
-                        disabled={submitting}
+                        disabled={panelBusy}
                         style={{ ...input, width: "100%" }}
                       >
                         <option value="">Select supplier...</option>
@@ -532,7 +594,7 @@ export default function ProductSupplierManagement({ storeId }) {
                             event.target.value
                           )
                         }
-                        disabled={submitting}
+                        disabled={panelBusy}
                         style={{ ...input, width: "100%" }}
                       />
                     </label>
@@ -550,7 +612,7 @@ export default function ProductSupplierManagement({ storeId }) {
                             event.target.value
                           )
                         }
-                        disabled={submitting}
+                        disabled={panelBusy}
                         style={{ ...input, width: "100%" }}
                       />
                     </label>
@@ -568,7 +630,7 @@ export default function ProductSupplierManagement({ storeId }) {
                             event.target.value
                           )
                         }
-                        disabled={submitting}
+                        disabled={panelBusy}
                         style={{ ...input, width: "100%" }}
                       />
                     </label>
@@ -591,7 +653,7 @@ export default function ProductSupplierManagement({ storeId }) {
                             event.target.checked
                           )
                         }
-                        disabled={submitting}
+                        disabled={panelBusy}
                       />
                       Preferred supplier
                     </label>
@@ -606,7 +668,7 @@ export default function ProductSupplierManagement({ storeId }) {
                       <button
                         type="button"
                         onClick={assignSupplier}
-                        disabled={submitting}
+                        disabled={panelBusy}
                         style={{
                           ...btnPrimary,
                           opacity: submitting ? 0.6 : 1,
@@ -626,7 +688,7 @@ export default function ProductSupplierManagement({ storeId }) {
                           setAssignment(emptyAssignment);
                           setPanelError("");
                         }}
-                        disabled={submitting}
+                        disabled={panelBusy}
                         style={btnSecondary}
                       >
                         Clear
