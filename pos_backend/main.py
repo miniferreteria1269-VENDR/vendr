@@ -406,6 +406,34 @@ def verify_supplier(
 
     return supplier
 
+def get_supplier_owner(
+    cursor,
+    store_id: int
+):
+    cursor.execute(
+        """
+        SELECT organization_id
+        FROM stores
+        WHERE store_id = %s
+        """,
+        (store_id,)
+    )
+
+    row = cursor.fetchone()
+
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="Store not found."
+        )
+
+    organization_id = row[0]
+
+    if organization_id is not None:
+        return organization_id, None
+
+    return None, store_id
+
 def hash_password(
     plain_password: str
 ) -> str:
