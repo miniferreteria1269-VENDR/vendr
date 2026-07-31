@@ -11197,6 +11197,92 @@ def get_product_supplier_summary(
 
         if conn:
             conn.close()
+
+@app.delete(
+    "/products/{product_id}/suppliers/{supplier_id}"
+)
+def remove_supplier_from_product(
+    product_id: int,
+    supplier_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VERIFY PRODUCT
+        # ---------------------------------------------
+        verify_product(
+            cursor,
+            current_user.store_id,
+            product_id
+        )
+
+        # ---------------------------------------------
+        # REMOVE RELATIONSHIP
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            DELETE FROM product_suppliers
+            WHERE
+                store_id = %s
+            AND
+                product_id = %s
+            AND
+                supplier_id = %s
+            """,
+            (
+                current_user.store_id,
+                product_id,
+                supplier_id
+            )
+        )
+
+        if cursor.rowcount == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier assignment not found."
+            )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Supplier removed successfully."
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "REMOVE PRODUCT SUPPLIER ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to remove supplier."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
     rebuild_products(store_id)
