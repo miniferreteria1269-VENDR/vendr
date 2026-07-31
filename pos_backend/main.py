@@ -10,6 +10,7 @@ from fastapi import UploadFile, File, HTTPException, Form, Depends, status
 import os
 import psycopg2
 import jwt
+from decimal import Decimal
 
 from jwt.exceptions import InvalidTokenError
 from fastapi.security import (
@@ -2323,6 +2324,46 @@ def build_weekly_alerts_data(
         "items": alerts
     }
 
+def verify_client(
+    cursor,
+    store_id: int,
+    client_id: int,
+    require_active: bool = True
+):
+    cursor.execute(
+        """
+        SELECT
+            client_id,
+            store_id,
+            client_name,
+            is_active
+        FROM clients
+        WHERE
+            store_id = %s
+        AND
+            client_id = %s
+        """,
+        (
+            store_id,
+            client_id
+        )
+    )
+
+    client = cursor.fetchone()
+
+    if not client:
+        raise HTTPException(
+            status_code=404,
+            detail="Client not found."
+        )
+
+    if require_active and not client[3]:
+        raise HTTPException(
+            status_code=400,
+            detail="Client is inactive."
+        )
+
+    return client
 
 def build_review_queue_data(alerts):
 
@@ -2387,6 +2428,33 @@ class StockAdjustmentRequest(BaseModel):
     client_event_id: Optional[str] = None
     device_id: Optional[str] = None
     client_created_at: Optional[str] = None
+
+class ClientCreate(BaseModel):
+    client_name: str
+    contact_name: Optional[str] = None
+
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    tax_id: Optional[str] = None
+
+    notes: Optional[str] = None
+    credit_limit: Optional[Decimal] = None
+
+
+class ClientUpdate(BaseModel):
+    client_name: Optional[str] = None
+    contact_name: Optional[str] = None
+
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    tax_id: Optional[str] = None
+
+    notes: Optional[str] = None
+    credit_limit: Optional[Decimal] = None
 
 class StockTransferRequest(BaseModel):
     store_id: int
@@ -12205,6 +12273,218 @@ def clear_reorder_items(
 
         if conn:
             conn.close()
+
+@app.post("/clients")
+def create_client(
+    client: ClientCreate,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        client_name = client.client_name.strip()
+
+        if not client_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Client name is required."
+            )
+
+        if (
+            client.credit_limit is not None
+            and client.credit_limit < 0
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Credit limit cannot be negative."
+            )
+
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO clients (
+                store_id,
+                client_name,
+                contact_name,
+                phone,
+                whatsapp,
+                email,
+                address,
+                tax_id,
+                notes,
+                credit_limit
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+            RETURNING client_id
+            """,
+            (
+                current_user.store_id,
+                client_name,
+                client.contact_name,
+                client.phone,
+                client.whatsapp,
+                client.email,
+                client.address,
+                client.tax_id,
+                client.notes,
+                client.credit_limit
+            )
+        )
+
+        client_id = cursor.fetchone()[0]
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Client created successfully.",
+            "client_id": client_id
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CREATE CLIENT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create client."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.get("/clients")
+def get_clients(
+    include_inactive: bool = False,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                client_id,
+                client_name,
+                contact_name,
+                phone,
+                whatsapp,
+                email,
+                address,
+                tax_id,
+                notes,
+                credit_limit,
+                is_active,
+                created_at,
+                updated_at
+            FROM clients
+            WHERE
+                store_id = %s
+            AND
+                (
+                    %s = TRUE
+                    OR is_active = TRUE
+                )
+            ORDER BY
+                LOWER(client_name) ASC,
+                client_id ASC
+            """,
+            (
+                current_user.store_id,
+                include_inactive
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        clients = []
+
+        for row in rows:
+            clients.append({
+                "client_id": row[0],
+                "client_name": row[1],
+                "contact_name": row[2],
+                "phone": row[3],
+                "whatsapp": row[4],
+                "email": row[5],
+                "address": row[6],
+                "tax_id": row[7],
+                "notes": row[8],
+
+                "credit_limit":
+                    float(row[9])
+                    if row[9] is not None
+                    else None,
+
+                "is_active": row[10],
+                "created_at": row[11],
+                "updated_at": row[12]
+            })
+
+        return {
+            "status": "accepted",
+            "clients": clients
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET CLIENTS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve clients."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
 
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
