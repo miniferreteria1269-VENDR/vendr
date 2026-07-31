@@ -181,7 +181,7 @@ function SalesAnalysisPanel({
           display: "flex",
           gap: 10,
           alignItems: "center",
-          marginBottom: 20,
+          marginBottom: 16,
           flexWrap: "wrap"
         }}
       >
@@ -257,9 +257,9 @@ function SalesAnalysisPanel({
         style={{
           display: "grid",
           gridTemplateColumns:
-            "repeat(auto-fit,minmax(160px,1fr))",
-          gap: 12,
-          marginBottom: 20
+            "repeat(auto-fit, minmax(125px, 1fr))",
+          gap: 10,
+          marginBottom: 16
         }}
       >
         <Metric
@@ -314,7 +314,7 @@ function SalesAnalysisPanel({
         style={{
           display: "grid",
           gridTemplateColumns:
-            "repeat(auto-fit,minmax(250px,1fr))",
+            "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 12
         }}
       >
@@ -352,13 +352,15 @@ function Metric({
       style={{
         background:
           COLORS.panel,
-        borderRadius: 12,
-        padding: 14
+        borderRadius: 10,
+        padding: "10px 12px",
+        minWidth: 0
       }}
     >
       <div
         style={{
-          fontSize: 12,
+          fontSize: 11,
+          lineHeight: 1.25,
           color:
             COLORS.textDim
         }}
@@ -368,7 +370,9 @@ function Metric({
 
       <div
         style={{
-          fontSize: 20,
+          marginTop: 2,
+          fontSize: 18,
+          lineHeight: 1.2,
           fontWeight: "bold",
           color:
             COLORS.primary
@@ -392,69 +396,99 @@ function ProductList({
     useLang();
 
   return (
-    <div style={card}>
+    <div
+      style={{
+        ...card,
+        height:
+          "clamp(220px, 42vh, 420px)",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden"
+      }}
+    >
       <h4
         style={{
-          marginBottom: 10
+          marginTop: 0,
+          marginBottom: 10,
+          flexShrink: 0
         }}
       >
         {title}
       </h4>
 
-      {products.map(
-        (product, index) => (
-          <div
-            key={
-              product.product_id ??
-              `${product.name}-${index}`
-            }
-            style={{
-              background:
-                COLORS.panelAlt,
-              borderRadius: 8,
-              padding: 8,
-              marginBottom: 6,
-              display: "flex",
-              justifyContent:
-                "space-between",
-              gap: 12
-            }}
-          >
-            <span>
-              {product.name}
-            </span>
-
-            <span
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          paddingRight: 3
+        }}
+      >
+        {products.map(
+          (product, index) => (
+            <div
+              key={
+                product.product_id ??
+                `${product.name}-${index}`
+              }
               style={{
-                color:
-                  COLORS.primary,
-                whiteSpace:
-                  "nowrap"
+                background:
+                  COLORS.panelAlt,
+                borderRadius: 8,
+                padding: 8,
+                marginBottom: 6,
+                display: "flex",
+                justifyContent:
+                  "space-between",
+                alignItems:
+                  "flex-start",
+                gap: 12
               }}
             >
-              {field === "revenue" ||
-              field === "profit"
-                ? `$${Number(
-                    product[field] || 0
-                  ).toFixed(2)}`
-                : Number(
-                    product[field] || 0
-                  )}
-            </span>
-          </div>
-        )
-      )}
+              <span
+                style={{
+                  minWidth: 0,
+                  overflowWrap:
+                    "anywhere"
+                }}
+              >
+                {product.name}
+              </span>
 
-      {products.length === 0 && (
-        <div
-          style={{
-            color:
-              COLORS.textDim
-          }}
-        >
-          {t("no_data")}
-        </div>
-      )}
+              <span
+                style={{
+                  color:
+                    COLORS.primary,
+                  whiteSpace:
+                    "nowrap",
+                  flexShrink: 0
+                }}
+              >
+                {field === "revenue" ||
+                field === "profit"
+                  ? `$${Number(
+                      product[field] || 0
+                    ).toFixed(2)}`
+                  : Number(
+                      product[field] || 0
+                    )}
+              </span>
+            </div>
+          )
+        )}
+
+        {products.length === 0 && (
+          <div
+            style={{
+              color:
+                COLORS.textDim
+            }}
+          >
+            {t("no_data")}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
