@@ -519,7 +519,7 @@ function InventoryReport({ storeId }) {
         minHeight: 0,
       }}
     >
-      <h2 style={{ marginBottom: 12 }}>{t("inventory")}</h2>
+      
 
       <div
         style={{
