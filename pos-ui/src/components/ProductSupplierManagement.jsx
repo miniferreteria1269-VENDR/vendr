@@ -29,11 +29,15 @@ export default function ProductSupplierManagement({ storeId }) {
   const [loadingPanel, setLoadingPanel] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [removingSupplierId, setRemovingSupplierId] = useState(null);
+  const [updatingPreferredSupplierId, setUpdatingPreferredSupplierId] =
+    useState(null);
   const [error, setError] = useState("");
   const [panelError, setPanelError] = useState("");
 
   const panelBusy =
-    submitting || removingSupplierId !== null;
+    submitting ||
+    removingSupplierId !== null ||
+    updatingPreferredSupplierId !== null;
 
   useEffect(() => {
     setSelectedProductId(null);
@@ -231,6 +235,61 @@ export default function ProductSupplierManagement({ storeId }) {
       );
     } finally {
       setRemovingSupplierId(null);
+    }
+  }
+
+  async function togglePreferredSupplier(supplier) {
+    if (selectedProductId == null || panelBusy) return;
+
+    const nextPreferredStatus = !supplier.is_preferred;
+    const currentPreferredSupplier = assignedSuppliers.find(
+      assignedSupplier => assignedSupplier.is_preferred
+    );
+
+    let confirmationMessage;
+
+    if (!nextPreferredStatus) {
+      confirmationMessage =
+        `Remove preferred supplier status from ${supplier.supplier_name}? ` +
+        "This product will have no preferred supplier.";
+    } else if (currentPreferredSupplier) {
+      confirmationMessage =
+        `Make ${supplier.supplier_name} the preferred supplier instead of ` +
+        `${currentPreferredSupplier.supplier_name}?`;
+    } else {
+      confirmationMessage =
+        `Make ${supplier.supplier_name} the preferred supplier?`;
+    }
+
+    if (!window.confirm(confirmationMessage)) return;
+
+    setUpdatingPreferredSupplierId(supplier.supplier_id);
+    setPanelError("");
+
+    try {
+      await apiClient.patch(
+        `/products/${selectedProductId}/suppliers/${supplier.supplier_id}/preferred`,
+        {
+          is_preferred: nextPreferredStatus
+        }
+      );
+
+      await Promise.all([
+        loadAssignedSuppliers(selectedProductId),
+        loadProducts()
+      ]);
+    } catch (err) {
+      console.error(
+        "Failed to update preferred supplier:",
+        err
+      );
+
+      setPanelError(
+        err.response?.data?.detail ||
+        "Unable to update preferred supplier."
+      );
+    } finally {
+      setUpdatingPreferredSupplierId(null);
     }
   }
 
@@ -495,7 +554,44 @@ export default function ProductSupplierManagement({ storeId }) {
                             </td>
 
                             <td style={bodyCellStyle}>
-                              {supplier.is_preferred ? "Yes" : "No"}
+                              <button
+                                type="button"
+                                title={
+                                  supplier.is_preferred
+                                    ? "Remove preferred supplier status"
+                                    : "Make preferred supplier"
+                                }
+                                aria-label={
+                                  supplier.is_preferred
+                                    ? `${supplier.supplier_name} is preferred. Click to remove preferred status.`
+                                    : `Make ${supplier.supplier_name} the preferred supplier.`
+                                }
+                                aria-pressed={supplier.is_preferred}
+                                onClick={() =>
+                                  togglePreferredSupplier(supplier)
+                                }
+                                disabled={panelBusy}
+                                style={{
+                                  ...preferredStarStyle,
+                                  color: supplier.is_preferred
+                                    ? "#f5c542"
+                                    : COLORS.textDim,
+                                  opacity:
+                                    panelBusy &&
+                                    updatingPreferredSupplierId !== supplier.supplier_id
+                                      ? 0.5
+                                      : 1,
+                                  cursor: panelBusy
+                                    ? "default"
+                                    : "pointer"
+                                }}
+                              >
+                                {updatingPreferredSupplierId === supplier.supplier_id
+                                  ? "…"
+                                  : supplier.is_preferred
+                                    ? "★"
+                                    : "☆"}
+                              </button>
                             </td>
 
                             <td style={bodyCellStyle}>
@@ -725,6 +821,16 @@ const fieldStyle = {
   display: "flex",
   flexDirection: "column",
   gap: 5
+};
+
+const preferredStarStyle = {
+  minWidth: 32,
+  padding: "0 4px",
+  border: "none",
+  background: "transparent",
+  fontSize: 25,
+  lineHeight: 1,
+  textAlign: "center"
 };
 
 const modalBackdropStyle = {
