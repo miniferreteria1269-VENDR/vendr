@@ -234,10 +234,6 @@ function SupplierManagement() {
         minHeight: 0
       }}
     >
-      <h2 style={{ marginBottom: 12 }}>
-        {t("suppliers")}
-      </h2>
-
       <div
         style={{
           display: "flex",
