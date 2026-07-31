@@ -2425,10 +2425,12 @@ class IntakeTicket(BaseModel):
     items: List[IntakeItem]
     paid: bool = False
 
+    supplier_id: Optional[int] = None
+
     client_event_id: Optional[str] = None
     device_id: Optional[str] = None
     client_created_at: Optional[str] = None
-
+    
 class CashEventRequest(BaseModel):
     store_id: int
     amount: float
