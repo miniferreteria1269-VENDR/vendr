@@ -26,6 +26,9 @@ function TicketPanel({
   renameTicket,
   intakePaid,
   setIntakePaid,
+  intakeSuppliers,
+  intakeSupplierId,
+  setIntakeSupplierId,
   discountValue,
   setDiscountValue,
   discountType,
@@ -284,10 +287,14 @@ function TicketPanel({
             )}
           </div>
 
-          {/* INTAKE PAID */}
+          {/* INTAKE OPTIONS */}
           {currentTicket.type === "intake" && (
-            <label
+            <div
               style={{
+                display: "flex",
+                alignItems: "end",
+                gap: 16,
+                flexWrap: "wrap",
                 marginBottom: 10,
                 opacity:
                   intakeIsFinalizing
@@ -295,19 +302,65 @@ function TicketPanel({
                     : 1
               }}
             >
-              <input
-                type="checkbox"
-                checked={intakePaid}
-                onChange={event =>
-                  setIntakePaid(
-                    event.target.checked
-                  )
-                }
-                disabled={intakeIsFinalizing}
-              />
-              {" "}
-              {t("paid")}
-            </label>
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 5,
+                  minWidth: 240
+                }}
+              >
+                <span>Supplier</span>
+
+                <select
+                  value={intakeSupplierId ?? ""}
+                  onChange={event =>
+                    setIntakeSupplierId(
+                      event.target.value
+                    )
+                  }
+                  disabled={intakeIsFinalizing}
+                  style={{
+                    ...inputStyle,
+                    width: "100%"
+                  }}
+                >
+                  <option value="">
+                    Unassigned / No supplier
+                  </option>
+
+                  {intakeSuppliers.map(supplier => (
+                    <option
+                      key={supplier.supplier_id}
+                      value={supplier.supplier_id}
+                    >
+                      {supplier.supplier_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  minHeight: 34
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={intakePaid}
+                  onChange={event =>
+                    setIntakePaid(
+                      event.target.checked
+                    )
+                  }
+                  disabled={intakeIsFinalizing}
+                />
+                {t("paid")}
+              </label>
+            </div>
           )}
 
           {/* ITEMS */}
