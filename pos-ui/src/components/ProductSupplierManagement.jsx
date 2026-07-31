@@ -174,10 +174,10 @@ export default function ProductSupplierManagement({ storeId }) {
         }
       );
 
-      await Promise.all([
-        loadAssignedSuppliers(selectedProductId),
-        loadProducts()
-      ]);
+      await loadProducts();
+      setSelectedProductId(null);
+      setAssignedSuppliers([]);
+      setAssignment(emptyAssignment);
     } catch (err) {
       console.error(
         "Failed to assign supplier to product:",
@@ -254,7 +254,8 @@ export default function ProductSupplierManagement({ storeId }) {
       {!loading && !error && (
         <div
           style={{
-            overflowX: "auto",
+            overflow: "auto",
+            maxHeight: "60vh",
             border: `1px solid ${COLORS.border}`,
             borderRadius: 6
           }}
@@ -352,18 +353,38 @@ export default function ProductSupplierManagement({ storeId }) {
         </div>
       )}
 
-      <div
-        style={{
-          marginTop: 20,
-          paddingTop: 16,
-          borderTop: `1px solid ${COLORS.border}`
-        }}
-      >
-        {selectedProduct ? (
-          <>
-            <h3 style={{ marginTop: 0 }}>
-              {selectedProduct.product_name}
-            </h3>
+      {selectedProduct && (
+        <div
+          role="presentation"
+          onMouseDown={() => {
+            if (!submitting) {
+              setSelectedProductId(null);
+            }
+          }}
+          style={modalBackdropStyle}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Manage suppliers for ${selectedProduct.product_name}`}
+            onMouseDown={(event) => event.stopPropagation()}
+            style={modalPanelStyle}
+          >
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0 }}>
+                {selectedProduct.product_name}
+              </h3>
+
+              <button
+                type="button"
+                aria-label="Close supplier assignment"
+                onClick={() => setSelectedProductId(null)}
+                disabled={submitting}
+                style={modalCloseStyle}
+              >
+                ×
+              </button>
+            </div>
 
             {panelError && (
               <div
@@ -615,13 +636,9 @@ export default function ProductSupplierManagement({ storeId }) {
                 )}
               </>
             )}
-          </>
-        ) : (
-          <p style={{ margin: 0 }}>
-            Select a product to manage its suppliers.
-          </p>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -630,7 +647,11 @@ const headerCellStyle = {
   padding: "10px 12px",
   textAlign: "left",
   borderBottom: `1px solid ${COLORS.border}`,
-  whiteSpace: "nowrap"
+  whiteSpace: "nowrap",
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
+  background: COLORS.panelAlt
 };
 
 const bodyCellStyle = {
@@ -642,4 +663,45 @@ const fieldStyle = {
   display: "flex",
   flexDirection: "column",
   gap: 5
+};
+
+const modalBackdropStyle = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1000,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+  background: "rgba(0, 0, 0, 0.72)"
+};
+
+const modalPanelStyle = {
+  width: "min(1000px, 100%)",
+  maxHeight: "88vh",
+  overflowY: "auto",
+  boxSizing: "border-box",
+  padding: 20,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 10,
+  background: COLORS.panelAlt,
+  boxShadow: "0 18px 60px rgba(0, 0, 0, 0.5)"
+};
+
+const modalHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 16,
+  marginBottom: 16
+};
+
+const modalCloseStyle = {
+  border: "none",
+  background: "transparent",
+  color: "inherit",
+  cursor: "pointer",
+  fontSize: 28,
+  lineHeight: 1,
+  padding: "0 4px"
 };
