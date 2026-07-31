@@ -11867,6 +11867,161 @@ def add_or_update_reorder_item(
         if conn:
             conn.close()
 
+@app.get("/reorder-items")
+def get_reorder_items(
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                ri.product_id,
+                p.name,
+                ri.supplier_id,
+                s.supplier_name,
+                ps.supplier_sku,
+                ri.quantity,
+                ri.estimated_unit_cost,
+                ri.cost_source,
+                ri.created_at,
+                ri.updated_at
+
+            FROM reorder_items ri
+
+            INNER JOIN products p
+                ON p.store_id = ri.store_id
+               AND p.product_id = ri.product_id
+
+            LEFT JOIN suppliers s
+                ON s.supplier_id = ri.supplier_id
+
+            LEFT JOIN product_suppliers ps
+                ON ps.store_id = ri.store_id
+               AND ps.product_id = ri.product_id
+               AND ps.supplier_id = ri.supplier_id
+
+            WHERE
+                ri.store_id = %s
+
+            ORDER BY
+                CASE
+                    WHEN s.supplier_name IS NULL
+                    THEN 1
+                    ELSE 0
+                END,
+
+                LOWER(s.supplier_name) ASC,
+                LOWER(p.name) ASC
+            """,
+            (store_id,)
+        )
+
+        rows = cursor.fetchall()
+
+        reorder_items = []
+        projected_total = 0.0
+        unknown_cost_count = 0
+
+        for row in rows:
+            quantity = int(row[5])
+
+            estimated_unit_cost = (
+                round(float(row[6]), 2)
+                if row[6] is not None
+                else None
+            )
+
+            projected_cost = None
+
+            if estimated_unit_cost is not None:
+                projected_cost = round(
+                    quantity * estimated_unit_cost,
+                    2
+                )
+
+                projected_total += projected_cost
+            else:
+                unknown_cost_count += 1
+
+            reorder_items.append({
+                "product_id": row[0],
+                "product_name": row[1],
+
+                "supplier_id": row[2],
+                "supplier_name": row[3],
+                "supplier_sku": row[4],
+
+                "quantity": quantity,
+
+                "estimated_unit_cost":
+                    estimated_unit_cost,
+
+                "cost_source": row[7],
+
+                "projected_cost":
+                    projected_cost,
+
+                "created_at": row[8],
+                "updated_at": row[9]
+            })
+
+        return {
+            "status": "accepted",
+
+            "reorder_items":
+                reorder_items,
+
+            "summary": {
+                "item_count":
+                    len(reorder_items),
+
+                "projected_total":
+                    round(projected_total, 2),
+
+                "unknown_cost_count":
+                    unknown_cost_count
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET REORDER ITEMS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load reorder list."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
     rebuild_products(store_id)
