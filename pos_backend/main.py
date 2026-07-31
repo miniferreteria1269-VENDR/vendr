@@ -4119,15 +4119,79 @@ def intake_ticket(
 
             if existing:
                 return {
-                    "status":
-                        "already_processed",
-
-                    "ticket_id":
-                        existing[0],
-
+                    "status": "already_processed",
+                    "ticket_id": existing[0],
                     "client_event_id":
                         ticket.client_event_id
                 }
+
+        # ---------------------------------------------
+        # VALIDATE OPTIONAL SUPPLIER
+        # ---------------------------------------------
+        supplier_name = None
+
+        if ticket.supplier_id is not None:
+            supplier = verify_supplier(
+                cursor,
+                ticket.supplier_id
+            )
+
+            # supplier tuple:
+            # (
+            #   supplier_id,
+            #   organization_id,
+            #   store_id,
+            #   is_active
+            # )
+
+            supplier_org = supplier[1]
+            supplier_store = supplier[2]
+
+            organization_id, owner_store_id = (
+                get_supplier_owner(
+                    cursor,
+                    current_user.store_id
+                )
+            )
+
+            if organization_id is not None:
+                if supplier_org != organization_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "Supplier does not belong "
+                            "to your organization."
+                        )
+                    )
+
+            else:
+                if supplier_store != owner_store_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "Supplier does not belong "
+                            "to your store."
+                        )
+                    )
+
+            cursor.execute(
+                """
+                SELECT supplier_name
+                FROM suppliers
+                WHERE supplier_id = %s
+                """,
+                (ticket.supplier_id,)
+            )
+
+            supplier_row = cursor.fetchone()
+
+            if not supplier_row:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Supplier not found."
+                )
+
+            supplier_name = supplier_row[0]
 
         # ---------------------------------------------
         # SERIALIZE TICKET ID GENERATION
@@ -4204,6 +4268,9 @@ def intake_ticket(
                 2
             )
 
+            # -----------------------------------------
+            # RECORD INTAKE EVENT
+            # -----------------------------------------
             cursor.execute(
                 """
                 INSERT INTO events (
@@ -4216,6 +4283,8 @@ def intake_ticket(
                     price_at_time,
                     event_datetime,
                     ticket_id,
+                    supplier_id,
+                    supplier_name_at_time,
                     client_event_id,
                     device_id,
                     client_created_at
@@ -4223,7 +4292,8 @@ def intake_ticket(
                 VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s
+                    %s, %s, %s, %s,
+                    %s, %s
                 )
                 """,
                 (
@@ -4236,12 +4306,17 @@ def intake_ticket(
                     price,
                     now,
                     ticket_id,
+                    ticket.supplier_id,
+                    supplier_name,
                     ticket.client_event_id,
                     ticket.device_id,
                     ticket.client_created_at
                 )
             )
 
+            # -----------------------------------------
+            # UPDATE PRODUCT
+            # -----------------------------------------
             cursor.execute(
                 """
                 UPDATE products
@@ -4261,6 +4336,39 @@ def intake_ticket(
                     ticket.store_id
                 )
             )
+
+            # -----------------------------------------
+            # LEARN PRODUCT-SUPPLIER RELATIONSHIP
+            # -----------------------------------------
+            if ticket.supplier_id is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO product_suppliers (
+                        store_id,
+                        product_id,
+                        supplier_id,
+                        is_preferred,
+                        last_cost
+                    )
+                    VALUES (
+                        %s,
+                        %s,
+                        %s,
+                        FALSE,
+                        %s
+                    )
+                    ON CONFLICT ON CONSTRAINT
+                        product_suppliers_pkey
+                    DO UPDATE SET
+                        last_cost = EXCLUDED.last_cost
+                    """,
+                    (
+                        ticket.store_id,
+                        item.product_id,
+                        ticket.supplier_id,
+                        cost
+                    )
+                )
 
             total_cost += (
                 cost * quantity
@@ -4333,12 +4441,8 @@ def intake_ticket(
         conn.commit()
 
         return {
-            "status":
-                "accepted",
-
-            "ticket_id":
-                ticket_id,
-
+            "status": "accepted",
+            "ticket_id": ticket_id,
             "client_event_id":
                 ticket.client_event_id
         }
@@ -4370,12 +4474,8 @@ def intake_ticket(
 
             if existing:
                 return {
-                    "status":
-                        "already_processed",
-
-                    "ticket_id":
-                        existing[0],
-
+                    "status": "already_processed",
+                    "ticket_id": existing[0],
                     "client_event_id":
                         ticket.client_event_id
                 }
