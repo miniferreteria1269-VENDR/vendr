@@ -1,100 +1,64 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState
+} from "react";
+
+import { useLang } from "../LanguageContext";
 import apiClient from "../apiClient";
+
 import {
   COLORS,
+  card,
   btnPrimary,
   btnSecondary,
-  btnDanger,
   input
 } from "../uiStyles";
 
-const emptyAssignment = {
-  supplier_id: "",
-  is_preferred: false,
-  supplier_sku: "",
-  last_cost: "",
-  lead_time_days: ""
+
+const emptySupplierForm = {
+  supplier_name: "",
+  contact_name: "",
+  phone: "",
+  whatsapp: "",
+  email: "",
+  address: "",
+  notes: ""
 };
 
-export default function ProductSupplierManagement({ storeId }) {
-  const [products, setProducts] = useState([]);
-  const [selectedProductId, setSelectedProductId] = useState(null);
-  const [suppliers, setSuppliers] = useState([]);
-  const [assignedSuppliers, setAssignedSuppliers] = useState([]);
 
-  const [search, setSearch] = useState("");
-  const [assignment, setAssignment] = useState(emptyAssignment);
+function SupplierManagement() {
+  const { t } = useLang();
 
-  const [loading, setLoading] = useState(false);
-  const [loadingPanel, setLoadingPanel] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [removingSupplierId, setRemovingSupplierId] = useState(null);
-  const [updatingPreferredSupplierId, setUpdatingPreferredSupplierId] =
-    useState(null);
-  const [error, setError] = useState("");
-  const [panelError, setPanelError] = useState("");
+  const [supplierView, setSupplierView] =
+    useState("list");
 
-  const panelBusy =
-    submitting ||
-    removingSupplierId !== null ||
-    updatingPreferredSupplierId !== null;
+  const [suppliers, setSuppliers] =
+    useState([]);
 
-  useEffect(() => {
-    setSelectedProductId(null);
-    setAssignedSuppliers([]);
-    setAssignment(emptyAssignment);
+  const [searchTerm, setSearchTerm] =
+    useState("");
 
-    if (storeId) {
-      loadProducts();
-      loadSuppliers();
-    }
-  }, [storeId]);
+  const [form, setForm] =
+    useState(emptySupplierForm);
 
-  useEffect(() => {
-    if (selectedProductId == null) {
-      setAssignedSuppliers([]);
-      setPanelError("");
-      setAssignment(emptyAssignment);
-      return;
-    }
+  const [loading, setLoading] =
+    useState(false);
 
-    loadAssignedSuppliers(selectedProductId);
-  }, [selectedProductId]);
+  const [submitting, setSubmitting] =
+    useState(false);
 
-  async function loadProducts() {
+  const [errorMessage, setErrorMessage] =
+    useState("");
+
+
+  const loadSuppliers = async () => {
     setLoading(true);
-    setError("");
+    setErrorMessage("");
 
     try {
-      const response = await apiClient.get(
-        "/product-supplier-summary",
-        {
-          params: {
-            store_id: storeId
-          }
-        }
-      );
-
-      setProducts(response.data.products || []);
-    } catch (err) {
-      console.error(
-        "Failed to load product supplier summary:",
-        err
-      );
-
-      setProducts([]);
-      setError(
-        err.response?.data?.detail ||
-        "Unable to load products."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadSuppliers() {
-    try {
-      const response = await apiClient.get("/suppliers");
+      const response =
+        await apiClient.get("/suppliers");
 
       const sortedSuppliers = [
         ...(response.data.suppliers || [])
@@ -102,698 +66,636 @@ export default function ProductSupplierManagement({ storeId }) {
         String(a.supplier_name || "").localeCompare(
           String(b.supplier_name || ""),
           undefined,
-          { sensitivity: "base" }
+          {
+            sensitivity: "base"
+          }
         )
       );
 
       setSuppliers(sortedSuppliers);
-    } catch (err) {
-      console.error("Failed to load suppliers:", err);
-      setSuppliers([]);
-      setPanelError(
-        err.response?.data?.detail ||
-        "Unable to load suppliers."
-      );
-    }
-  }
-
-  async function loadAssignedSuppliers(productId) {
-    setLoadingPanel(true);
-    setPanelError("");
-    setAssignment(emptyAssignment);
-
-    try {
-      const response = await apiClient.get(
-        `/products/${productId}/suppliers`
-      );
-
-      setAssignedSuppliers(
-        response.data.suppliers || []
-      );
-    } catch (err) {
+    } catch (error) {
       console.error(
-        "Failed to load assigned suppliers:",
-        err
+        "LOAD SUPPLIERS ERROR:",
+        error
       );
 
-      setAssignedSuppliers([]);
-      setPanelError(
-        err.response?.data?.detail ||
-        "Unable to load assigned suppliers."
+      setErrorMessage(
+        error.response?.data?.detail ||
+        t("supplier_load_failed")
       );
     } finally {
-      setLoadingPanel(false);
+      setLoading(false);
     }
-  }
+  };
 
-  function updateAssignment(field, value) {
-    setAssignment(previous => ({
+
+  useEffect(() => {
+    loadSuppliers();
+  }, []);
+
+
+  const filteredSuppliers = useMemo(() => {
+    const normalizedSearch =
+      searchTerm.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return suppliers;
+    }
+
+    return suppliers.filter(supplier => {
+      const searchableValues = [
+        supplier.supplier_name,
+        supplier.contact_name,
+        supplier.phone,
+        supplier.whatsapp,
+        supplier.email
+      ];
+
+      return searchableValues.some(value =>
+        String(value || "")
+          .toLowerCase()
+          .includes(normalizedSearch)
+      );
+    });
+  }, [suppliers, searchTerm]);
+
+
+  const updateField = (
+    field,
+    value
+  ) => {
+    setForm(previous => ({
       ...previous,
       [field]: value
     }));
-  }
+  };
 
-  async function assignSupplier() {
-    if (!assignment.supplier_id || selectedProductId == null) {
-      setPanelError("Select a supplier before saving.");
+
+  const resetForm = () => {
+    setForm(emptySupplierForm);
+    setErrorMessage("");
+  };
+
+
+  const openCreateView = () => {
+    resetForm();
+    setSupplierView("create");
+  };
+
+
+  const returnToList = () => {
+    resetForm();
+    setSupplierView("list");
+  };
+
+
+  const createSupplier = async () => {
+    const supplierName =
+      form.supplier_name.trim();
+
+    if (!supplierName) {
+      alert(t("supplier_name_required"));
       return;
     }
 
-    if (submitting) return;
+    if (submitting) {
+      return;
+    }
 
     setSubmitting(true);
-    setPanelError("");
+    setErrorMessage("");
 
     try {
       await apiClient.post(
-        `/products/${selectedProductId}/suppliers`,
+        "/suppliers",
+        null,
         {
-          supplier_id: Number(assignment.supplier_id),
-          is_preferred: assignment.is_preferred,
-          supplier_sku:
-            assignment.supplier_sku.trim() || null,
-          last_cost:
-            assignment.last_cost === ""
-              ? null
-              : Number(assignment.last_cost),
-          lead_time_days:
-            assignment.lead_time_days === ""
-              ? null
-              : Number(assignment.lead_time_days)
+          params: {
+            supplier_name: supplierName,
+
+            contact_name:
+              form.contact_name.trim() ||
+              undefined,
+
+            phone:
+              form.phone.trim() ||
+              undefined,
+
+            whatsapp:
+              form.whatsapp.trim() ||
+              undefined,
+
+            email:
+              form.email.trim() ||
+              undefined,
+
+            address:
+              form.address.trim() ||
+              undefined,
+
+            notes:
+              form.notes.trim() ||
+              undefined
+          }
         }
       );
 
-      await loadProducts();
-      setSelectedProductId(null);
-      setAssignedSuppliers([]);
-      setAssignment(emptyAssignment);
-    } catch (err) {
+      alert(t("supplier_created"));
+
+      await loadSuppliers();
+
+      returnToList();
+    } catch (error) {
       console.error(
-        "Failed to assign supplier to product:",
-        err
+        "CREATE SUPPLIER ERROR:",
+        error
       );
 
-      setPanelError(
-        err.response?.data?.detail ||
-        "Unable to assign supplier."
+      const detail =
+        error.response?.data?.detail;
+
+      setErrorMessage(
+        detail ||
+        t("supplier_create_failed")
       );
     } finally {
       setSubmitting(false);
     }
-  }
+  };
 
-  async function removeSupplier(supplier) {
-    if (selectedProductId == null || panelBusy) return;
-
-    const confirmed = window.confirm(
-      `Remove ${supplier.supplier_name} from ${selectedProduct.product_name}?`
-    );
-
-    if (!confirmed) return;
-
-    setRemovingSupplierId(supplier.supplier_id);
-    setPanelError("");
-
-    try {
-      await apiClient.delete(
-        `/products/${selectedProductId}/suppliers/${supplier.supplier_id}`
-      );
-
-      await Promise.all([
-        loadAssignedSuppliers(selectedProductId),
-        loadProducts()
-      ]);
-    } catch (err) {
-      console.error(
-        "Failed to remove supplier from product:",
-        err
-      );
-
-      setPanelError(
-        err.response?.data?.detail ||
-        "Unable to remove supplier."
-      );
-    } finally {
-      setRemovingSupplierId(null);
-    }
-  }
-
-  async function togglePreferredSupplier(supplier) {
-    if (selectedProductId == null || panelBusy) return;
-
-    const nextPreferredStatus = !supplier.is_preferred;
-    const currentPreferredSupplier = assignedSuppliers.find(
-      assignedSupplier => assignedSupplier.is_preferred
-    );
-
-    let confirmationMessage;
-
-    if (!nextPreferredStatus) {
-      confirmationMessage =
-        `Remove preferred supplier status from ${supplier.supplier_name}? ` +
-        "This product will have no preferred supplier.";
-    } else if (currentPreferredSupplier) {
-      confirmationMessage =
-        `Make ${supplier.supplier_name} the preferred supplier instead of ` +
-        `${currentPreferredSupplier.supplier_name}?`;
-    } else {
-      confirmationMessage =
-        `Make ${supplier.supplier_name} the preferred supplier?`;
-    }
-
-    if (!window.confirm(confirmationMessage)) return;
-
-    setUpdatingPreferredSupplierId(supplier.supplier_id);
-    setPanelError("");
-
-    try {
-      await apiClient.patch(
-        `/products/${selectedProductId}/suppliers/${supplier.supplier_id}/preferred`,
-        {
-          is_preferred: nextPreferredStatus
-        }
-      );
-
-      await Promise.all([
-        loadAssignedSuppliers(selectedProductId),
-        loadProducts()
-      ]);
-    } catch (err) {
-      console.error(
-        "Failed to update preferred supplier:",
-        err
-      );
-
-      setPanelError(
-        err.response?.data?.detail ||
-        "Unable to update preferred supplier."
-      );
-    } finally {
-      setUpdatingPreferredSupplierId(null);
-    }
-  }
-
-  const filteredProducts = useMemo(() => {
-    const term = search.trim().toLowerCase();
-
-    if (!term) return products;
-
-    return products.filter(product =>
-      String(product.product_name || "")
-        .toLowerCase()
-        .includes(term)
-    );
-  }, [products, search]);
-
-  const selectedProduct =
-    products.find(
-      product => product.product_id === selectedProductId
-    ) || null;
-
-  const availableSuppliers = useMemo(() => {
-    const assignedIds = new Set(
-      assignedSuppliers.map(supplier =>
-        String(supplier.supplier_id)
-      )
-    );
-
-    return suppliers.filter(
-      supplier =>
-        !assignedIds.has(String(supplier.supplier_id))
-    );
-  }, [suppliers, assignedSuppliers]);
 
   return (
-    <div>
-      <h3 style={{ marginTop: 0 }}>
-        Product Suppliers
-      </h3>
-
-      <input
-        type="text"
-        placeholder="Search products..."
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
+    <div
+      style={{
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0
+      }}
+    >
+      <div
         style={{
-          ...input,
-          width: "100%",
-          maxWidth: 420,
+          display: "flex",
+          gap: 8,
           marginBottom: 16,
-          boxSizing: "border-box"
+          flexWrap: "wrap"
         }}
-      />
+      >
+        <button
+          type="button"
+          onClick={() =>
+            setSupplierView("list")
+          }
+          style={
+            supplierView === "list"
+              ? btnPrimary
+              : btnSecondary
+          }
+        >
+          {t("supplier_list")}
+        </button>
 
-      {loading && <p>Loading products...</p>}
+        <button
+          type="button"
+          onClick={openCreateView}
+          style={
+            supplierView === "create"
+              ? btnPrimary
+              : btnSecondary
+          }
+        >
+          {t("new_supplier")}
+        </button>
+      </div>
 
-      {error && (
-        <p style={{ color: COLORS.danger }}>
-          {error}
-        </p>
-      )}
-
-      {!loading && !error && (
+      {errorMessage && (
         <div
           style={{
-            overflow: "auto",
-            maxHeight: "60vh",
-            border: `1px solid ${COLORS.border}`,
-            borderRadius: 6
+            background: COLORS.panelAlt,
+            color: COLORS.danger,
+            borderRadius: 8,
+            padding: 10,
+            marginBottom: 12
           }}
         >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse"
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={headerCellStyle}>Product</th>
-                <th style={headerCellStyle}>
-                  Preferred Supplier
-                </th>
-                <th style={headerCellStyle}>Last Cost</th>
-                <th style={headerCellStyle}>Supply Cycle</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredProducts.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={4}
-                    style={{
-                      padding: 16,
-                      textAlign: "center"
-                    }}
-                  >
-                    No products found.
-                  </td>
-                </tr>
-              ) : (
-                filteredProducts.map(product => {
-                  const isSelected =
-                    product.product_id === selectedProductId;
-
-                  const additionalSuppliers = Math.max(
-                    (product.supplier_count || 0) - 1,
-                    0
-                  );
-
-                  return (
-                    <tr
-                      key={product.product_id}
-                      onClick={() =>
-                        setSelectedProductId(product.product_id)
-                      }
-                      style={{
-                        cursor: "pointer",
-                        backgroundColor: isSelected
-                          ? "#26354d"
-                          : "transparent"
-                      }}
-                    >
-                      <td style={bodyCellStyle}>
-                        {product.product_name}
-                      </td>
-
-                      <td style={bodyCellStyle}>
-                        {product.preferred_supplier_name ? (
-                          <>
-                            {product.preferred_supplier_name}
-
-                            {additionalSuppliers > 0 && (
-                              <span>
-                                {" "}(+{additionalSuppliers})
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-
-                      <td style={bodyCellStyle}>
-                        {product.last_cost != null
-                          ? `$${Number(product.last_cost).toFixed(2)}`
-                          : "—"}
-                      </td>
-
-                      <td style={bodyCellStyle}>
-                        {product.supply_cycle ??
-                          product.lead_time_days ??
-                          "—"}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+          {errorMessage}
         </div>
       )}
 
-      {selectedProduct && (
+      {/* SUPPLIER LIST */}
+      {supplierView === "list" && (
         <div
-          role="presentation"
-          onMouseDown={() => {
-            if (!panelBusy) {
-              setSelectedProductId(null);
-            }
+          style={{
+            ...card,
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0
           }}
-          style={modalBackdropStyle}
         >
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Manage suppliers for ${selectedProduct.product_name}`}
-            onMouseDown={(event) => event.stopPropagation()}
-            style={modalPanelStyle}
+            style={{
+              display: "flex",
+              justifyContent:
+                "space-between",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: 16,
+              flexWrap: "wrap"
+            }}
           >
-            <div style={modalHeaderStyle}>
-              <h3 style={{ margin: 0 }}>
-                {selectedProduct.product_name}
-              </h3>
+            <input
+              type="text"
+              placeholder={
+                t("search_suppliers")
+              }
+              value={searchTerm}
+              onChange={event =>
+                setSearchTerm(
+                  event.target.value
+                )
+              }
+              style={{
+                ...input,
+                width: 300
+              }}
+            />
 
-              <button
-                type="button"
-                aria-label="Close supplier assignment"
-                onClick={() => setSelectedProductId(null)}
-                disabled={panelBusy}
-                style={modalCloseStyle}
-              >
-                ×
-              </button>
+            <button
+              type="button"
+              onClick={openCreateView}
+              style={btnPrimary}
+            >
+              + {t("new_supplier")}
+            </button>
+          </div>
+
+          {loading && (
+            <div
+              style={{
+                color: COLORS.textDim,
+                marginBottom: 12
+              }}
+            >
+              {t("loading")}
             </div>
+          )}
 
-            {panelError && (
+          {!loading &&
+            filteredSuppliers.length === 0 && (
               <div
                 style={{
-                  background: COLORS.panelAlt,
-                  color: COLORS.danger,
-                  borderRadius: 8,
-                  padding: 10,
-                  marginBottom: 12
+                  color: COLORS.textDim
                 }}
               >
-                {panelError}
+                {searchTerm.trim()
+                  ? t("no_suppliers_found")
+                  : t("no_suppliers")}
               </div>
             )}
 
-            {loadingPanel ? (
-              <p>Loading assigned suppliers...</p>
-            ) : (
-              <>
-                <h4>Assigned Suppliers</h4>
-
-                {assignedSuppliers.length === 0 ? (
-                  <p style={{ color: COLORS.textDim }}>
-                    No suppliers are assigned to this product.
-                  </p>
-                ) : (
-                  <div
-                    style={{
-                      overflowX: "auto",
-                      border: `1px solid ${COLORS.border}`,
-                      borderRadius: 6,
-                      marginBottom: 20
-                    }}
-                  >
-                    <table
+          {!loading &&
+            filteredSuppliers.length > 0 && (
+              <div
+                style={{
+                  flex: 1,
+                  overflow: "auto",
+                  minHeight: 0
+                }}
+              >
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse:
+                      "collapse"
+                  }}
+                >
+                  <thead>
+                    <tr
                       style={{
-                        width: "100%",
-                        borderCollapse: "collapse"
+                        borderBottom:
+                          `1px solid ${COLORS.border}`
                       }}
                     >
-                      <thead>
-                        <tr>
-                          <th style={headerCellStyle}>Supplier</th>
-                          <th style={headerCellStyle}>Preferred</th>
-                          <th style={headerCellStyle}>Supplier SKU</th>
-                          <th style={headerCellStyle}>Last Cost</th>
-                          <th style={headerCellStyle}>Lead Time</th>
-                          <th style={headerCellStyle}>Action</th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {assignedSuppliers.map(supplier => (
-                          <tr key={supplier.supplier_id}>
-                            <td style={bodyCellStyle}>
-                              <strong>{supplier.supplier_name}</strong>
-                              {supplier.contact_name && (
-                                <div
-                                  style={{
-                                    color: COLORS.textDim,
-                                    marginTop: 2
-                                  }}
-                                >
-                                  {supplier.contact_name}
-                                </div>
-                              )}
-                            </td>
-
-                            <td style={bodyCellStyle}>
-                              <button
-                                type="button"
-                                title={
-                                  supplier.is_preferred
-                                    ? "Remove preferred supplier status"
-                                    : "Make preferred supplier"
-                                }
-                                aria-label={
-                                  supplier.is_preferred
-                                    ? `${supplier.supplier_name} is preferred. Click to remove preferred status.`
-                                    : `Make ${supplier.supplier_name} the preferred supplier.`
-                                }
-                                aria-pressed={supplier.is_preferred}
-                                onClick={() =>
-                                  togglePreferredSupplier(supplier)
-                                }
-                                disabled={panelBusy}
-                                style={{
-                                  ...preferredStarStyle,
-                                  color: supplier.is_preferred
-                                    ? "#f5c542"
-                                    : COLORS.textDim,
-                                  opacity:
-                                    panelBusy &&
-                                    updatingPreferredSupplierId !== supplier.supplier_id
-                                      ? 0.5
-                                      : 1,
-                                  cursor: panelBusy
-                                    ? "default"
-                                    : "pointer"
-                                }}
-                              >
-                                {updatingPreferredSupplierId === supplier.supplier_id
-                                  ? "…"
-                                  : supplier.is_preferred
-                                    ? "★"
-                                    : "☆"}
-                              </button>
-                            </td>
-
-                            <td style={bodyCellStyle}>
-                              {supplier.supplier_sku || "—"}
-                            </td>
-
-                            <td style={bodyCellStyle}>
-                              {supplier.last_cost != null
-                                ? `$${Number(supplier.last_cost).toFixed(2)}`
-                                : "—"}
-                            </td>
-
-                            <td style={bodyCellStyle}>
-                              {supplier.lead_time_days != null
-                                ? `${supplier.lead_time_days} days`
-                                : "—"}
-                            </td>
-
-                            <td style={bodyCellStyle}>
-                              <button
-                                type="button"
-                                onClick={() => removeSupplier(supplier)}
-                                disabled={panelBusy}
-                                style={{
-                                  ...btnDanger,
-                                  opacity: panelBusy ? 0.6 : 1,
-                                  cursor: panelBusy
-                                    ? "default"
-                                    : "pointer",
-                                  whiteSpace: "nowrap"
-                                }}
-                              >
-                                {removingSupplierId === supplier.supplier_id
-                                  ? "Removing..."
-                                  : "Remove"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                <h4>Assign Supplier</h4>
-
-                {availableSuppliers.length === 0 ? (
-                  <p style={{ color: COLORS.textDim }}>
-                    {suppliers.length === 0
-                      ? "No active suppliers are available."
-                      : "All active suppliers are already assigned to this product."}
-                  </p>
-                ) : (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fit, minmax(190px, 1fr))",
-                      gap: 12,
-                      maxWidth: 900
-                    }}
-                  >
-                    <label style={fieldStyle}>
-                      <span>Supplier *</span>
-                      <select
-                        value={assignment.supplier_id}
-                        onChange={(event) =>
-                          updateAssignment(
-                            "supplier_id",
-                            event.target.value
-                          )
-                        }
-                        disabled={panelBusy}
-                        style={{ ...input, width: "100%" }}
-                      >
-                        <option value="">Select supplier...</option>
-                        {availableSuppliers.map(supplier => (
-                          <option
-                            key={supplier.supplier_id}
-                            value={supplier.supplier_id}
-                          >
-                            {supplier.supplier_name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label style={fieldStyle}>
-                      <span>Supplier SKU</span>
-                      <input
-                        type="text"
-                        value={assignment.supplier_sku}
-                        onChange={(event) =>
-                          updateAssignment(
-                            "supplier_sku",
-                            event.target.value
-                          )
-                        }
-                        disabled={panelBusy}
-                        style={{ ...input, width: "100%" }}
-                      />
-                    </label>
-
-                    <label style={fieldStyle}>
-                      <span>Last Cost</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={assignment.last_cost}
-                        onChange={(event) =>
-                          updateAssignment(
-                            "last_cost",
-                            event.target.value
-                          )
-                        }
-                        disabled={panelBusy}
-                        style={{ ...input, width: "100%" }}
-                      />
-                    </label>
-
-                    <label style={fieldStyle}>
-                      <span>Lead Time (days)</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={assignment.lead_time_days}
-                        onChange={(event) =>
-                          updateAssignment(
-                            "lead_time_days",
-                            event.target.value
-                          )
-                        }
-                        disabled={panelBusy}
-                        style={{ ...input, width: "100%" }}
-                      />
-                    </label>
-
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        alignSelf: "end",
-                        minHeight: 38
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={assignment.is_preferred}
-                        onChange={(event) =>
-                          updateAssignment(
-                            "is_preferred",
-                            event.target.checked
-                          )
-                        }
-                        disabled={panelBusy}
-                      />
-                      Preferred supplier
-                    </label>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        alignItems: "end"
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={assignSupplier}
-                        disabled={panelBusy}
+                      <th
                         style={{
-                          ...btnPrimary,
-                          opacity: submitting ? 0.6 : 1,
-                          cursor: submitting
-                            ? "default"
-                            : "pointer"
+                          textAlign: "left",
+                          padding: 8
                         }}
                       >
-                        {submitting
-                          ? "Saving..."
-                          : "Assign Supplier"}
-                      </button>
+                        {t("supplier")}
+                      </th>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAssignment(emptyAssignment);
-                          setPanelError("");
+                      <th
+                        style={{
+                          textAlign: "left",
+                          padding: 8
                         }}
-                        disabled={panelBusy}
-                        style={btnSecondary}
                       >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </>
+                        {t("contact")}
+                      </th>
+
+                      <th
+                        style={{
+                          textAlign: "left",
+                          padding: 8
+                        }}
+                      >
+                        {t("phone")}
+                      </th>
+
+                      <th
+                        style={{
+                          textAlign: "left",
+                          padding: 8
+                        }}
+                      >
+                        {t("whatsapp")}
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {filteredSuppliers.map(
+                      supplier => (
+                        <tr
+                          key={
+                            supplier.supplier_id
+                          }
+                          style={{
+                            borderBottom:
+                              `1px solid ${COLORS.border}`
+                          }}
+                        >
+                          <td
+                            style={{
+                              padding: 8
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                /*
+                                 * This will later open
+                                 * the supplier profile.
+                                 */
+                                console.log(
+                                  "SUPPLIER SELECTED:",
+                                  supplier
+                                );
+                              }}
+                              style={{
+                                background:
+                                  "transparent",
+                                border: "none",
+                                padding: 0,
+                                color:
+                                  COLORS.primary,
+                                cursor:
+                                  "pointer",
+                                fontWeight:
+                                  "bold",
+                                textAlign:
+                                  "left"
+                              }}
+                            >
+                              {
+                                supplier.supplier_name
+                              }
+                            </button>
+                          </td>
+
+                          <td
+                            style={{
+                              padding: 8
+                            }}
+                          >
+                            {
+                              supplier.contact_name ||
+                              "—"
+                            }
+                          </td>
+
+                          <td
+                            style={{
+                              padding: 8
+                            }}
+                          >
+                            {
+                              supplier.phone ||
+                              "—"
+                            }
+                          </td>
+
+                          <td
+                            style={{
+                              padding: 8
+                            }}
+                          >
+                            {
+                              supplier.whatsapp ||
+                              "—"
+                            }
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
             )}
+        </div>
+      )}
+
+      {/* CREATE SUPPLIER */}
+      {supplierView === "create" && (
+        <div style={card}>
+          <div style={{ maxWidth: 500 }}>
+            <h3>
+              {t("new_supplier")}
+            </h3>
+
+            <label>
+              {t("supplier_name")} *
+            </label>
+
+            <input
+              type="text"
+              value={form.supplier_name}
+              onChange={event =>
+                updateField(
+                  "supplier_name",
+                  event.target.value
+                )
+              }
+              disabled={submitting}
+              style={{
+                ...input,
+                width: "100%",
+                marginBottom: 8
+              }}
+            />
+
+            <label>
+              {t("contact_name")}
+            </label>
+
+            <input
+              type="text"
+              value={form.contact_name}
+              onChange={event =>
+                updateField(
+                  "contact_name",
+                  event.target.value
+                )
+              }
+              disabled={submitting}
+              style={{
+                ...input,
+                width: "100%",
+                marginBottom: 8
+              }}
+            />
+
+            <label>
+              {t("phone")}
+            </label>
+
+            <input
+              type="text"
+              value={form.phone}
+              onChange={event =>
+                updateField(
+                  "phone",
+                  event.target.value
+                )
+              }
+              disabled={submitting}
+              style={{
+                ...input,
+                width: "100%",
+                marginBottom: 8
+              }}
+            />
+
+            <label>
+              {t("whatsapp")}
+            </label>
+
+            <input
+              type="text"
+              value={form.whatsapp}
+              onChange={event =>
+                updateField(
+                  "whatsapp",
+                  event.target.value
+                )
+              }
+              disabled={submitting}
+              style={{
+                ...input,
+                width: "100%",
+                marginBottom: 8
+              }}
+            />
+
+            <label>
+              {t("email")}
+            </label>
+
+            <input
+              type="email"
+              value={form.email}
+              onChange={event =>
+                updateField(
+                  "email",
+                  event.target.value
+                )
+              }
+              disabled={submitting}
+              style={{
+                ...input,
+                width: "100%",
+                marginBottom: 8
+              }}
+            />
+
+            <label>
+              {t("address")}
+            </label>
+
+            <input
+              type="text"
+              value={form.address}
+              onChange={event =>
+                updateField(
+                  "address",
+                  event.target.value
+                )
+              }
+              disabled={submitting}
+              style={{
+                ...input,
+                width: "100%",
+                marginBottom: 8
+              }}
+            />
+
+            <label>
+              {t("notes")}
+            </label>
+
+            <textarea
+              value={form.notes}
+              onChange={event =>
+                updateField(
+                  "notes",
+                  event.target.value
+                )
+              }
+              disabled={submitting}
+              rows={4}
+              style={{
+                ...input,
+                width: "100%",
+                marginBottom: 12,
+                resize: "vertical"
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={createSupplier}
+              disabled={submitting}
+              style={{
+                ...btnPrimary,
+                opacity:
+                  submitting ? 0.6 : 1,
+                cursor:
+                  submitting
+                    ? "default"
+                    : "pointer"
+              }}
+            >
+              {submitting
+                ? t("loading")
+                : t("save")}
+            </button>
+
+            <button
+              type="button"
+              onClick={returnToList}
+              disabled={submitting}
+              style={{
+                ...btnSecondary,
+                marginLeft: 8,
+                opacity:
+                  submitting ? 0.6 : 1
+              }}
+            >
+              {t("cancel")}
+            </button>
           </div>
         </div>
       )}
@@ -801,75 +703,5 @@ export default function ProductSupplierManagement({ storeId }) {
   );
 }
 
-const headerCellStyle = {
-  padding: "10px 12px",
-  textAlign: "left",
-  borderBottom: `1px solid ${COLORS.border}`,
-  whiteSpace: "nowrap",
-  position: "sticky",
-  top: 0,
-  zIndex: 1,
-  background: COLORS.panelAlt
-};
 
-const bodyCellStyle = {
-  padding: "10px 12px",
-  borderBottom: `1px solid ${COLORS.border}`
-};
-
-const fieldStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 5
-};
-
-const preferredStarStyle = {
-  minWidth: 32,
-  padding: "0 4px",
-  border: "none",
-  background: "transparent",
-  fontSize: 25,
-  lineHeight: 1,
-  textAlign: "center"
-};
-
-const modalBackdropStyle = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 1000,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 20,
-  background: "rgba(0, 0, 0, 0.72)"
-};
-
-const modalPanelStyle = {
-  width: "min(1000px, 100%)",
-  maxHeight: "88vh",
-  overflowY: "auto",
-  boxSizing: "border-box",
-  padding: 20,
-  border: `1px solid ${COLORS.border}`,
-  borderRadius: 10,
-  background: COLORS.panelAlt,
-  boxShadow: "0 18px 60px rgba(0, 0, 0, 0.5)"
-};
-
-const modalHeaderStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 16,
-  marginBottom: 16
-};
-
-const modalCloseStyle = {
-  border: "none",
-  background: "transparent",
-  color: "inherit",
-  cursor: "pointer",
-  fontSize: 28,
-  lineHeight: 1,
-  padding: "0 4px"
-};
+export default SupplierManagement;
