@@ -2402,6 +2402,10 @@ class ProductSupplierAssignment(BaseModel):
     last_cost: float | None = None
     lead_time_days: int | None = None
 
+class ReorderItemUpsert(BaseModel):
+    quantity: int
+    supplier_id: Optional[int] = None
+
 class ProductSupplierPreferenceUpdate(BaseModel):
     is_preferred: bool
 
@@ -11532,6 +11536,328 @@ def update_preferred_product_supplier(
         raise HTTPException(
             status_code=500,
             detail="Unable to update preferred supplier."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.post("/reorder-items/{product_id}")
+def add_or_update_reorder_item(
+    product_id: int,
+    item: ReorderItemUpsert,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        # ---------------------------------------------
+        # VALIDATE QUANTITY
+        # ---------------------------------------------
+        if item.quantity <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Reorder quantity must be "
+                    "greater than zero."
+                )
+            )
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VERIFY PRODUCT AND GET CURRENT COST
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                name,
+                cost
+            FROM products
+            WHERE
+                store_id = %s
+            AND
+                product_id = %s
+            AND
+                is_active = 1
+            """,
+            (
+                current_user.store_id,
+                product_id
+            )
+        )
+
+        product = cursor.fetchone()
+
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found."
+            )
+
+        product_name = product[0]
+        product_cost = product[1]
+
+        supplier_name = None
+        supplier_sku = None
+        supplier_last_cost = None
+
+        # ---------------------------------------------
+        # VALIDATE OPTIONAL SUPPLIER
+        # ---------------------------------------------
+        if item.supplier_id is not None:
+            supplier = verify_supplier(
+                cursor,
+                item.supplier_id
+            )
+
+            supplier_org = supplier[1]
+            supplier_store = supplier[2]
+
+            organization_id, owner_store_id = (
+                get_supplier_owner(
+                    cursor,
+                    current_user.store_id
+                )
+            )
+
+            if organization_id is not None:
+                if supplier_org != organization_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "Supplier does not belong "
+                            "to your organization."
+                        )
+                    )
+
+            else:
+                if supplier_store != owner_store_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "Supplier does not belong "
+                            "to your store."
+                        )
+                    )
+
+            # -----------------------------------------
+            # CREATE RELATIONSHIP IF MISSING
+            # -----------------------------------------
+            cursor.execute(
+                """
+                INSERT INTO product_suppliers (
+                    store_id,
+                    product_id,
+                    supplier_id,
+                    is_preferred
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    FALSE
+                )
+                ON CONFLICT ON CONSTRAINT
+                    product_suppliers_pkey
+                DO NOTHING
+                """,
+                (
+                    current_user.store_id,
+                    product_id,
+                    item.supplier_id
+                )
+            )
+
+            # -----------------------------------------
+            # GET SUPPLIER-SPECIFIC INFORMATION
+            # -----------------------------------------
+            cursor.execute(
+                """
+                SELECT
+                    s.supplier_name,
+                    ps.supplier_sku,
+                    ps.last_cost
+                FROM product_suppliers ps
+
+                INNER JOIN suppliers s
+                    ON s.supplier_id = ps.supplier_id
+
+                WHERE
+                    ps.store_id = %s
+                AND
+                    ps.product_id = %s
+                AND
+                    ps.supplier_id = %s
+                """,
+                (
+                    current_user.store_id,
+                    product_id,
+                    item.supplier_id
+                )
+            )
+
+            supplier_details = cursor.fetchone()
+
+            if not supplier_details:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Unable to resolve product "
+                        "supplier relationship."
+                    )
+                )
+
+            supplier_name = supplier_details[0]
+            supplier_sku = supplier_details[1]
+            supplier_last_cost = supplier_details[2]
+
+        # ---------------------------------------------
+        # RESOLVE ESTIMATED UNIT COST
+        # ---------------------------------------------
+        estimated_unit_cost = None
+        cost_source = "unknown"
+
+        if (
+            supplier_last_cost is not None
+            and float(supplier_last_cost) > 0
+        ):
+            estimated_unit_cost = round(
+                float(supplier_last_cost),
+                2
+            )
+
+            cost_source = "supplier_last_cost"
+
+        elif (
+            product_cost is not None
+            and float(product_cost) > 0
+        ):
+            estimated_unit_cost = round(
+                float(product_cost),
+                2
+            )
+
+            cost_source = "product_cost"
+
+        # ---------------------------------------------
+        # CREATE OR UPDATE REORDER ENTRY
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO reorder_items (
+                store_id,
+                product_id,
+                supplier_id,
+                quantity,
+                estimated_unit_cost,
+                cost_source
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+            ON CONFLICT ON CONSTRAINT
+                reorder_items_pkey
+            DO UPDATE SET
+                supplier_id =
+                    EXCLUDED.supplier_id,
+
+                quantity =
+                    EXCLUDED.quantity,
+
+                estimated_unit_cost =
+                    EXCLUDED.estimated_unit_cost,
+
+                cost_source =
+                    EXCLUDED.cost_source,
+
+                updated_at =
+                    NOW()
+            """,
+            (
+                current_user.store_id,
+                product_id,
+                item.supplier_id,
+                item.quantity,
+                estimated_unit_cost,
+                cost_source
+            )
+        )
+
+        conn.commit()
+
+        projected_cost = None
+
+        if estimated_unit_cost is not None:
+            projected_cost = round(
+                estimated_unit_cost *
+                item.quantity,
+                2
+            )
+
+        return {
+            "status": "accepted",
+
+            "reorder_item": {
+                "product_id":
+                    product_id,
+
+                "product_name":
+                    product_name,
+
+                "supplier_id":
+                    item.supplier_id,
+
+                "supplier_name":
+                    supplier_name,
+
+                "supplier_sku":
+                    supplier_sku,
+
+                "quantity":
+                    item.quantity,
+
+                "estimated_unit_cost":
+                    estimated_unit_cost,
+
+                "cost_source":
+                    cost_source,
+
+                "projected_cost":
+                    projected_cost
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "ADD OR UPDATE REORDER ITEM ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save reorder item."
         )
 
     finally:
