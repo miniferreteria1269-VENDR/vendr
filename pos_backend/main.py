@@ -2402,6 +2402,9 @@ class ProductSupplierAssignment(BaseModel):
     last_cost: float | None = None
     lead_time_days: int | None = None
 
+class ProductSupplierPreferenceUpdate(BaseModel):
+    is_preferred: bool
+
 class SaleTicket(BaseModel):
     store_id: int
     items: List[SaleItem]
@@ -11274,6 +11277,159 @@ def remove_supplier_from_product(
         raise HTTPException(
             status_code=500,
             detail="Unable to remove supplier."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.patch(
+    "/products/{product_id}/suppliers/{supplier_id}/preferred"
+)
+def update_preferred_product_supplier(
+    product_id: int,
+    supplier_id: int,
+    update: ProductSupplierPreferenceUpdate,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VERIFY PRODUCT
+        # ---------------------------------------------
+        verify_product(
+            cursor,
+            current_user.store_id,
+            product_id
+        )
+
+        # ---------------------------------------------
+        # VERIFY ASSIGNMENT
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT is_preferred
+            FROM product_suppliers
+            WHERE
+                store_id = %s
+            AND
+                product_id = %s
+            AND
+                supplier_id = %s
+            """,
+            (
+                current_user.store_id,
+                product_id,
+                supplier_id
+            )
+        )
+
+        relationship = cursor.fetchone()
+
+        if not relationship:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier assignment not found."
+            )
+
+        # ---------------------------------------------
+        # UPDATE PREFERRED STATUS
+        # ---------------------------------------------
+        if update.is_preferred:
+
+            # A product can have only one preferred supplier.
+            cursor.execute(
+                """
+                UPDATE product_suppliers
+                SET is_preferred = FALSE
+                WHERE
+                    store_id = %s
+                AND
+                    product_id = %s
+                """,
+                (
+                    current_user.store_id,
+                    product_id
+                )
+            )
+
+            cursor.execute(
+                """
+                UPDATE product_suppliers
+                SET is_preferred = TRUE
+                WHERE
+                    store_id = %s
+                AND
+                    product_id = %s
+                AND
+                    supplier_id = %s
+                """,
+                (
+                    current_user.store_id,
+                    product_id,
+                    supplier_id
+                )
+            )
+
+            message = "Preferred supplier updated successfully."
+
+        else:
+
+            # This intentionally permits no preferred supplier.
+            cursor.execute(
+                """
+                UPDATE product_suppliers
+                SET is_preferred = FALSE
+                WHERE
+                    store_id = %s
+                AND
+                    product_id = %s
+                AND
+                    supplier_id = %s
+                """,
+                (
+                    current_user.store_id,
+                    product_id,
+                    supplier_id
+                )
+            )
+
+            message = "Preferred supplier status removed."
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": message
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "UPDATE PREFERRED PRODUCT SUPPLIER ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update preferred supplier."
         )
 
     finally:
