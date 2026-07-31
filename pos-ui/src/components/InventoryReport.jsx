@@ -8,6 +8,7 @@ import {
   card,
   btnPrimary,
   btnSecondary,
+  btnDanger,
   input,
 } from "../uiStyles";
 
@@ -19,6 +20,20 @@ function InventoryReport({ storeId }) {
   const [inventoryView, setInventoryView] = useState("stock");
 
   const [lowStockItems, setLowStockItems] = useState([]);
+  const [lowStockView, setLowStockView] = useState("lowstock");
+  const [reorderItems, setReorderItems] = useState([]);
+  const [reorderFilter, setReorderFilter] = useState("master");
+  const [reorderSupplierId, setReorderSupplierId] = useState("");
+  const [activeReorderProduct, setActiveReorderProduct] = useState(null);
+  const [assignedProductSuppliers, setAssignedProductSuppliers] = useState([]);
+  const [allSuppliers, setAllSuppliers] = useState([]);
+  const [reorderForm, setReorderForm] = useState({
+    supplier_id: "",
+    quantity: 1,
+  });
+  const [reorderLoading, setReorderLoading] = useState(false);
+  const [reorderSaving, setReorderSaving] = useState(false);
+  const [reorderError, setReorderError] = useState("");
   const [paretoItems, setParetoItems] = useState([]);
   const [deadStockItems, setDeadStockItems] = useState([]);
   const [serviceItems, setServiceItems] = useState([]);
@@ -85,6 +100,35 @@ function InventoryReport({ storeId }) {
     setLowStockItems(res.data.low_stock || []);
   };
 
+  const loadReorderItems = async () => {
+    const res = await apiClient.get(
+      "/reorder-items",
+      {
+        params: {
+          store_id: storeId,
+        },
+      }
+    );
+
+    setReorderItems(res.data.reorder_items || []);
+  };
+
+  const loadAllSuppliers = async () => {
+    const res = await apiClient.get("/suppliers");
+
+    const sortedSuppliers = [
+      ...(res.data.suppliers || []),
+    ].sort((a, b) =>
+      String(a.supplier_name || "").localeCompare(
+        String(b.supplier_name || ""),
+        undefined,
+        { sensitivity: "base" }
+      )
+    );
+
+    setAllSuppliers(sortedSuppliers);
+  };
+
   const loadPareto = async () => {
     const res = await apiClient.get(
       "/inventory-pareto",
@@ -148,6 +192,8 @@ function InventoryReport({ storeId }) {
   useEffect(() => {
     if (inventoryView === "lowstock") {
       loadLowStock();
+      loadReorderItems();
+      loadAllSuppliers();
     }
 
     if (inventoryView === "pareto") {
@@ -213,6 +259,255 @@ function InventoryReport({ storeId }) {
   });
 
   const topCount = Math.ceil(sortedPareto.length * 0.2);
+
+  const reorderSupplierOptions = Array.from(
+    new Map(
+      reorderItems
+        .filter((item) => item.supplier_id != null)
+        .map((item) => [
+          String(item.supplier_id),
+          {
+            supplier_id: item.supplier_id,
+            supplier_name: item.supplier_name,
+          },
+        ])
+    ).values()
+  ).sort((a, b) =>
+    String(a.supplier_name || "").localeCompare(
+      String(b.supplier_name || ""),
+      undefined,
+      { sensitivity: "base" }
+    )
+  );
+
+  const visibleReorderItems = reorderItems.filter((item) => {
+    if (reorderFilter === "unassigned") {
+      return item.supplier_id == null;
+    }
+
+    if (reorderFilter === "supplier") {
+      return (
+        reorderSupplierId !== "" &&
+        String(item.supplier_id) === String(reorderSupplierId)
+      );
+    }
+
+    return true;
+  });
+
+  const visibleProjectedTotal = visibleReorderItems.reduce(
+    (sum, item) =>
+      sum + Number(item.projected_cost || 0),
+    0
+  );
+
+  const visibleUnknownCostCount = visibleReorderItems.filter(
+    (item) => item.estimated_unit_cost == null
+  ).length;
+
+  const currentSupplierFilter = reorderSupplierOptions.find(
+    (supplier) =>
+      String(supplier.supplier_id) ===
+      String(reorderSupplierId)
+  );
+
+  const reorderModalSupplierChoices =
+    assignedProductSuppliers.length > 0
+      ? assignedProductSuppliers
+      : allSuppliers;
+
+  const selectedReorderModalSupplier =
+    reorderModalSupplierChoices.find(
+      (supplier) =>
+        String(supplier.supplier_id) ===
+        String(reorderForm.supplier_id)
+    );
+
+  const openReorderModal = async (product) => {
+    const existingItem = reorderItems.find(
+      (item) => item.product_id === product.product_id
+    );
+
+    const normalizedProduct = {
+      product_id: product.product_id,
+      name: product.name || product.product_name,
+      stock: product.stock,
+      threshold: product.threshold,
+    };
+
+    setActiveReorderProduct(normalizedProduct);
+    setAssignedProductSuppliers([]);
+    setReorderError("");
+    setReorderLoading(true);
+    setReorderForm({
+      supplier_id:
+        existingItem?.supplier_id != null
+          ? String(existingItem.supplier_id)
+          : "",
+      quantity:
+        existingItem?.quantity ||
+        Math.max(
+          Number(product.threshold || 0) -
+            Number(product.stock || 0),
+          1
+        ),
+    });
+
+    try {
+      const response = await apiClient.get(
+        `/products/${product.product_id}/suppliers`
+      );
+
+      const assigned = response.data.suppliers || [];
+      setAssignedProductSuppliers(assigned);
+
+      if (!existingItem) {
+        const preferred = assigned.find(
+          (supplier) => supplier.is_preferred
+        );
+
+        if (preferred) {
+          setReorderForm((previous) => ({
+            ...previous,
+            supplier_id: String(preferred.supplier_id),
+          }));
+        }
+      }
+    } catch (error) {
+      console.error(
+        "LOAD PRODUCT SUPPLIERS ERROR:",
+        error
+      );
+
+      setReorderError(
+        error.response?.data?.detail ||
+          "Unable to load product suppliers."
+      );
+    } finally {
+      setReorderLoading(false);
+    }
+  };
+
+  const closeReorderModal = () => {
+    if (reorderSaving) return;
+
+    setActiveReorderProduct(null);
+    setAssignedProductSuppliers([]);
+    setReorderError("");
+  };
+
+  const saveReorderItem = async () => {
+    if (!activeReorderProduct || reorderSaving) return;
+
+    const quantity = Number(reorderForm.quantity);
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      setReorderError(
+        "Reorder quantity must be a positive whole number."
+      );
+      return;
+    }
+
+    setReorderSaving(true);
+    setReorderError("");
+
+    try {
+      await apiClient.post(
+        `/reorder-items/${activeReorderProduct.product_id}`,
+        {
+          quantity,
+          supplier_id:
+            reorderForm.supplier_id === ""
+              ? null
+              : Number(reorderForm.supplier_id),
+        }
+      );
+
+      await loadReorderItems();
+      setActiveReorderProduct(null);
+      setAssignedProductSuppliers([]);
+    } catch (error) {
+      console.error("SAVE REORDER ITEM ERROR:", error);
+
+      setReorderError(
+        error.response?.data?.detail ||
+          "Unable to save reorder item."
+      );
+    } finally {
+      setReorderSaving(false);
+    }
+  };
+
+  const removeReorderItem = async (item) => {
+    if (
+      !window.confirm(
+        `Remove ${item.product_name} from the reorder list?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(
+        `/reorder-items/${item.product_id}`
+      );
+
+      await loadReorderItems();
+    } catch (error) {
+      alert(
+        error.response?.data?.detail ||
+          "Unable to remove reorder item."
+      );
+    }
+  };
+
+  const clearCurrentReorderView = async () => {
+    if (visibleReorderItems.length === 0) return;
+
+    let scope = "all";
+    let supplierId;
+    let confirmation;
+
+    if (reorderFilter === "supplier") {
+      scope = "supplier";
+      supplierId = Number(reorderSupplierId);
+      confirmation =
+        `Remove all ${visibleReorderItems.length} products from ` +
+        `${currentSupplierFilter?.supplier_name || "this supplier"}'s reorder list?\n\n` +
+        "They will also be removed from the master reorder list.";
+    } else if (reorderFilter === "unassigned") {
+      scope = "unassigned";
+      confirmation =
+        `Remove all ${visibleReorderItems.length} unassigned products?\n\n` +
+        "They will also be removed from the master reorder list.";
+    } else {
+      confirmation =
+        `Clear all ${visibleReorderItems.length} products from every reorder list?\n\n` +
+        "This cannot be undone.";
+    }
+
+    if (!window.confirm(confirmation)) return;
+
+    try {
+      await apiClient.delete("/reorder-items", {
+        params: {
+          scope,
+          supplier_id: supplierId,
+        },
+      });
+
+      await loadReorderItems();
+
+      if (scope === "supplier") {
+        setReorderSupplierId("");
+      }
+    } catch (error) {
+      alert(
+        error.response?.data?.detail ||
+          "Unable to clear reorder list."
+      );
+    }
+  };
 
   return (
     <div
@@ -408,38 +703,365 @@ function InventoryReport({ storeId }) {
             minHeight: 0,
           }}
         >
-          <h3>{t("lowstock")}</h3>
-
           <div
             style={{
-              flex: 1,
-              overflowY: "auto",
-              minHeight: 0,
+              display: "flex",
+              gap: 8,
+              marginBottom: 16,
+              flexWrap: "wrap",
             }}
           >
-            {filteredLowStock.length === 0 && (
-              <div style={{ color: COLORS.textDim }}>
-                {t("no_issues")}
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setLowStockView("lowstock")}
+              style={
+                lowStockView === "lowstock"
+                  ? btnPrimary
+                  : btnSecondary
+              }
+            >
+              Low Stock
+            </button>
 
-            {filteredLowStock.map((item, index) => (
+            <button
+              type="button"
+              onClick={() => {
+                setLowStockView("reorder");
+                loadReorderItems();
+              }}
+              style={
+                lowStockView === "reorder"
+                  ? btnPrimary
+                  : btnSecondary
+              }
+            >
+              Reorder List
+            </button>
+          </div>
+
+          {lowStockView === "lowstock" && (
+            <>
+              <h3 style={{ marginTop: 0 }}>
+                {t("lowstock")}
+              </h3>
+
               <div
-                key={index}
                 style={{
-                  padding: 8,
-                  borderBottom: `1px solid ${COLORS.border}`,
+                  flex: 1,
+                  overflowY: "auto",
+                  minHeight: 0,
                 }}
               >
-                <b>{item.name}</b>
+                {filteredLowStock.length === 0 && (
+                  <div style={{ color: COLORS.textDim }}>
+                    {t("no_issues")}
+                  </div>
+                )}
 
-                <div>
-                  {t("stock")}: {item.stock} /{" "}
-                  {t("min")}: {item.threshold}
-                </div>
+                {filteredLowStock.map((item) => {
+                  const existingReorderItem = reorderItems.find(
+                    (reorderItem) =>
+                      reorderItem.product_id === item.product_id
+                  );
+
+                  return (
+                    <div
+                      key={item.product_id}
+                      style={{
+                        padding: 10,
+                        borderBottom: `1px solid ${COLORS.border}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div>
+                        <b>{item.name}</b>
+
+                        <div>
+                          {t("stock")}: {item.stock} /{" "}
+                          {t("min")}: {item.threshold}
+                        </div>
+
+                        {existingReorderItem && (
+                          <div
+                            style={{
+                              marginTop: 3,
+                              color: COLORS.textDim,
+                              fontSize: 12,
+                            }}
+                          >
+                            On reorder list: {existingReorderItem.quantity}
+                            {existingReorderItem.supplier_name
+                              ? ` · ${existingReorderItem.supplier_name}`
+                              : " · Unassigned"}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => openReorderModal(item)}
+                        style={
+                          existingReorderItem
+                            ? btnSecondary
+                            : btnPrimary
+                        }
+                      >
+                        {existingReorderItem
+                          ? "Update Reorder"
+                          : "Add to Reorder"}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            </>
+          )}
+
+          {lowStockView === "reorder" && (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                {[
+                  ["master", "Master List"],
+                  ["supplier", "By Supplier"],
+                  ["unassigned", "Unassigned"],
+                ].map(([filter, label]) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => {
+                      setReorderFilter(filter);
+
+                      if (filter !== "supplier") {
+                        setReorderSupplierId("");
+                      }
+                    }}
+                    style={
+                      reorderFilter === filter
+                        ? btnPrimary
+                        : btnSecondary
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+
+                {reorderFilter === "supplier" && (
+                  <select
+                    value={reorderSupplierId}
+                    onChange={(event) =>
+                      setReorderSupplierId(event.target.value)
+                    }
+                    style={{
+                      ...input,
+                      minWidth: 220,
+                    }}
+                  >
+                    <option value="">
+                      Select supplier...
+                    </option>
+
+                    {reorderSupplierOptions.map((supplier) => (
+                      <option
+                        key={supplier.supplier_id}
+                        value={supplier.supplier_id}
+                      >
+                        {supplier.supplier_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  overflow: "auto",
+                  minHeight: 0,
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: 8,
+                }}
+              >
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={reorderHeaderCell}>Product</th>
+                      <th style={reorderHeaderCell}>Supplier</th>
+                      <th style={reorderHeaderCell}>Supplier SKU</th>
+                      <th style={reorderHeaderCell}>Quantity</th>
+                      <th style={reorderHeaderCell}>Estimated Unit Cost</th>
+                      <th style={reorderHeaderCell}>Projected Cost</th>
+                      <th style={reorderHeaderCell}>Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {visibleReorderItems.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          style={{
+                            padding: 18,
+                            textAlign: "center",
+                            color: COLORS.textDim,
+                          }}
+                        >
+                          {reorderFilter === "supplier" &&
+                          reorderSupplierId === ""
+                            ? "Select a supplier to view its reorder list."
+                            : "No products in this reorder list."}
+                        </td>
+                      </tr>
+                    ) : (
+                      visibleReorderItems.map((item) => (
+                        <tr key={item.product_id}>
+                          <td style={reorderBodyCell}>
+                            <strong>{item.product_name}</strong>
+                          </td>
+
+                          <td style={reorderBodyCell}>
+                            {item.supplier_name || "Unassigned"}
+                          </td>
+
+                          <td style={reorderBodyCell}>
+                            {item.supplier_sku || "—"}
+                          </td>
+
+                          <td style={reorderBodyCell}>
+                            {item.quantity}
+                          </td>
+
+                          <td style={reorderBodyCell}>
+                            {item.estimated_unit_cost == null ? (
+                              <span style={{ color: COLORS.textDim }}>
+                                Unknown
+                              </span>
+                            ) : (
+                              <>
+                                ${formatMoney(item.estimated_unit_cost)}
+                                <div
+                                  style={{
+                                    color: COLORS.textDim,
+                                    fontSize: 11,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  {item.cost_source === "supplier_last_cost"
+                                    ? "Supplier cost"
+                                    : "Product cost"}
+                                </div>
+                              </>
+                            )}
+                          </td>
+
+                          <td style={reorderBodyCell}>
+                            {item.projected_cost == null
+                              ? "Excluded"
+                              : `$${formatMoney(item.projected_cost)}`}
+                          </td>
+
+                          <td style={reorderBodyCell}>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 6,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => openReorderModal(item)}
+                                style={btnSecondary}
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => removeReorderItem(item)}
+                                style={btnDanger}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 14,
+                  display: "flex",
+                  alignItems: "end",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      color: COLORS.primary,
+                      fontSize: 20,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Projected total: $
+                    {formatMoney(visibleProjectedTotal)}
+                  </div>
+
+                  {visibleUnknownCostCount > 0 && (
+                    <div
+                      style={{
+                        color: COLORS.textDim,
+                        marginTop: 4,
+                      }}
+                    >
+                      {visibleUnknownCostCount}{" "}
+                      {visibleUnknownCostCount === 1
+                        ? "item is"
+                        : "items are"}{" "}
+                      excluded because the cost is unknown.
+                    </div>
+                  )}
+                </div>
+
+                {visibleReorderItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearCurrentReorderView}
+                    style={btnDanger}
+                  >
+                    {reorderFilter === "master"
+                      ? "Clear All"
+                      : reorderFilter === "supplier"
+                      ? "Clear Supplier List"
+                      : "Clear Unassigned"}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -764,8 +1386,253 @@ function InventoryReport({ storeId }) {
           </div>
         </div>
       )}
+
+      {activeReorderProduct && (
+        <div
+          role="presentation"
+          onMouseDown={closeReorderModal}
+          style={reorderModalBackdrop}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Add ${activeReorderProduct.name} to reorder list`}
+            onMouseDown={(event) => event.stopPropagation()}
+            style={reorderModalPanel}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  {activeReorderProduct.name}
+                </h3>
+
+                {activeReorderProduct.stock != null && (
+                  <div
+                    style={{
+                      color: COLORS.textDim,
+                      marginTop: 4,
+                    }}
+                  >
+                    Stock: {activeReorderProduct.stock}
+                    {activeReorderProduct.threshold != null
+                      ? ` / Minimum: ${activeReorderProduct.threshold}`
+                      : ""}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                aria-label="Close reorder form"
+                onClick={closeReorderModal}
+                disabled={reorderSaving}
+                style={reorderModalClose}
+              >
+                ×
+              </button>
+            </div>
+
+            {reorderError && (
+              <div
+                style={{
+                  background: COLORS.panelAlt,
+                  color: COLORS.danger,
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: 12,
+                }}
+              >
+                {reorderError}
+              </div>
+            )}
+
+            {reorderLoading ? (
+              <div style={{ color: COLORS.textDim }}>
+                Loading suppliers...
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 14,
+                  }}
+                >
+                  <label style={reorderFieldStyle}>
+                    <span>Supplier</span>
+
+                    <select
+                      value={reorderForm.supplier_id}
+                      onChange={(event) =>
+                        setReorderForm((previous) => ({
+                          ...previous,
+                          supplier_id: event.target.value,
+                        }))
+                      }
+                      disabled={reorderSaving}
+                      style={{ ...input, width: "100%" }}
+                    >
+                      <option value="">
+                        Unassigned / No supplier
+                      </option>
+
+                      {reorderModalSupplierChoices.map((supplier) => (
+                        <option
+                          key={supplier.supplier_id}
+                          value={supplier.supplier_id}
+                        >
+                          {supplier.is_preferred ? "★ " : ""}
+                          {supplier.supplier_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={reorderFieldStyle}>
+                    <span>Quantity</span>
+
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={reorderForm.quantity}
+                      onChange={(event) =>
+                        setReorderForm((previous) => ({
+                          ...previous,
+                          quantity: event.target.value,
+                        }))
+                      }
+                      disabled={reorderSaving}
+                      style={{ ...input, width: "100%" }}
+                    />
+                  </label>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 10,
+                    borderRadius: 8,
+                    background: COLORS.panelAlt,
+                    color: COLORS.textDim,
+                  }}
+                >
+                  {assignedProductSuppliers.length === 0 &&
+                  reorderForm.supplier_id !== ""
+                    ? "This supplier will also be assigned to the product as non-preferred."
+                    : selectedReorderModalSupplier?.last_cost != null &&
+                      Number(selectedReorderModalSupplier.last_cost) > 0
+                    ? `Supplier last cost: $${formatMoney(
+                        selectedReorderModalSupplier.last_cost
+                      )}`
+                    : "VENDR will use the product cost fallback when no supplier cost is known."}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginTop: 16,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={saveReorderItem}
+                    disabled={reorderSaving}
+                    style={{
+                      ...btnPrimary,
+                      opacity: reorderSaving ? 0.6 : 1,
+                      cursor: reorderSaving ? "default" : "pointer",
+                    }}
+                  >
+                    {reorderSaving
+                      ? "Saving..."
+                      : "Save to Reorder List"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={closeReorderModal}
+                    disabled={reorderSaving}
+                    style={btnSecondary}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const reorderHeaderCell = {
+  padding: "10px 12px",
+  textAlign: "left",
+  whiteSpace: "nowrap",
+  borderBottom: `1px solid ${COLORS.border}`,
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
+  background: COLORS.panelAlt,
+};
+
+const reorderBodyCell = {
+  padding: "10px 12px",
+  borderBottom: `1px solid ${COLORS.border}`,
+  verticalAlign: "top",
+};
+
+const reorderModalBackdrop = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1000,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+  background: "rgba(0, 0, 0, 0.72)",
+};
+
+const reorderModalPanel = {
+  width: "min(720px, 100%)",
+  maxHeight: "88vh",
+  overflowY: "auto",
+  boxSizing: "border-box",
+  padding: 20,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 10,
+  background: COLORS.panel,
+  boxShadow: "0 18px 60px rgba(0, 0, 0, 0.5)",
+};
+
+const reorderModalClose = {
+  border: "none",
+  background: "transparent",
+  color: "inherit",
+  cursor: "pointer",
+  fontSize: 28,
+  lineHeight: 1,
+  padding: "0 4px",
+};
+
+const reorderFieldStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+};
 
 export default InventoryReport;
