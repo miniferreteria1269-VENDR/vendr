@@ -15,6 +15,8 @@ import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
 import SupplierManagement from "./components/SupplierManagement";
+// Client management navigation and view
+import ClientManagement from "./components/ClientManagement";
 
 import {
   cacheProducts,
@@ -1257,6 +1259,7 @@ const finalizeIntake = async () => {
             "sales",
             "inventory",
             "suppliers",
+            "clients",
             "products",
             "analysis",
             "diagnostics",
@@ -1380,6 +1383,11 @@ const finalizeIntake = async () => {
       {view === "suppliers" && (
         <SupplierManagement />
       )}  
+
+      {/* CLIENTS */}
+      {view === "clients" && (
+        <ClientManagement />
+      )}
 
       {/* ANALYSIS */}
       {view === "analysis" && (
