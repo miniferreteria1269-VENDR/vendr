@@ -107,6 +107,7 @@ function App() {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [intakePaid, setIntakePaid] = useState(false);
+  const [intakeSuppliers, setIntakeSuppliers] = useState([]);
 
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState("percent");
@@ -119,6 +120,73 @@ function App() {
   const currentTicket = tickets.find(
     ticket => ticket.id === activeTicket
   );
+
+  // -------------------------------------------------
+  // INTAKE SUPPLIERS
+  // -------------------------------------------------
+  useEffect(() => {
+    if (!storeId) {
+      setIntakeSuppliers([]);
+      return;
+    }
+
+    const cacheKey =
+      `vendr_intake_suppliers_${storeId}`;
+
+    try {
+      const cached = localStorage.getItem(cacheKey);
+
+      if (cached) {
+        setIntakeSuppliers(JSON.parse(cached));
+      }
+    } catch (error) {
+      console.warn(
+        "Unable to load cached intake suppliers:",
+        error
+      );
+    }
+
+    if (view !== "pos" || !navigator.onLine) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadIntakeSuppliers = async () => {
+      try {
+        const response = await apiClient.get("/suppliers");
+
+        const loadedSuppliers = [
+          ...(response.data.suppliers || [])
+        ].sort((a, b) =>
+          String(a.supplier_name || "").localeCompare(
+            String(b.supplier_name || ""),
+            undefined,
+            { sensitivity: "base" }
+          )
+        );
+
+        if (cancelled) return;
+
+        setIntakeSuppliers(loadedSuppliers);
+        localStorage.setItem(
+          cacheKey,
+          JSON.stringify(loadedSuppliers)
+        );
+      } catch (error) {
+        console.warn(
+          "Unable to refresh intake suppliers:",
+          error
+        );
+      }
+    };
+
+    loadIntakeSuppliers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId, view]);
 
   // -------------------------------------------------
   // AUTHENTICATION
@@ -485,7 +553,8 @@ function App() {
       id: Date.now(),
       type,
       label: "",
-      items: []
+      items: [],
+      supplier_id: null
     };
 
     setTickets(previous => [
@@ -531,6 +600,24 @@ function App() {
                       }
                     : item
               )
+            }
+          : ticket
+      )
+    );
+  };
+
+  const setIntakeSupplierId = value => {
+    const supplierId =
+      value === "" || value == null
+        ? null
+        : Number(value);
+
+    setTickets(previous =>
+      previous.map(ticket =>
+        ticket.id === activeTicket
+          ? {
+              ...ticket,
+              supplier_id: supplierId
             }
           : ticket
       )
@@ -905,6 +992,8 @@ const finalizeIntake = async () => {
     store_id: storeId,
     items,
     paid: intakePaid,
+    supplier_id:
+      currentTicket.supplier_id ?? null,
     client_event_id: clientEventId,
     device_id: deviceId,
     client_created_at: clientCreatedAt
@@ -1246,6 +1335,11 @@ const finalizeIntake = async () => {
             finalizeIntake={finalizeIntake}
             intakePaid={intakePaid}
             setIntakePaid={setIntakePaid}
+            intakeSuppliers={intakeSuppliers}
+            intakeSupplierId={
+              currentTicket?.supplier_id ?? null
+            }
+            setIntakeSupplierId={setIntakeSupplierId}
             discountValue={discountValue}
             setDiscountValue={setDiscountValue}
             discountType={discountType}
