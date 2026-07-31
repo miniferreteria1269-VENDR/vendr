@@ -12485,6 +12485,235 @@ def get_clients(
             conn.close()
 
 
+@app.put("/clients/{client_id}")
+def update_client(
+    client_id: int,
+    client: ClientUpdate,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VERIFY CLIENT AND STORE OWNERSHIP
+        # ---------------------------------------------
+        verify_client(
+            cursor,
+            current_user.store_id,
+            client_id,
+            require_active=True
+        )
+
+        # ---------------------------------------------
+        # GET ONLY FIELDS INCLUDED IN REQUEST
+        # ---------------------------------------------
+        if hasattr(client, "model_dump"):
+            updates = client.model_dump(
+                exclude_unset=True
+            )
+        else:
+            updates = client.dict(
+                exclude_unset=True
+            )
+
+        if not updates:
+            raise HTTPException(
+                status_code=400,
+                detail="No client changes were provided."
+            )
+
+        # ---------------------------------------------
+        # VALIDATE CLIENT NAME
+        # ---------------------------------------------
+        if "client_name" in updates:
+            if updates["client_name"] is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Client name cannot be null."
+                )
+
+            client_name = (
+                updates["client_name"]
+                .strip()
+            )
+
+            if not client_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Client name is required."
+                )
+
+            updates["client_name"] = (
+                client_name
+            )
+
+        # ---------------------------------------------
+        # VALIDATE CREDIT LIMIT
+        # ---------------------------------------------
+        if (
+            "credit_limit" in updates
+            and updates["credit_limit"]
+                is not None
+            and updates["credit_limit"] < 0
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Credit limit cannot be negative."
+            )
+
+        # ---------------------------------------------
+        # BUILD SAFE UPDATE
+        # ---------------------------------------------
+        allowed_columns = {
+            "client_name":
+                "client_name",
+
+            "contact_name":
+                "contact_name",
+
+            "phone":
+                "phone",
+
+            "whatsapp":
+                "whatsapp",
+
+            "email":
+                "email",
+
+            "address":
+                "address",
+
+            "tax_id":
+                "tax_id",
+
+            "notes":
+                "notes",
+
+            "credit_limit":
+                "credit_limit"
+        }
+
+        set_clauses = []
+        values = []
+
+        for field, value in updates.items():
+            column = allowed_columns.get(
+                field
+            )
+
+            if not column:
+                continue
+
+            set_clauses.append(
+                f"{column} = %s"
+            )
+
+            values.append(value)
+
+        if not set_clauses:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid client changes were provided."
+            )
+
+        set_clauses.append(
+            "updated_at = NOW()"
+        )
+
+        values.extend([
+            current_user.store_id,
+            client_id
+        ])
+
+        cursor.execute(
+            f"""
+            UPDATE clients
+            SET
+                {", ".join(set_clauses)}
+            WHERE
+                store_id = %s
+            AND
+                client_id = %s
+            RETURNING
+                client_id,
+                client_name,
+                contact_name,
+                phone,
+                whatsapp,
+                email,
+                address,
+                tax_id,
+                notes,
+                credit_limit,
+                is_active,
+                created_at,
+                updated_at
+            """,
+            tuple(values)
+        )
+
+        row = cursor.fetchone()
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Client updated successfully.",
+            "client": {
+                "client_id": row[0],
+                "client_name": row[1],
+                "contact_name": row[2],
+                "phone": row[3],
+                "whatsapp": row[4],
+                "email": row[5],
+                "address": row[6],
+                "tax_id": row[7],
+                "notes": row[8],
+
+                "credit_limit":
+                    float(row[9])
+                    if row[9] is not None
+                    else None,
+
+                "is_active": row[10],
+                "created_at": row[11],
+                "updated_at": row[12]
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "UPDATE CLIENT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update client."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
