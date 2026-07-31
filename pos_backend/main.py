@@ -12022,6 +12022,190 @@ def get_reorder_items(
         if conn:
             conn.close()
 
+@app.delete("/reorder-items/{product_id}")
+def remove_reorder_item(
+    product_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            DELETE FROM reorder_items
+            WHERE
+                store_id = %s
+            AND
+                product_id = %s
+            RETURNING product_id
+            """,
+            (
+                current_user.store_id,
+                product_id
+            )
+        )
+
+        deleted = cursor.fetchone()
+
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail="Reorder item not found."
+            )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Reorder item removed."
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "REMOVE REORDER ITEM ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to remove reorder item."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.delete("/reorder-items")
+def clear_reorder_items(
+    scope: str,
+    supplier_id: Optional[int] = None,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        valid_scopes = {
+            "all",
+            "supplier",
+            "unassigned"
+        }
+
+        if scope not in valid_scopes:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid reorder-list scope."
+            )
+
+        if (
+            scope == "supplier"
+            and supplier_id is None
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "supplier_id is required "
+                    "for supplier scope."
+                )
+            )
+
+        conn = db()
+        cursor = conn.cursor()
+
+        if scope == "all":
+            cursor.execute(
+                """
+                DELETE FROM reorder_items
+                WHERE store_id = %s
+                RETURNING product_id
+                """,
+                (current_user.store_id,)
+            )
+
+        elif scope == "supplier":
+            cursor.execute(
+                """
+                DELETE FROM reorder_items
+                WHERE
+                    store_id = %s
+                AND
+                    supplier_id = %s
+                RETURNING product_id
+                """,
+                (
+                    current_user.store_id,
+                    supplier_id
+                )
+            )
+
+        else:
+            cursor.execute(
+                """
+                DELETE FROM reorder_items
+                WHERE
+                    store_id = %s
+                AND
+                    supplier_id IS NULL
+                RETURNING product_id
+                """,
+                (current_user.store_id,)
+            )
+
+        deleted_items = cursor.fetchall()
+        deleted_count = len(deleted_items)
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "deleted_count": deleted_count
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CLEAR REORDER ITEMS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to clear reorder list."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
     rebuild_products(store_id)
