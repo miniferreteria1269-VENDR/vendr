@@ -12714,6 +12714,176 @@ def update_client(
         if conn:
             conn.close()
 
+@app.patch("/clients/{client_id}/deactivate")
+def deactivate_client(
+    client_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        verify_client(
+            cursor,
+            current_user.store_id,
+            client_id,
+            require_active=False
+        )
+
+        cursor.execute(
+            """
+            UPDATE clients
+            SET
+                is_active = FALSE,
+                updated_at = NOW()
+            WHERE
+                store_id = %s
+            AND
+                client_id = %s
+            AND
+                is_active = TRUE
+            RETURNING client_id
+            """,
+            (
+                current_user.store_id,
+                client_id
+            )
+        )
+
+        changed = (
+            cursor.fetchone()
+            is not None
+        )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message":
+                "Client deactivated successfully."
+                if changed
+                else "Client is already inactive.",
+            "client_id": client_id,
+            "is_active": False
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "DEACTIVATE CLIENT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to deactivate client."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.patch("/clients/{client_id}/reactivate")
+def reactivate_client(
+    client_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        verify_client(
+            cursor,
+            current_user.store_id,
+            client_id,
+            require_active=False
+        )
+
+        cursor.execute(
+            """
+            UPDATE clients
+            SET
+                is_active = TRUE,
+                updated_at = NOW()
+            WHERE
+                store_id = %s
+            AND
+                client_id = %s
+            AND
+                is_active = FALSE
+            RETURNING client_id
+            """,
+            (
+                current_user.store_id,
+                client_id
+            )
+        )
+
+        changed = (
+            cursor.fetchone()
+            is not None
+        )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message":
+                "Client reactivated successfully."
+                if changed
+                else "Client is already active.",
+            "client_id": client_id,
+            "is_active": True
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "REACTIVATE CLIENT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to reactivate client."
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
