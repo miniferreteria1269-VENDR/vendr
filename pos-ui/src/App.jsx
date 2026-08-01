@@ -17,6 +17,7 @@ import CashPanel from "./components/CashPanel";
 import SupplierManagement from "./components/SupplierManagement";
 // Client management navigation and view
 import ClientManagement from "./components/ClientManagement";
+import ReceiptModal from "./components/ReceiptModal";
 
 import {
   cacheProducts,
@@ -115,6 +116,8 @@ function App() {
 
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState("percent");
+  const [completedReceipt, setCompletedReceipt] =
+    useState(null);
 
   const storeId = user?.store_id;
 
@@ -1024,6 +1027,37 @@ function App() {
       payload: salePayload
     };
 
+    /*
+     * Capture the customer-facing sale before the ticket
+     * is removed. The original prices are preserved here;
+     * the backend receives proportionally discounted prices.
+     */
+    const receiptSnapshot = {
+      storeName:
+        user?.store_name || `Store ${storeId}`,
+      createdAt: clientCreatedAt,
+      clientEventId,
+      ticketId: null,
+      clientName:
+        selectedClient?.client_name || null,
+      isCredit,
+      dueDate:
+        isCredit && currentTicket.due_date
+          ? currentTicket.due_date
+          : null,
+      items: currentTicket.items.map(item => ({
+        product_id: item.product_id,
+        name: item.name,
+        quantity: Number(item.quantity),
+        price: Number(item.price)
+      })),
+      subtotal,
+      discountAmount:
+        subtotal - discountedTotal,
+      total: discountedTotal,
+      syncStatus: "pending"
+    };
+
     // Preserve the transaction identity before
     // performing local or network operations.
     setTickets(previous =>
@@ -1152,6 +1186,13 @@ function App() {
         );
       }
 
+      setCompletedReceipt({
+        ...receiptSnapshot,
+        ticketId:
+          responseData.ticket_id ?? null,
+        syncStatus: "synced"
+      });
+
       setTickets(previous =>
         previous.filter(
           ticket =>
@@ -1171,7 +1212,30 @@ function App() {
         error
       );
 
-      if (saleSavedLocally) {
+      const serverStatus =
+        error.response?.status;
+
+      const serverRejectedSale =
+        serverStatus >= 400 &&
+        serverStatus < 500;
+
+      if (
+        saleSavedLocally &&
+        !serverRejectedSale
+      ) {
+        setCompletedReceipt(receiptSnapshot);
+
+        setTickets(previous =>
+          previous.filter(
+            ticket =>
+              ticket.id !== activeTicket
+          )
+        );
+
+        setActiveTicket(null);
+        setDiscountValue(0);
+        setDiscountType("percent");
+
         alert(
           t("sale_saved_pending")
         );
@@ -1695,6 +1759,13 @@ const finalizeIntake = async () => {
           products={products}
         />
       )}
+
+      <ReceiptModal
+        receipt={completedReceipt}
+        onClose={() =>
+          setCompletedReceipt(null)
+        }
+      />
     </div>
   );
 }
