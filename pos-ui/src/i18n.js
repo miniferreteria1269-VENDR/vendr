@@ -306,16 +306,16 @@ export const translations = {
     client_status_failed: "Unable to change client status.",
     select_client: "Select client...",
     walk_in_no_client: "Walk-in / No client",
-    fiado: "Fiado",
+    fiado: "On Credit",
     due_date: "Due Date",
     fiado_client_required:
       "Select a client before recording a fiado sale.",
     confirm_enable_fiado:
-      "Record this sale as fiado for {client}?",
+      "Record this sale as On Credit for {client}?",
     confirm_disable_fiado:
-      "Remove fiado status from this sale?",
+      "Remove On Credit status from this sale?",
     credit_limit_warning:
-      "{client} currently owes ${balance}. This fiado would bring the balance to ${projected}, exceeding the ${limit} credit limit. Continue anyway?",
+      "{client} currently owes ${balance}. This Credit would bring the balance to ${projected}, exceeding the ${limit} credit limit. Continue anyway?",
     account: "Account",
     outstanding_balance: "Outstanding Balance",
     loading_credit_tickets: "Loading credit tickets...",
