@@ -12514,33 +12514,106 @@ def get_clients(
 
         cursor.execute(
             """
+            WITH payment_totals AS (
+                SELECT
+                    store_id,
+                    credit_ticket_id,
+                    SUM(amount) AS amount_paid
+                FROM credit_payments
+                WHERE store_id = %s
+                GROUP BY
+                    store_id,
+                    credit_ticket_id
+            ),
+
+            client_balances AS (
+                SELECT
+                    ct.store_id,
+                    ct.client_id,
+
+                    SUM(
+                        GREATEST(
+                            ct.original_amount -
+                            COALESCE(
+                                pt.amount_paid,
+                                0
+                            ),
+                            0
+                        )
+                    ) AS outstanding_balance,
+
+                    BOOL_OR(
+                        ct.due_date IS NOT NULL
+                        AND ct.due_date < CURRENT_DATE
+                        AND (
+                            ct.original_amount -
+                            COALESCE(
+                                pt.amount_paid,
+                                0
+                            )
+                        ) > 0
+                    ) AS has_overdue_balance
+
+                FROM credit_tickets ct
+
+                LEFT JOIN payment_totals pt
+                    ON pt.store_id = ct.store_id
+                   AND pt.credit_ticket_id =
+                       ct.credit_ticket_id
+
+                WHERE ct.store_id = %s
+
+                GROUP BY
+                    ct.store_id,
+                    ct.client_id
+            )
+
             SELECT
-                client_id,
-                client_name,
-                contact_name,
-                phone,
-                whatsapp,
-                email,
-                address,
-                tax_id,
-                notes,
-                credit_limit,
-                is_active,
-                created_at,
-                updated_at
-            FROM clients
+                c.client_id,
+                c.client_name,
+                c.contact_name,
+                c.phone,
+                c.whatsapp,
+                c.email,
+                c.address,
+                c.tax_id,
+                c.notes,
+                c.credit_limit,
+                c.is_active,
+                c.created_at,
+                c.updated_at,
+
+                COALESCE(
+                    cb.outstanding_balance,
+                    0
+                ) AS outstanding_balance,
+
+                COALESCE(
+                    cb.has_overdue_balance,
+                    FALSE
+                ) AS has_overdue_balance
+
+            FROM clients c
+
+            LEFT JOIN client_balances cb
+                ON cb.store_id = c.store_id
+               AND cb.client_id = c.client_id
+
             WHERE
-                store_id = %s
+                c.store_id = %s
             AND
                 (
                     %s = TRUE
-                    OR is_active = TRUE
+                    OR c.is_active = TRUE
                 )
+
             ORDER BY
-                LOWER(client_name) ASC,
-                client_id ASC
+                LOWER(c.client_name) ASC,
+                c.client_id ASC
             """,
             (
+                current_user.store_id,
+                current_user.store_id,
                 current_user.store_id,
                 include_inactive
             )
@@ -12569,7 +12642,13 @@ def get_clients(
 
                 "is_active": row[10],
                 "created_at": row[11],
-                "updated_at": row[12]
+                "updated_at": row[12],
+
+                "outstanding_balance":
+                    float(row[13] or 0),
+
+                "has_overdue_balance":
+                    bool(row[14])
             })
 
         return {
