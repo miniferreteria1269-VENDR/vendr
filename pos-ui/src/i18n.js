@@ -32,7 +32,6 @@ export const translations = {
     create_product: "Create Product",
     initial_stock: "Initial Stock",
     cost: "Cost",
-    price: "Price",
     low_stock: "Low Stock Threshold",
     tracks_stock: "Tracks Stock",
 
@@ -97,7 +96,6 @@ export const translations = {
 
     // NAV
     pos: "POS",
-    sales: "Sales",
     inventory: "Inventory",
     diagnostics: "Diagnostics",
     products: "Products",
@@ -271,6 +269,106 @@ export const translations = {
     zero_cost_alert: "Zero Cost",
     zero_price_alert: "Zero Price",
     high_adjustment_activity: "High Stock Adjustment Activity",
+
+    // CLIENTS
+    clients: "Clients",
+    client: "Client",
+    new_client: "New Client",
+    edit_client: "Edit Client",
+    client_name: "Client Name",
+    contact: "Contact",
+    contact_name: "Contact Name",
+    phone: "Phone",
+    whatsapp: "WhatsApp",
+    address: "Address",
+    tax_id: "Tax / Identification Number",
+    credit_limit: "Credit Limit",
+    balance: "Balance",
+    status: "Status",
+    active: "Active",
+    inactive: "Inactive",
+    show_inactive: "Show inactive",
+    search_clients: "Search clients...",
+    no_clients: "No clients have been created.",
+    no_clients_found: "No matching clients found.",
+    deactivate: "Deactivate",
+    reactivate: "Reactivate",
+    confirm_deactivate_client:
+      "Deactivate this client? Their history will remain available.",
+    confirm_reactivate_client: "Reactivate this client?",
+    overdue_balance: "This client has an overdue balance.",
+    client_name_required: "Client name is required.",
+    invalid_credit_limit:
+      "Credit limit must be zero or greater.",
+    client_load_failed: "Unable to load clients.",
+    client_save_failed: "Unable to save client.",
+    client_status_failed: "Unable to change client status.",
+
+    // SUPPLIERS
+    suppliers: "Suppliers",
+    supplier: "Supplier",
+    supplier_list: "Supplier List",
+    new_supplier: "New Supplier",
+    supplier_name: "Supplier Name",
+    search_suppliers: "Search suppliers...",
+    no_suppliers: "No suppliers have been created.",
+    no_suppliers_found: "No matching suppliers found.",
+    supplier_name_required: "Supplier name is required.",
+    supplier_created: "Supplier created successfully.",
+    supplier_load_failed: "Unable to load suppliers.",
+    supplier_create_failed: "Unable to create supplier.",
+
+    // PRODUCT SUPPLIERS
+    product_suppliers: "Product Suppliers",
+    search_products: "Search products...",
+    loading_products: "Loading products...",
+    unable_load_products: "Unable to load products.",
+    unable_load_suppliers: "Unable to load suppliers.",
+    unable_load_assigned_suppliers:
+      "Unable to load assigned suppliers.",
+    select_supplier_before_saving:
+      "Select a supplier before saving.",
+    unable_assign_supplier: "Unable to assign supplier.",
+    confirm_remove_supplier_product:
+      "Remove {supplier} from {product}?",
+    unable_remove_supplier: "Unable to remove supplier.",
+    confirm_remove_preferred:
+      "Remove preferred supplier status from {supplier}? This product will have no preferred supplier.",
+    confirm_change_preferred:
+      "Make {supplier} the preferred supplier instead of {current_supplier}?",
+    confirm_make_preferred:
+      "Make {supplier} the preferred supplier?",
+    unable_update_preferred:
+      "Unable to update preferred supplier.",
+    preferred_supplier: "Preferred Supplier",
+    last_cost: "Last Cost",
+    supply_cycle: "Supply Cycle",
+    no_products_found: "No products found.",
+    manage_suppliers_for: "Manage suppliers for {product}",
+    close_supplier_assignment: "Close supplier assignment",
+    loading_assigned_suppliers: "Loading assigned suppliers...",
+    assigned_suppliers: "Assigned Suppliers",
+    no_suppliers_assigned:
+      "No suppliers are assigned to this product.",
+    preferred: "Preferred",
+    supplier_sku: "Supplier SKU",
+    lead_time: "Lead Time",
+    remove_preferred_status: "Remove preferred supplier status",
+    make_preferred_supplier: "Make preferred supplier",
+    preferred_supplier_aria:
+      "{supplier} is preferred. Click to remove preferred status.",
+    make_preferred_supplier_aria:
+      "Make {supplier} the preferred supplier.",
+    days: "days",
+    removing: "Removing...",
+    remove: "Remove",
+    assign_supplier: "Assign Supplier",
+    no_active_suppliers: "No active suppliers are available.",
+    all_suppliers_assigned:
+      "All active suppliers are already assigned to this product.",
+    select_supplier: "Select supplier...",
+    lead_time_days: "Lead Time (days)",
+    clear: "Clear",
   },
 
   es: {
@@ -306,7 +404,6 @@ export const translations = {
     create_product: "Crear producto",
     initial_stock: "Inventario inicial",
     cost: "Costo",
-    price: "Precio",
     low_stock: "Stock mínimo",
     tracks_stock: "Controla inventario",
 
@@ -371,7 +468,6 @@ export const translations = {
 
     // NAV
     pos: "POS",
-    sales: "Ventas",
     history: "Historial",
     inventory: "Inventario",
     diagnostics: "Diagnóstico",
@@ -525,7 +621,6 @@ export const translations = {
     owner_draw: "Retiro del dueño",
     other: "Otros",
     product_movement: "Movimiento de Producto",
-    history: "Historial",
     review_queue: "Cola de revisión",
     priority: "Prioridad",
     reason: "Motivo",
@@ -553,5 +648,110 @@ export const translations = {
     zero_cost_alert: "Costo en cero",
     zero_price_alert: "Precio en cero",
     high_adjustment_activity: "Alta actividad de ajustes de inventario",
+
+    // CLIENTES
+    clients: "Clientes",
+    client: "Cliente",
+    new_client: "Nuevo cliente",
+    edit_client: "Editar cliente",
+    client_name: "Nombre del cliente",
+    contact: "Contacto",
+    contact_name: "Nombre de contacto",
+    phone: "Teléfono",
+    whatsapp: "WhatsApp",
+    address: "Dirección",
+    tax_id: "NIT / Documento de identidad",
+    credit_limit: "Límite de crédito",
+    balance: "Saldo",
+    status: "Estado",
+    active: "Activo",
+    inactive: "Inactivo",
+    show_inactive: "Mostrar inactivos",
+    search_clients: "Buscar clientes...",
+    no_clients: "No se han creado clientes.",
+    no_clients_found: "No se encontraron clientes.",
+    deactivate: "Desactivar",
+    reactivate: "Reactivar",
+    confirm_deactivate_client:
+      "¿Desactivar este cliente? Su historial permanecerá disponible.",
+    confirm_reactivate_client: "¿Reactivar este cliente?",
+    overdue_balance: "Este cliente tiene un saldo vencido.",
+    client_name_required: "El nombre del cliente es obligatorio.",
+    invalid_credit_limit:
+      "El límite de crédito debe ser igual o mayor que cero.",
+    client_load_failed: "No se pudieron cargar los clientes.",
+    client_save_failed: "No se pudo guardar el cliente.",
+    client_status_failed:
+      "No se pudo cambiar el estado del cliente.",
+
+    // PROVEEDORES
+    suppliers: "Proveedores",
+    supplier: "Proveedor",
+    supplier_list: "Lista de proveedores",
+    new_supplier: "Nuevo proveedor",
+    supplier_name: "Nombre del proveedor",
+    search_suppliers: "Buscar proveedores...",
+    no_suppliers: "No se han creado proveedores.",
+    no_suppliers_found: "No se encontraron proveedores.",
+    supplier_name_required:
+      "El nombre del proveedor es obligatorio.",
+    supplier_created: "Proveedor creado correctamente.",
+    supplier_load_failed:
+      "No se pudieron cargar los proveedores.",
+    supplier_create_failed: "No se pudo crear el proveedor.",
+
+    // PROVEEDORES DE PRODUCTOS
+    product_suppliers: "Proveedores de productos",
+    search_products: "Buscar productos...",
+    loading_products: "Cargando productos...",
+    unable_load_products: "No se pudieron cargar los productos.",
+    unable_load_suppliers:
+      "No se pudieron cargar los proveedores.",
+    unable_load_assigned_suppliers:
+      "No se pudieron cargar los proveedores asignados.",
+    select_supplier_before_saving:
+      "Seleccione un proveedor antes de guardar.",
+    unable_assign_supplier: "No se pudo asignar el proveedor.",
+    confirm_remove_supplier_product:
+      "¿Quitar a {supplier} de {product}?",
+    unable_remove_supplier: "No se pudo quitar el proveedor.",
+    confirm_remove_preferred:
+      "¿Quitar a {supplier} como proveedor preferido? Este producto quedará sin proveedor preferido.",
+    confirm_change_preferred:
+      "¿Establecer a {supplier} como proveedor preferido en lugar de {current_supplier}?",
+    confirm_make_preferred:
+      "¿Establecer a {supplier} como proveedor preferido?",
+    unable_update_preferred:
+      "No se pudo actualizar el proveedor preferido.",
+    preferred_supplier: "Proveedor preferido",
+    last_cost: "Último costo",
+    supply_cycle: "Ciclo de suministro",
+    no_products_found: "No se encontraron productos.",
+    manage_suppliers_for: "Administrar proveedores de {product}",
+    close_supplier_assignment: "Cerrar asignación de proveedores",
+    loading_assigned_suppliers:
+      "Cargando proveedores asignados...",
+    assigned_suppliers: "Proveedores asignados",
+    no_suppliers_assigned:
+      "Este producto no tiene proveedores asignados.",
+    preferred: "Preferido",
+    supplier_sku: "SKU del proveedor",
+    lead_time: "Tiempo de entrega",
+    remove_preferred_status: "Quitar estado de proveedor preferido",
+    make_preferred_supplier: "Establecer como proveedor preferido",
+    preferred_supplier_aria:
+      "{supplier} es el proveedor preferido. Presione para quitar este estado.",
+    make_preferred_supplier_aria:
+      "Establecer a {supplier} como proveedor preferido.",
+    days: "días",
+    removing: "Quitando...",
+    remove: "Quitar",
+    assign_supplier: "Asignar proveedor",
+    no_active_suppliers: "No hay proveedores activos disponibles.",
+    all_suppliers_assigned:
+      "Todos los proveedores activos ya están asignados a este producto.",
+    select_supplier: "Seleccionar proveedor...",
+    lead_time_days: "Tiempo de entrega (días)",
+    clear: "Limpiar",
   },
 };
