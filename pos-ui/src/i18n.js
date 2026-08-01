@@ -1,3 +1,4 @@
+// Includes compact POS fiado and client credit-account labels.
 export const translations = {
   en: {
     // AUTH
@@ -315,6 +316,27 @@ export const translations = {
       "Remove fiado status from this sale?",
     credit_limit_warning:
       "{client} currently owes ${balance}. This fiado would bring the balance to ${projected}, exceeding the ${limit} credit limit. Continue anyway?",
+    account: "Account",
+    outstanding_balance: "Outstanding Balance",
+    loading_credit_tickets: "Loading credit tickets...",
+    no_credit_tickets: "This client has no credit tickets.",
+    original_amount: "Original",
+    amount_paid: "Paid",
+    remaining_balance: "Balance",
+    unpaid: "Unpaid",
+    partial: "Partial",
+    overdue: "Overdue",
+    record_payment: "Record Payment",
+    payment_amount: "Payment Amount",
+    full_balance: "Full Balance",
+    confirm_payment: "Confirm Payment",
+    invalid_payment_amount:
+      "Enter a payment amount greater than zero.",
+    payment_exceeds_balance:
+      "Payment cannot exceed the remaining balance.",
+    credit_tickets_load_failed:
+      "Unable to load credit tickets.",
+    credit_payment_failed: "Unable to record payment.",
 
     // SUPPLIERS
     suppliers: "Suppliers",
@@ -707,6 +729,27 @@ export const translations = {
       "¿Quitar el estado de fiado de esta venta?",
     credit_limit_warning:
       "{client} actualmente debe ${balance}. Este fiado elevaría el saldo a ${projected}, superando el límite de crédito de ${limit}. ¿Desea continuar de todos modos?",
+    account: "Cuenta",
+    outstanding_balance: "Saldo pendiente",
+    loading_credit_tickets: "Cargando tickets de fiado...",
+    no_credit_tickets: "Este cliente no tiene tickets de fiado.",
+    original_amount: "Original",
+    amount_paid: "Pagado",
+    remaining_balance: "Saldo",
+    unpaid: "Sin pagar",
+    partial: "Parcial",
+    overdue: "Vencido",
+    record_payment: "Registrar pago",
+    payment_amount: "Monto del pago",
+    full_balance: "Saldo completo",
+    confirm_payment: "Confirmar pago",
+    invalid_payment_amount:
+      "Ingrese un monto de pago mayor que cero.",
+    payment_exceeds_balance:
+      "El pago no puede superar el saldo pendiente.",
+    credit_tickets_load_failed:
+      "No se pudieron cargar los tickets de fiado.",
+    credit_payment_failed: "No se pudo registrar el pago.",
 
     // PROVEEDORES
     suppliers: "Proveedores",
