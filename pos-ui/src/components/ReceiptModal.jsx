@@ -77,6 +77,20 @@ function ReceiptModal({ receipt, onClose }) {
             box-shadow: none !important;
             background: white !important;
             color: black !important;
+            opacity: 1 !important;
+            font-family: Arial, Helvetica, sans-serif !important;
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            line-height: 1.3 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            -webkit-text-stroke: 0.12px black;
+            text-rendering: geometricPrecision;
+          }
+
+          #vendr-print-receipt * {
+            color: black !important;
+            opacity: 1 !important;
           }
         }
       `}</style>
@@ -288,9 +302,10 @@ const receiptStyle = {
   padding: "3mm 2mm",
   background: "white",
   color: "black",
-  fontFamily: "'Courier New', monospace",
-  fontSize: "10px",
-  lineHeight: 1.25,
+  fontFamily: "Arial, Helvetica, sans-serif",
+  fontSize: "11px",
+  fontWeight: 700,
+  lineHeight: 1.3,
   overflowWrap: "anywhere"
 };
 
@@ -304,7 +319,7 @@ const centerBoldStyle = {
 };
 
 const separatorStyle = {
-  borderTop: "1px dashed black",
+  borderTop: "2px dashed black",
   margin: "2mm 0"
 };
 
@@ -317,7 +332,7 @@ const lineStyle = {
 const totalStyle = {
   ...lineStyle,
   fontWeight: 700,
-  fontSize: "12px",
+  fontSize: "14px",
   marginTop: "1mm"
 };
 
