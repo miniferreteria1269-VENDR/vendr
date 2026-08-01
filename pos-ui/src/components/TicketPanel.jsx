@@ -12,6 +12,7 @@ const COLORS = {
 };
 
 function TicketPanel({
+  // Sale client and fiado controls are supplied by App.
   tickets,
   activeTicket,
   setActiveTicket,
@@ -29,6 +30,11 @@ function TicketPanel({
   intakeSuppliers,
   intakeSupplierId,
   setIntakeSupplierId,
+  saleClients,
+  saleClientId,
+  saleIsCredit,
+  saleDueDate,
+  updateSaleCreditField,
   discountValue,
   setDiscountValue,
   discountType,
@@ -79,6 +85,13 @@ function TicketPanel({
   const intakeIsFinalizing =
     currentTicket?.type === "intake" &&
     finalizingIntake;
+
+  const selectedSaleClient =
+    saleClients?.find(
+      client =>
+        Number(client.client_id) ===
+        Number(saleClientId)
+    ) || null;
 
   return (
     <div
@@ -286,6 +299,152 @@ function TicketPanel({
               </div>
             )}
           </div>
+
+          {/* SALE CLIENT / FIADO OPTIONS */}
+          {currentTicket.type === "sale" && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "end",
+                gap: 14,
+                flexWrap: "wrap",
+                marginBottom: 10,
+                padding: 10,
+                borderRadius: 8,
+                background: COLORS.panelAlt
+              }}
+            >
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 5,
+                  minWidth: 240,
+                  flex: "1 1 260px"
+                }}
+              >
+                <span>{t("client")}</span>
+
+                <select
+                  value={saleClientId ?? ""}
+                  onChange={event => {
+                    const clientId =
+                      event.target.value === ""
+                        ? null
+                        : Number(
+                            event.target.value
+                          );
+
+                    updateSaleCreditField(
+                      "client_id",
+                      clientId
+                    );
+
+                    if (
+                      clientId === null &&
+                      saleIsCredit
+                    ) {
+                      updateSaleCreditField(
+                        "is_credit",
+                        false
+                      );
+                    }
+                  }}
+                  style={{
+                    ...inputStyle,
+                    width: "100%"
+                  }}
+                >
+                  <option value="">
+                    {t("walk_in_no_client")}
+                  </option>
+
+                  {(saleClients || []).map(client => (
+                    <option
+                      key={client.client_id}
+                      value={client.client_id}
+                    >
+                      {client.client_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedSaleClient && (
+                <div
+                  style={{
+                    minHeight: 34,
+                    display: "flex",
+                    alignItems: "center",
+                    color:
+                      selectedSaleClient
+                        .has_overdue_balance
+                        ? COLORS.danger
+                        : COLORS.textDim,
+                    fontSize: 12,
+                    fontWeight: "bold",
+                    whiteSpace: "nowrap"
+                  }}
+                >
+                  {t("balance")}: ${Number(
+                    selectedSaleClient
+                      .outstanding_balance || 0
+                  ).toFixed(2)}
+                </div>
+              )}
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  minHeight: 34,
+                  cursor: "pointer"
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={saleIsCredit}
+                  onChange={event =>
+                    updateSaleCreditField(
+                      "is_credit",
+                      event.target.checked
+                    )
+                  }
+                />
+
+                {t("fiado")}
+              </label>
+
+              {saleIsCredit && (
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 5,
+                    minWidth: 170
+                  }}
+                >
+                  <span>{t("due_date")}</span>
+
+                  <input
+                    type="date"
+                    value={saleDueDate || ""}
+                    onChange={event =>
+                      updateSaleCreditField(
+                        "due_date",
+                        event.target.value
+                      )
+                    }
+                    style={{
+                      ...inputStyle,
+                      width: "100%"
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          )}
 
           {/* INTAKE OPTIONS */}
           {currentTicket.type === "intake" && (
