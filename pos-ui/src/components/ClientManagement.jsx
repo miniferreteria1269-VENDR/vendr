@@ -395,6 +395,10 @@ function ClientManagement() {
   };
 
 
+  const formatBalance = value =>
+    `$${Number(value || 0).toFixed(2)}`;
+
+
   return (
     <div
       style={{
@@ -548,7 +552,7 @@ function ClientManagement() {
               <table
                 style={{
                   width: "100%",
-                  minWidth: 800,
+                  minWidth: 900,
                   borderCollapse: "collapse"
                 }}
               >
@@ -574,6 +578,13 @@ function ClientManagement() {
                       {label(
                         "credit_limit",
                         "Credit Limit"
+                      )}
+                    </TableHeader>
+
+                    <TableHeader>
+                      {label(
+                        "balance",
+                        "Balance"
                       )}
                     </TableHeader>
 
@@ -636,6 +647,31 @@ function ClientManagement() {
                         {formatCreditLimit(
                           client.credit_limit
                         )}
+                      </TableCell>
+
+                      <TableCell>
+                        <span
+                          title={
+                            client.has_overdue_balance
+                              ? label(
+                                  "overdue_balance",
+                                  "This client has an overdue balance."
+                                )
+                              : undefined
+                          }
+                          style={{
+                            color:
+                              client.has_overdue_balance
+                                ? COLORS.danger
+                                : COLORS.text,
+                            fontWeight: "bold",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          {formatBalance(
+                            client.outstanding_balance
+                          )}
+                        </span>
                       </TableCell>
 
                       <TableCell>
