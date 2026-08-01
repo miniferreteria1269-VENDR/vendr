@@ -13077,6 +13077,208 @@ def reactivate_client(
         if conn:
             conn.close()
 
+@app.get(
+    "/clients/{client_id}/credit-tickets"
+)
+def get_client_credit_tickets(
+    client_id: int,
+    include_paid: bool = True,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # Inactive clients may still have debt
+        # and payment history.
+        verify_client(
+            cursor,
+            current_user.store_id,
+            client_id,
+            require_active=False
+        )
+
+        cursor.execute(
+            """
+            WITH payment_totals AS (
+                SELECT
+                    store_id,
+                    credit_ticket_id,
+                    SUM(amount) AS amount_paid
+                FROM credit_payments
+                WHERE store_id = %s
+                GROUP BY
+                    store_id,
+                    credit_ticket_id
+            ),
+
+            ticket_balances AS (
+                SELECT
+                    ct.credit_ticket_id,
+                    ct.ticket_id,
+                    ct.client_id,
+                    ct.client_name_at_time,
+                    ct.original_amount,
+                    ct.due_date,
+                    ct.created_at,
+
+                    COALESCE(
+                        pt.amount_paid,
+                        0
+                    ) AS amount_paid,
+
+                    GREATEST(
+                        ct.original_amount -
+                        COALESCE(
+                            pt.amount_paid,
+                            0
+                        ),
+                        0
+                    ) AS remaining_balance
+
+                FROM credit_tickets ct
+
+                LEFT JOIN payment_totals pt
+                    ON pt.store_id = ct.store_id
+                   AND pt.credit_ticket_id =
+                       ct.credit_ticket_id
+
+                WHERE
+                    ct.store_id = %s
+                AND
+                    ct.client_id = %s
+            )
+
+            SELECT
+                credit_ticket_id,
+                ticket_id,
+                client_id,
+                client_name_at_time,
+                original_amount,
+                amount_paid,
+                remaining_balance,
+                due_date,
+                created_at,
+
+                CASE
+                    WHEN remaining_balance <= 0
+                        THEN 'paid'
+
+                    WHEN
+                        due_date IS NOT NULL
+                        AND due_date < CURRENT_DATE
+                        THEN 'overdue'
+
+                    WHEN amount_paid > 0
+                        THEN 'partial'
+
+                    ELSE 'unpaid'
+                END AS credit_status
+
+            FROM ticket_balances
+
+            WHERE
+                %s = TRUE
+                OR remaining_balance > 0
+
+            ORDER BY
+                CASE
+                    WHEN remaining_balance > 0
+                        THEN 0
+                    ELSE 1
+                END,
+                created_at DESC,
+                credit_ticket_id DESC
+            """,
+            (
+                current_user.store_id,
+                current_user.store_id,
+                client_id,
+                include_paid
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        credit_tickets = []
+        total_outstanding = 0.0
+        has_overdue_balance = False
+
+        for row in rows:
+            remaining_balance = float(
+                row[6] or 0
+            )
+
+            credit_status = row[9]
+
+            total_outstanding += (
+                remaining_balance
+            )
+
+            if credit_status == "overdue":
+                has_overdue_balance = True
+
+            credit_tickets.append({
+                "credit_ticket_id": row[0],
+                "ticket_id": row[1],
+                "client_id": row[2],
+                "client_name_at_time": row[3],
+
+                "original_amount":
+                    float(row[4] or 0),
+
+                "amount_paid":
+                    float(row[5] or 0),
+
+                "remaining_balance":
+                    remaining_balance,
+
+                "due_date": row[7],
+                "created_at": row[8],
+                "status": credit_status
+            })
+
+        return {
+            "status": "accepted",
+            "client_id": client_id,
+            "total_outstanding": round(
+                total_outstanding,
+                2
+            ),
+            "has_overdue_balance":
+                has_overdue_balance,
+            "credit_tickets": credit_tickets
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET CLIENT CREDIT TICKETS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to retrieve client "
+                "credit tickets."
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
