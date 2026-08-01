@@ -13715,6 +13715,12 @@ def record_credit_payment(
         if conn:
             conn.close()
 
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "service": "vendr-api"
+    }
 
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
