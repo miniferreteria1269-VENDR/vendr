@@ -2417,6 +2417,14 @@ class SaleItem(BaseModel):
     quantity: int
     price: float  # 🔥 REQUIRED
 
+class CreditPaymentCreate(BaseModel):
+    amount: Decimal
+    note: Optional[str] = None
+
+    client_event_id: Optional[str] = None
+    device_id: Optional[str] = None
+    client_created_at: Optional[str] = None
+
 class StockAdjustmentRequest(BaseModel):
     store_id: int
     product_id: int
@@ -13270,6 +13278,434 @@ def get_client_credit_tickets(
                 "Unable to retrieve client "
                 "credit tickets."
             )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.post(
+    "/credit-tickets/{credit_ticket_id}/payments"
+)
+def record_credit_payment(
+    credit_ticket_id: int,
+    payment: CreditPaymentCreate,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # IDEMPOTENCY CHECK
+        # ---------------------------------------------
+        if payment.client_event_id:
+            cursor.execute(
+                """
+                SELECT
+                    credit_payment_id,
+                    credit_ticket_id,
+                    amount
+                FROM credit_payments
+                WHERE
+                    store_id = %s
+                AND
+                    client_event_id = %s
+                LIMIT 1
+                """,
+                (
+                    current_user.store_id,
+                    payment.client_event_id
+                )
+            )
+
+            existing = cursor.fetchone()
+
+            if existing:
+                return {
+                    "status":
+                        "already_processed",
+
+                    "message":
+                        "Credit payment already recorded.",
+
+                    "credit_payment_id":
+                        existing[0],
+
+                    "credit_ticket_id":
+                        existing[1],
+
+                    "amount":
+                        float(existing[2]),
+
+                    "client_event_id":
+                        payment.client_event_id
+                }
+
+        # ---------------------------------------------
+        # VALIDATE PAYMENT AMOUNT
+        # ---------------------------------------------
+        payment_amount = Decimal(
+            payment.amount
+        ).quantize(
+            Decimal("0.01")
+        )
+
+        if payment_amount <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Payment amount must be "
+                    "greater than zero."
+                )
+            )
+
+        # ---------------------------------------------
+        # LOCK CREDIT TICKET
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                client_id,
+                ticket_id,
+                original_amount
+            FROM credit_tickets
+            WHERE
+                store_id = %s
+            AND
+                credit_ticket_id = %s
+            FOR UPDATE
+            """,
+            (
+                current_user.store_id,
+                credit_ticket_id
+            )
+        )
+
+        credit_ticket = cursor.fetchone()
+
+        if not credit_ticket:
+            raise HTTPException(
+                status_code=404,
+                detail="Credit ticket not found."
+            )
+
+        client_id = credit_ticket[0]
+        sale_ticket_id = credit_ticket[1]
+
+        original_amount = Decimal(
+            credit_ticket[2]
+        ).quantize(
+            Decimal("0.01")
+        )
+
+        # ---------------------------------------------
+        # CALCULATE CURRENT BALANCE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(
+                    SUM(amount),
+                    0
+                )
+            FROM credit_payments
+            WHERE
+                store_id = %s
+            AND
+                credit_ticket_id = %s
+            """,
+            (
+                current_user.store_id,
+                credit_ticket_id
+            )
+        )
+
+        amount_paid = Decimal(
+            cursor.fetchone()[0] or 0
+        ).quantize(
+            Decimal("0.01")
+        )
+
+        remaining_before = (
+            original_amount -
+            amount_paid
+        ).quantize(
+            Decimal("0.01")
+        )
+
+        if remaining_before <= 0:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This credit ticket is "
+                    "already fully paid."
+                )
+            )
+
+        if payment_amount > remaining_before:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code":
+                        "payment_exceeds_balance",
+
+                    "message":
+                        "Payment exceeds the remaining balance.",
+
+                    "remaining_balance":
+                        float(remaining_before)
+                }
+            )
+
+        # ---------------------------------------------
+        # CREATE PAYMENT
+        # ---------------------------------------------
+        now = datetime.now(
+            timezone.utc
+        )
+
+        payment_note = (
+            payment.note.strip()
+            if payment.note
+            else None
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO credit_payments (
+                store_id,
+                credit_ticket_id,
+                amount,
+                note,
+                client_event_id,
+                device_id,
+                client_created_at,
+                payment_datetime
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+            RETURNING credit_payment_id
+            """,
+            (
+                current_user.store_id,
+                credit_ticket_id,
+                payment_amount,
+                payment_note,
+                payment.client_event_id,
+                payment.device_id,
+                payment.client_created_at,
+                now
+            )
+        )
+
+        credit_payment_id = (
+            cursor.fetchone()[0]
+        )
+
+        # ---------------------------------------------
+        # GET ORGANIZATION
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT organization_id
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (
+                current_user.store_id,
+            )
+        )
+
+        store = cursor.fetchone()
+
+        if not store:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found."
+            )
+
+        organization_id = store[0]
+
+        # ---------------------------------------------
+        # RECORD CASH INFLOW
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO cash_events (
+                organization_id,
+                store_id,
+                type,
+                direction,
+                amount,
+                note,
+                reference_id,
+                client_event_id,
+                device_id,
+                client_created_at
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+            """,
+            (
+                organization_id,
+                current_user.store_id,
+                "credit_payment",
+                1,
+                payment_amount,
+
+                payment_note or (
+                    "Fiado payment for "
+                    f"sale ticket {sale_ticket_id}"
+                ),
+
+                credit_payment_id,
+                payment.client_event_id,
+                payment.device_id,
+                payment.client_created_at
+            )
+        )
+
+        remaining_after = (
+            remaining_before -
+            payment_amount
+        ).quantize(
+            Decimal("0.01")
+        )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message":
+                "Credit payment recorded successfully.",
+
+            "credit_payment_id":
+                credit_payment_id,
+
+            "credit_ticket_id":
+                credit_ticket_id,
+
+            "sale_ticket_id":
+                sale_ticket_id,
+
+            "client_id":
+                client_id,
+
+            "amount":
+                float(payment_amount),
+
+            "remaining_balance":
+                float(remaining_after),
+
+            "ticket_status":
+                "paid"
+                if remaining_after <= 0
+                else "partial",
+
+            "client_event_id":
+                payment.client_event_id
+        }
+
+    except psycopg2.errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        if (
+            cursor
+            and payment.client_event_id
+        ):
+            cursor.execute(
+                """
+                SELECT
+                    credit_payment_id,
+                    credit_ticket_id,
+                    amount
+                FROM credit_payments
+                WHERE
+                    store_id = %s
+                AND
+                    client_event_id = %s
+                LIMIT 1
+                """,
+                (
+                    current_user.store_id,
+                    payment.client_event_id
+                )
+            )
+
+            existing = cursor.fetchone()
+
+            if existing:
+                return {
+                    "status":
+                        "already_processed",
+
+                    "message":
+                        "Credit payment already recorded.",
+
+                    "credit_payment_id":
+                        existing[0],
+
+                    "credit_ticket_id":
+                        existing[1],
+
+                    "amount":
+                        float(existing[2]),
+
+                    "client_event_id":
+                        payment.client_event_id
+                }
+
+        raise HTTPException(
+            status_code=409,
+            detail="Duplicate credit payment."
+        )
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CREDIT PAYMENT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to record credit payment."
         )
 
     finally:
