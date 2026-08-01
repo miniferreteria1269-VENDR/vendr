@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import apiClient from "../apiClient";
+// All visible product-supplier text is routed through i18n.
+import { useLang } from "../LanguageContext";
 import {
   COLORS,
   btnPrimary,
@@ -17,6 +19,27 @@ const emptyAssignment = {
 };
 
 export default function ProductSupplierManagement({ storeId }) {
+  const { t } = useLang();
+
+  const text = (key, fallback, replacements = {}) => {
+    const translated = t(key);
+    let value =
+      !translated || translated === key
+        ? fallback
+        : translated;
+
+    Object.entries(replacements).forEach(
+      ([placeholder, replacement]) => {
+        value = value.replaceAll(
+          `{${placeholder}}`,
+          String(replacement)
+        );
+      }
+    );
+
+    return value;
+  };
+
   const [products, setProducts] = useState([]);
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
@@ -85,7 +108,10 @@ export default function ProductSupplierManagement({ storeId }) {
       setProducts([]);
       setError(
         err.response?.data?.detail ||
-        "Unable to load products."
+        text(
+          "unable_load_products",
+          "Unable to load products."
+        )
       );
     } finally {
       setLoading(false);
@@ -112,7 +138,10 @@ export default function ProductSupplierManagement({ storeId }) {
       setSuppliers([]);
       setPanelError(
         err.response?.data?.detail ||
-        "Unable to load suppliers."
+        text(
+          "unable_load_suppliers",
+          "Unable to load suppliers."
+        )
       );
     }
   }
@@ -139,7 +168,10 @@ export default function ProductSupplierManagement({ storeId }) {
       setAssignedSuppliers([]);
       setPanelError(
         err.response?.data?.detail ||
-        "Unable to load assigned suppliers."
+        text(
+          "unable_load_assigned_suppliers",
+          "Unable to load assigned suppliers."
+        )
       );
     } finally {
       setLoadingPanel(false);
@@ -155,7 +187,12 @@ export default function ProductSupplierManagement({ storeId }) {
 
   async function assignSupplier() {
     if (!assignment.supplier_id || selectedProductId == null) {
-      setPanelError("Select a supplier before saving.");
+      setPanelError(
+        text(
+          "select_supplier_before_saving",
+          "Select a supplier before saving."
+        )
+      );
       return;
     }
 
@@ -195,7 +232,10 @@ export default function ProductSupplierManagement({ storeId }) {
 
       setPanelError(
         err.response?.data?.detail ||
-        "Unable to assign supplier."
+        text(
+          "unable_assign_supplier",
+          "Unable to assign supplier."
+        )
       );
     } finally {
       setSubmitting(false);
@@ -206,7 +246,14 @@ export default function ProductSupplierManagement({ storeId }) {
     if (selectedProductId == null || panelBusy) return;
 
     const confirmed = window.confirm(
-      `Remove ${supplier.supplier_name} from ${selectedProduct.product_name}?`
+      text(
+        "confirm_remove_supplier_product",
+        "Remove {supplier} from {product}?",
+        {
+          supplier: supplier.supplier_name,
+          product: selectedProduct.product_name
+        }
+      )
     );
 
     if (!confirmed) return;
@@ -231,7 +278,10 @@ export default function ProductSupplierManagement({ storeId }) {
 
       setPanelError(
         err.response?.data?.detail ||
-        "Unable to remove supplier."
+        text(
+          "unable_remove_supplier",
+          "Unable to remove supplier."
+        )
       );
     } finally {
       setRemovingSupplierId(null);
@@ -249,16 +299,31 @@ export default function ProductSupplierManagement({ storeId }) {
     let confirmationMessage;
 
     if (!nextPreferredStatus) {
-      confirmationMessage =
-        `Remove preferred supplier status from ${supplier.supplier_name}? ` +
-        "This product will have no preferred supplier.";
+      confirmationMessage = text(
+        "confirm_remove_preferred",
+        "Remove preferred supplier status from {supplier}? This product will have no preferred supplier.",
+        {
+          supplier: supplier.supplier_name
+        }
+      );
     } else if (currentPreferredSupplier) {
-      confirmationMessage =
-        `Make ${supplier.supplier_name} the preferred supplier instead of ` +
-        `${currentPreferredSupplier.supplier_name}?`;
+      confirmationMessage = text(
+        "confirm_change_preferred",
+        "Make {supplier} the preferred supplier instead of {current_supplier}?",
+        {
+          supplier: supplier.supplier_name,
+          current_supplier:
+            currentPreferredSupplier.supplier_name
+        }
+      );
     } else {
-      confirmationMessage =
-        `Make ${supplier.supplier_name} the preferred supplier?`;
+      confirmationMessage = text(
+        "confirm_make_preferred",
+        "Make {supplier} the preferred supplier?",
+        {
+          supplier: supplier.supplier_name
+        }
+      );
     }
 
     if (!window.confirm(confirmationMessage)) return;
@@ -286,7 +351,10 @@ export default function ProductSupplierManagement({ storeId }) {
 
       setPanelError(
         err.response?.data?.detail ||
-        "Unable to update preferred supplier."
+        text(
+          "unable_update_preferred",
+          "Unable to update preferred supplier."
+        )
       );
     } finally {
       setUpdatingPreferredSupplierId(null);
@@ -326,12 +394,18 @@ export default function ProductSupplierManagement({ storeId }) {
   return (
     <div>
       <h3 style={{ marginTop: 0 }}>
-        Product Suppliers
+        {text(
+          "product_suppliers",
+          "Product Suppliers"
+        )}
       </h3>
 
       <input
         type="text"
-        placeholder="Search products..."
+        placeholder={text(
+          "search_products",
+          "Search products..."
+        )}
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         style={{
@@ -343,7 +417,14 @@ export default function ProductSupplierManagement({ storeId }) {
         }}
       />
 
-      {loading && <p>Loading products...</p>}
+      {loading && (
+        <p>
+          {text(
+            "loading_products",
+            "Loading products..."
+          )}
+        </p>
+      )}
 
       {error && (
         <p style={{ color: COLORS.danger }}>
@@ -368,12 +449,21 @@ export default function ProductSupplierManagement({ storeId }) {
           >
             <thead>
               <tr>
-                <th style={headerCellStyle}>Product</th>
                 <th style={headerCellStyle}>
-                  Preferred Supplier
+                  {text("product", "Product")}
                 </th>
-                <th style={headerCellStyle}>Last Cost</th>
-                <th style={headerCellStyle}>Supply Cycle</th>
+                <th style={headerCellStyle}>
+                  {text(
+                    "preferred_supplier",
+                    "Preferred Supplier"
+                  )}
+                </th>
+                <th style={headerCellStyle}>
+                  {text("last_cost", "Last Cost")}
+                </th>
+                <th style={headerCellStyle}>
+                  {text("supply_cycle", "Supply Cycle")}
+                </th>
               </tr>
             </thead>
 
@@ -387,7 +477,10 @@ export default function ProductSupplierManagement({ storeId }) {
                       textAlign: "center"
                     }}
                   >
-                    No products found.
+                    {text(
+                      "no_products_found",
+                      "No products found."
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -466,7 +559,13 @@ export default function ProductSupplierManagement({ storeId }) {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={`Manage suppliers for ${selectedProduct.product_name}`}
+            aria-label={text(
+              "manage_suppliers_for",
+              "Manage suppliers for {product}",
+              {
+                product: selectedProduct.product_name
+              }
+            )}
             onMouseDown={(event) => event.stopPropagation()}
             style={modalPanelStyle}
           >
@@ -477,7 +576,10 @@ export default function ProductSupplierManagement({ storeId }) {
 
               <button
                 type="button"
-                aria-label="Close supplier assignment"
+                aria-label={text(
+                  "close_supplier_assignment",
+                  "Close supplier assignment"
+                )}
                 onClick={() => setSelectedProductId(null)}
                 disabled={panelBusy}
                 style={modalCloseStyle}
@@ -501,14 +603,27 @@ export default function ProductSupplierManagement({ storeId }) {
             )}
 
             {loadingPanel ? (
-              <p>Loading assigned suppliers...</p>
+              <p>
+                {text(
+                  "loading_assigned_suppliers",
+                  "Loading assigned suppliers..."
+                )}
+              </p>
             ) : (
               <>
-                <h4>Assigned Suppliers</h4>
+                <h4>
+                  {text(
+                    "assigned_suppliers",
+                    "Assigned Suppliers"
+                  )}
+                </h4>
 
                 {assignedSuppliers.length === 0 ? (
                   <p style={{ color: COLORS.textDim }}>
-                    No suppliers are assigned to this product.
+                    {text(
+                      "no_suppliers_assigned",
+                      "No suppliers are assigned to this product."
+                    )}
                   </p>
                 ) : (
                   <div
@@ -527,12 +642,24 @@ export default function ProductSupplierManagement({ storeId }) {
                     >
                       <thead>
                         <tr>
-                          <th style={headerCellStyle}>Supplier</th>
-                          <th style={headerCellStyle}>Preferred</th>
-                          <th style={headerCellStyle}>Supplier SKU</th>
-                          <th style={headerCellStyle}>Last Cost</th>
-                          <th style={headerCellStyle}>Lead Time</th>
-                          <th style={headerCellStyle}>Action</th>
+                          <th style={headerCellStyle}>
+                            {text("supplier", "Supplier")}
+                          </th>
+                          <th style={headerCellStyle}>
+                            {text("preferred", "Preferred")}
+                          </th>
+                          <th style={headerCellStyle}>
+                            {text("supplier_sku", "Supplier SKU")}
+                          </th>
+                          <th style={headerCellStyle}>
+                            {text("last_cost", "Last Cost")}
+                          </th>
+                          <th style={headerCellStyle}>
+                            {text("lead_time", "Lead Time")}
+                          </th>
+                          <th style={headerCellStyle}>
+                            {text("actions", "Actions")}
+                          </th>
                         </tr>
                       </thead>
 
@@ -558,13 +685,33 @@ export default function ProductSupplierManagement({ storeId }) {
                                 type="button"
                                 title={
                                   supplier.is_preferred
-                                    ? "Remove preferred supplier status"
-                                    : "Make preferred supplier"
+                                    ? text(
+                                        "remove_preferred_status",
+                                        "Remove preferred supplier status"
+                                      )
+                                    : text(
+                                        "make_preferred_supplier",
+                                        "Make preferred supplier"
+                                      )
                                 }
                                 aria-label={
                                   supplier.is_preferred
-                                    ? `${supplier.supplier_name} is preferred. Click to remove preferred status.`
-                                    : `Make ${supplier.supplier_name} the preferred supplier.`
+                                    ? text(
+                                        "preferred_supplier_aria",
+                                        "{supplier} is preferred. Click to remove preferred status.",
+                                        {
+                                          supplier:
+                                            supplier.supplier_name
+                                        }
+                                      )
+                                    : text(
+                                        "make_preferred_supplier_aria",
+                                        "Make {supplier} the preferred supplier.",
+                                        {
+                                          supplier:
+                                            supplier.supplier_name
+                                        }
+                                      )
                                 }
                                 aria-pressed={supplier.is_preferred}
                                 onClick={() =>
@@ -606,7 +753,10 @@ export default function ProductSupplierManagement({ storeId }) {
 
                             <td style={bodyCellStyle}>
                               {supplier.lead_time_days != null
-                                ? `${supplier.lead_time_days} days`
+                                ? `${supplier.lead_time_days} ${text(
+                                    "days",
+                                    "days"
+                                  )}`
                                 : "—"}
                             </td>
 
@@ -625,8 +775,14 @@ export default function ProductSupplierManagement({ storeId }) {
                                 }}
                               >
                                 {removingSupplierId === supplier.supplier_id
-                                  ? "Removing..."
-                                  : "Remove"}
+                                  ? text(
+                                      "removing",
+                                      "Removing..."
+                                    )
+                                  : text(
+                                      "remove",
+                                      "Remove"
+                                    )}
                               </button>
                             </td>
                           </tr>
@@ -636,13 +792,24 @@ export default function ProductSupplierManagement({ storeId }) {
                   </div>
                 )}
 
-                <h4>Assign Supplier</h4>
+                <h4>
+                  {text(
+                    "assign_supplier",
+                    "Assign Supplier"
+                  )}
+                </h4>
 
                 {availableSuppliers.length === 0 ? (
                   <p style={{ color: COLORS.textDim }}>
                     {suppliers.length === 0
-                      ? "No active suppliers are available."
-                      : "All active suppliers are already assigned to this product."}
+                      ? text(
+                          "no_active_suppliers",
+                          "No active suppliers are available."
+                        )
+                      : text(
+                          "all_suppliers_assigned",
+                          "All active suppliers are already assigned to this product."
+                        )}
                   </p>
                 ) : (
                   <div
@@ -655,7 +822,9 @@ export default function ProductSupplierManagement({ storeId }) {
                     }}
                   >
                     <label style={fieldStyle}>
-                      <span>Supplier *</span>
+                      <span>
+                        {text("supplier", "Supplier")} *
+                      </span>
                       <select
                         value={assignment.supplier_id}
                         onChange={(event) =>
@@ -667,7 +836,12 @@ export default function ProductSupplierManagement({ storeId }) {
                         disabled={panelBusy}
                         style={{ ...input, width: "100%" }}
                       >
-                        <option value="">Select supplier...</option>
+                        <option value="">
+                          {text(
+                            "select_supplier",
+                            "Select supplier..."
+                          )}
+                        </option>
                         {availableSuppliers.map(supplier => (
                           <option
                             key={supplier.supplier_id}
@@ -680,7 +854,12 @@ export default function ProductSupplierManagement({ storeId }) {
                     </label>
 
                     <label style={fieldStyle}>
-                      <span>Supplier SKU</span>
+                      <span>
+                        {text(
+                          "supplier_sku",
+                          "Supplier SKU"
+                        )}
+                      </span>
                       <input
                         type="text"
                         value={assignment.supplier_sku}
@@ -696,7 +875,9 @@ export default function ProductSupplierManagement({ storeId }) {
                     </label>
 
                     <label style={fieldStyle}>
-                      <span>Last Cost</span>
+                      <span>
+                        {text("last_cost", "Last Cost")}
+                      </span>
                       <input
                         type="number"
                         min="0"
@@ -714,7 +895,12 @@ export default function ProductSupplierManagement({ storeId }) {
                     </label>
 
                     <label style={fieldStyle}>
-                      <span>Lead Time (days)</span>
+                      <span>
+                        {text(
+                          "lead_time_days",
+                          "Lead Time (days)"
+                        )}
+                      </span>
                       <input
                         type="number"
                         min="0"
@@ -751,7 +937,10 @@ export default function ProductSupplierManagement({ storeId }) {
                         }
                         disabled={panelBusy}
                       />
-                      Preferred supplier
+                      {text(
+                        "preferred_supplier",
+                        "Preferred supplier"
+                      )}
                     </label>
 
                     <div
@@ -774,8 +963,11 @@ export default function ProductSupplierManagement({ storeId }) {
                         }}
                       >
                         {submitting
-                          ? "Saving..."
-                          : "Assign Supplier"}
+                          ? text("saving", "Saving...")
+                          : text(
+                              "assign_supplier",
+                              "Assign Supplier"
+                            )}
                       </button>
 
                       <button
@@ -787,7 +979,7 @@ export default function ProductSupplierManagement({ storeId }) {
                         disabled={panelBusy}
                         style={btnSecondary}
                       >
-                        Clear
+                        {text("clear", "Clear")}
                       </button>
                     </div>
                   </div>
