@@ -84,6 +84,7 @@ const COLORS = {
 };
 
 function App() {
+  // POS client assignment and fiado state are stored per ticket.
   const { t } = useLang();
 
   const [user, setUser] = useState(null);
@@ -110,6 +111,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [intakePaid, setIntakePaid] = useState(false);
   const [intakeSuppliers, setIntakeSuppliers] = useState([]);
+  const [saleClients, setSaleClients] = useState([]);
 
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState("percent");
@@ -184,6 +186,76 @@ function App() {
     };
 
     loadIntakeSuppliers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId, view]);
+
+  // -------------------------------------------------
+  // SALE CLIENTS
+  // -------------------------------------------------
+  useEffect(() => {
+    if (!storeId) {
+      setSaleClients([]);
+      return;
+    }
+
+    const cacheKey =
+      `vendr_sale_clients_${storeId}`;
+
+    try {
+      const cached = localStorage.getItem(cacheKey);
+
+      if (cached) {
+        setSaleClients(JSON.parse(cached));
+      }
+    } catch (error) {
+      console.warn(
+        "Unable to load cached sale clients:",
+        error
+      );
+    }
+
+    if (view !== "pos" || !navigator.onLine) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSaleClients = async () => {
+      try {
+        const response =
+          await apiClient.get("/clients");
+
+        const loadedClients = [
+          ...(response.data.clients || [])
+        ].sort((a, b) =>
+          String(a.client_name || "")
+            .localeCompare(
+              String(b.client_name || ""),
+              undefined,
+              { sensitivity: "base" }
+            )
+        );
+
+        if (cancelled) return;
+
+        setSaleClients(loadedClients);
+
+        localStorage.setItem(
+          cacheKey,
+          JSON.stringify(loadedClients)
+        );
+      } catch (error) {
+        console.warn(
+          "Unable to refresh sale clients:",
+          error
+        );
+      }
+    };
+
+    loadSaleClients();
 
     return () => {
       cancelled = true;
@@ -556,7 +628,12 @@ function App() {
       type,
       label: "",
       items: [],
-      supplier_id: null
+      supplier_id: null,
+      client_id: null,
+      is_credit: false,
+      due_date: "",
+      credit_limit_warning_acknowledged:
+        false
     };
 
     setTickets(previous => [
@@ -576,7 +653,12 @@ function App() {
               items: ticket.items.filter(
                 (_, itemIndex) =>
                   itemIndex !== index
-              )
+              ),
+              credit_limit_warning_acknowledged:
+                ticket.type === "sale"
+                  ? false
+                  : ticket
+                      .credit_limit_warning_acknowledged
             }
           : ticket
       )
@@ -601,7 +683,12 @@ function App() {
                         [field]: value
                       }
                     : item
-              )
+              ),
+              credit_limit_warning_acknowledged:
+                ticket.type === "sale"
+                  ? false
+                  : ticket
+                      .credit_limit_warning_acknowledged
             }
           : ticket
       )
@@ -624,6 +711,49 @@ function App() {
           : ticket
       )
     );
+  };
+
+  const updateSaleCreditField = (
+    field,
+    value
+  ) => {
+    setTickets(previous =>
+      previous.map(ticket =>
+        ticket.id === activeTicket
+          ? {
+              ...ticket,
+              [field]: value,
+              credit_limit_warning_acknowledged:
+                false
+            }
+          : ticket
+      )
+    );
+  };
+
+  const resetActiveCreditWarning = () => {
+    setTickets(previous =>
+      previous.map(ticket =>
+        ticket.id === activeTicket &&
+        ticket.type === "sale"
+          ? {
+              ...ticket,
+              credit_limit_warning_acknowledged:
+                false
+            }
+          : ticket
+      )
+    );
+  };
+
+  const updateSaleDiscountValue = value => {
+    setDiscountValue(value);
+    resetActiveCreditWarning();
+  };
+
+  const updateSaleDiscountType = value => {
+    setDiscountType(value);
+    resetActiveCreditWarning();
   };
 
   const cancelTicket = () => {
@@ -685,6 +815,8 @@ function App() {
       if (existing) {
         return {
           ...ticket,
+          credit_limit_warning_acknowledged:
+            false,
           items: ticket.items.map(item =>
             item.product_id ===
             fullProduct.product_id
@@ -700,6 +832,8 @@ function App() {
 
       return {
         ...ticket,
+        credit_limit_warning_acknowledged:
+          false,
         items: [
           ...ticket.items,
           {
@@ -754,6 +888,94 @@ function App() {
       0
     );
 
+    const isCredit = Boolean(
+      currentTicket.is_credit
+    );
+
+    const clientId =
+      currentTicket.client_id == null
+        ? null
+        : Number(currentTicket.client_id);
+
+    const selectedClient =
+      saleClients.find(
+        client =>
+          Number(client.client_id) ===
+          clientId
+      ) || null;
+
+    if (isCredit && clientId === null) {
+      alert(
+        t("fiado_client_required")
+      );
+
+      return;
+    }
+
+    let creditLimitWarningAcknowledged =
+      Boolean(
+        currentTicket
+          .credit_limit_warning_acknowledged
+      );
+
+    if (
+      isCredit &&
+      selectedClient?.credit_limit != null
+    ) {
+      const currentBalance = Number(
+        selectedClient.outstanding_balance || 0
+      );
+
+      const creditLimit = Number(
+        selectedClient.credit_limit
+      );
+
+      const projectedBalance =
+        currentBalance + discountedTotal;
+
+      if (
+        projectedBalance > creditLimit &&
+        !creditLimitWarningAcknowledged
+      ) {
+        const warningMessage =
+          t("credit_limit_warning")
+            .replaceAll(
+              "{client}",
+              selectedClient.client_name
+            )
+            .replaceAll(
+              "{balance}",
+              currentBalance.toFixed(2)
+            )
+            .replaceAll(
+              "{projected}",
+              projectedBalance.toFixed(2)
+            )
+            .replaceAll(
+              "{limit}",
+              creditLimit.toFixed(2)
+            );
+
+        if (!window.confirm(warningMessage)) {
+          return;
+        }
+
+        creditLimitWarningAcknowledged = true;
+
+        setTickets(previous =>
+          previous.map(ticket =>
+            ticket.id === activeTicket
+              ? {
+                  ...ticket,
+                  credit_limit_warning_acknowledged:
+                    true
+                }
+              : ticket
+          )
+        );
+      }
+    }
+
     const ratio =
       subtotal > 0
         ? discountedTotal / subtotal
@@ -778,6 +1000,14 @@ function App() {
     const salePayload = {
       store_id: storeId,
       items,
+      client_id: clientId,
+      is_credit: isCredit,
+      due_date:
+        isCredit && currentTicket.due_date
+          ? currentTicket.due_date
+          : null,
+      credit_limit_warning_acknowledged:
+        creditLimitWarningAcknowledged,
       client_event_id: clientEventId,
       device_id: getOrCreateDeviceId(),
       client_created_at: clientCreatedAt
@@ -859,6 +1089,51 @@ function App() {
             };
           })
         );
+
+        if (isCredit && clientId !== null) {
+          setSaleClients(previousClients => {
+            const now = new Date();
+
+            const today = new Date(
+              now.getTime() -
+              now.getTimezoneOffset() * 60000
+            )
+              .toISOString()
+              .slice(0, 10);
+
+            const updatedClients =
+              previousClients.map(client =>
+                Number(client.client_id) ===
+                clientId
+                  ? {
+                      ...client,
+                      outstanding_balance:
+                        Number(
+                          client
+                            .outstanding_balance || 0
+                        ) + discountedTotal,
+                      has_overdue_balance:
+                        Boolean(
+                          client
+                            .has_overdue_balance
+                        ) ||
+                        Boolean(
+                          currentTicket.due_date &&
+                          currentTicket.due_date <
+                            today
+                        )
+                    }
+                  : client
+              );
+
+            localStorage.setItem(
+              `vendr_sale_clients_${storeId}`,
+              JSON.stringify(updatedClients)
+            );
+
+            return updatedClients;
+          });
+        }
       }
 
       const responseData =
@@ -1343,10 +1618,27 @@ const finalizeIntake = async () => {
               currentTicket?.supplier_id ?? null
             }
             setIntakeSupplierId={setIntakeSupplierId}
+            saleClients={saleClients}
+            saleClientId={
+              currentTicket?.client_id ?? null
+            }
+            saleIsCredit={Boolean(
+              currentTicket?.is_credit
+            )}
+            saleDueDate={
+              currentTicket?.due_date || ""
+            }
+            updateSaleCreditField={
+              updateSaleCreditField
+            }
             discountValue={discountValue}
-            setDiscountValue={setDiscountValue}
+            setDiscountValue={
+              updateSaleDiscountValue
+            }
             discountType={discountType}
-            setDiscountType={setDiscountType}
+            setDiscountType={
+              updateSaleDiscountType
+            }
           />
         </div>
       )}
