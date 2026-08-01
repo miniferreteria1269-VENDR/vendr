@@ -309,6 +309,10 @@ export const translations = {
     due_date: "Due Date",
     fiado_client_required:
       "Select a client before recording a fiado sale.",
+    confirm_enable_fiado:
+      "Record this sale as fiado for {client}?",
+    confirm_disable_fiado:
+      "Remove fiado status from this sale?",
     credit_limit_warning:
       "{client} currently owes ${balance}. This fiado would bring the balance to ${projected}, exceeding the ${limit} credit limit. Continue anyway?",
 
@@ -697,6 +701,10 @@ export const translations = {
     due_date: "Fecha de vencimiento",
     fiado_client_required:
       "Seleccione un cliente antes de registrar una venta fiada.",
+    confirm_enable_fiado:
+      "¿Registrar esta venta como fiado para {client}?",
+    confirm_disable_fiado:
+      "¿Quitar el estado de fiado de esta venta?",
     credit_limit_warning:
       "{client} actualmente debe ${balance}. Este fiado elevaría el saldo a ${projected}, superando el límite de crédito de ${limit}. ¿Desea continuar de todos modos?",
 
