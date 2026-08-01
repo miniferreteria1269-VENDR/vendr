@@ -2480,10 +2480,17 @@ class ProductSupplierPreferenceUpdate(BaseModel):
 class SaleTicket(BaseModel):
     store_id: int
     items: List[SaleItem]
+
+    client_id: Optional[int] = None
+
+    is_credit: bool = False
+    due_date: Optional[date] = None
+
+    credit_limit_warning_acknowledged: bool = False
+
     client_event_id: Optional[str] = None
     device_id: Optional[str] = None
     client_created_at: Optional[str] = None
-
 
 class IntakeItem(BaseModel):
     product_id: int
@@ -3175,6 +3182,30 @@ def sale_ticket(
                 )
             )
 
+        if (
+            ticket.is_credit
+            and ticket.client_id is None
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A fiado sale requires "
+                    "a client."
+                )
+            )
+
+        if (
+            ticket.due_date is not None
+            and not ticket.is_credit
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A due date can only be set "
+                    "for a fiado sale."
+                )
+            )
+
         for item in ticket.items:
             if item.quantity <= 0:
                 raise HTTPException(
@@ -3192,6 +3223,29 @@ def sale_ticket(
                         "Item price cannot be negative"
                     )
                 )
+
+        # -------------------------------------------------
+        # VERIFY OPTIONAL CLIENT
+        # -------------------------------------------------
+        client_name_at_time = None
+
+        if ticket.client_id is not None:
+            client = verify_client(
+                cursor,
+                ticket.store_id,
+                ticket.client_id,
+                require_active=True
+            )
+
+            # verify_client tuple:
+            # (
+            #   client_id,
+            #   store_id,
+            #   client_name,
+            #   is_active
+            # )
+
+            client_name_at_time = client[2]
 
         # -------------------------------------------------
         # SERIALIZE TICKET NUMBER GENERATION
@@ -3287,6 +3341,8 @@ def sale_ticket(
                     price_at_time,
                     event_datetime,
                     ticket_id,
+                    client_id,
+                    client_name_at_time,
                     client_event_id,
                     device_id,
                     client_created_at
@@ -3294,7 +3350,8 @@ def sale_ticket(
                 VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s
+                    %s, %s, %s, %s,
+                    %s, %s
                 )
                 """,
                 (
@@ -3307,6 +3364,8 @@ def sale_ticket(
                     price,
                     now,
                     ticket_id,
+                    ticket.client_id,
+                    client_name_at_time,
                     ticket.client_event_id,
                     ticket.device_id,
                     ticket.client_created_at
@@ -3339,6 +3398,54 @@ def sale_ticket(
         )
 
         # -------------------------------------------------
+        # CREATE FIADO TICKET
+        # -------------------------------------------------
+        if ticket.is_credit:
+            if total_revenue <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "A fiado sale must have "
+                        "a value greater than zero."
+                    )
+                )
+
+            cursor.execute(
+                """
+                INSERT INTO credit_tickets (
+                    store_id,
+                    ticket_id,
+                    client_id,
+                    client_name_at_time,
+                    original_amount,
+                    due_date,
+                    credit_limit_warning_acknowledged,
+                    created_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                )
+                """,
+                (
+                    ticket.store_id,
+                    ticket_id,
+                    ticket.client_id,
+                    client_name_at_time,
+                    total_revenue,
+                    ticket.due_date,
+                    ticket.credit_limit_warning_acknowledged,
+                    now
+                )
+            )
+
+        # -------------------------------------------------
         # GET ORGANIZATION
         # -------------------------------------------------
         cursor.execute(
@@ -3361,41 +3468,42 @@ def sale_ticket(
         organization_id = store[0]
 
         # -------------------------------------------------
-        # RECORD CASH EVENT
+        # RECORD CASH EVENT FOR PAID SALES ONLY
         # -------------------------------------------------
-        cursor.execute(
-            """
-            INSERT INTO cash_events (
-                organization_id,
-                store_id,
-                type,
-                direction,
-                amount,
-                note,
-                reference_id,
-                client_event_id,
-                device_id,
-                client_created_at
+        if not ticket.is_credit:
+            cursor.execute(
+                """
+                INSERT INTO cash_events (
+                    organization_id,
+                    store_id,
+                    type,
+                    direction,
+                    amount,
+                    note,
+                    reference_id,
+                    client_event_id,
+                    device_id,
+                    client_created_at
+                )
+                VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s
+                )
+                """,
+                (
+                    organization_id,
+                    ticket.store_id,
+                    "sale",
+                    1,
+                    total_revenue,
+                    "POS sale",
+                    ticket_id,
+                    ticket.client_event_id,
+                    ticket.device_id,
+                    ticket.client_created_at
+                )
             )
-            VALUES (
-                %s, %s, %s, %s,
-                %s, %s, %s, %s,
-                %s, %s
-            )
-            """,
-            (
-                organization_id,
-                ticket.store_id,
-                "sale",
-                1,
-                total_revenue,
-                "POS sale",
-                ticket_id,
-                ticket.client_event_id,
-                ticket.device_id,
-                ticket.client_created_at
-            )
-        )
 
         conn.commit()
 
@@ -3408,6 +3516,12 @@ def sale_ticket(
 
             "ticket_id":
                 ticket_id,
+
+            "client_id":
+                ticket.client_id,
+
+            "is_credit":
+                ticket.is_credit,
 
             "client_event_id":
                 ticket.client_event_id
