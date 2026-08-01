@@ -303,6 +303,14 @@ export const translations = {
     client_load_failed: "Unable to load clients.",
     client_save_failed: "Unable to save client.",
     client_status_failed: "Unable to change client status.",
+    select_client: "Select client...",
+    walk_in_no_client: "Walk-in / No client",
+    fiado: "Fiado",
+    due_date: "Due Date",
+    fiado_client_required:
+      "Select a client before recording a fiado sale.",
+    credit_limit_warning:
+      "{client} currently owes ${balance}. This fiado would bring the balance to ${projected}, exceeding the ${limit} credit limit. Continue anyway?",
 
     // SUPPLIERS
     suppliers: "Suppliers",
@@ -683,6 +691,14 @@ export const translations = {
     client_save_failed: "No se pudo guardar el cliente.",
     client_status_failed:
       "No se pudo cambiar el estado del cliente.",
+    select_client: "Seleccionar cliente...",
+    walk_in_no_client: "Venta mostrador / Sin cliente",
+    fiado: "Fiado",
+    due_date: "Fecha de vencimiento",
+    fiado_client_required:
+      "Seleccione un cliente antes de registrar una venta fiada.",
+    credit_limit_warning:
+      "{client} actualmente debe ${balance}. Este fiado elevaría el saldo a ${projected}, superando el límite de crédito de ${limit}. ¿Desea continuar de todos modos?",
 
     // PROVEEDORES
     suppliers: "Proveedores",
