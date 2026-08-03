@@ -18,7 +18,12 @@ const emptyAssignment = {
   lead_time_days: ""
 };
 
-export default function ProductSupplierManagement({ storeId }) {
+export default function ProductSupplierManagement({
+  storeId,
+  product = null,
+  embedded = false,
+  onChanged
+}) {
   const { t } = useLang();
 
   const text = (key, fallback, replacements = {}) => {
@@ -63,15 +68,22 @@ export default function ProductSupplierManagement({ storeId }) {
     updatingPreferredSupplierId !== null;
 
   useEffect(() => {
-    setSelectedProductId(null);
+    setSelectedProductId(product?.product_id ?? null);
     setAssignedSuppliers([]);
     setAssignment(emptyAssignment);
 
     if (storeId) {
-      loadProducts();
+      if (product) {
+        setProducts([{
+          ...product,
+          product_name: product.product_name || product.name
+        }]);
+      } else {
+        loadProducts();
+      }
       loadSuppliers();
     }
-  }, [storeId]);
+  }, [storeId, product?.product_id]);
 
   useEffect(() => {
     if (selectedProductId == null) {
@@ -220,9 +232,14 @@ export default function ProductSupplierManagement({ storeId }) {
         }
       );
 
-      await loadProducts();
-      setSelectedProductId(null);
-      setAssignedSuppliers([]);
+      if (embedded) {
+        await loadAssignedSuppliers(selectedProductId);
+        if (onChanged) await onChanged();
+      } else {
+        await loadProducts();
+        setSelectedProductId(null);
+        setAssignedSuppliers([]);
+      }
       setAssignment(emptyAssignment);
     } catch (err) {
       console.error(
@@ -268,8 +285,11 @@ export default function ProductSupplierManagement({ storeId }) {
 
       await Promise.all([
         loadAssignedSuppliers(selectedProductId),
-        loadProducts()
+        embedded
+          ? Promise.resolve()
+          : loadProducts()
       ]);
+      if (onChanged) await onChanged();
     } catch (err) {
       console.error(
         "Failed to remove supplier from product:",
@@ -341,8 +361,11 @@ export default function ProductSupplierManagement({ storeId }) {
 
       await Promise.all([
         loadAssignedSuppliers(selectedProductId),
-        loadProducts()
+        embedded
+          ? Promise.resolve()
+          : loadProducts()
       ]);
+      if (onChanged) await onChanged();
     } catch (err) {
       console.error(
         "Failed to update preferred supplier:",
@@ -393,6 +416,8 @@ export default function ProductSupplierManagement({ storeId }) {
 
   return (
     <div>
+      {!embedded && (
+        <>
       <h3 style={{ marginTop: 0 }}>
         {text(
           "product_suppliers",
@@ -545,16 +570,18 @@ export default function ProductSupplierManagement({ storeId }) {
           </table>
         </div>
       )}
+        </>
+      )}
 
       {selectedProduct && (
         <div
           role="presentation"
           onMouseDown={() => {
-            if (!panelBusy) {
+            if (!embedded && !panelBusy) {
               setSelectedProductId(null);
             }
           }}
-          style={modalBackdropStyle}
+          style={embedded ? embeddedContainerStyle : modalBackdropStyle}
         >
           <div
             role="dialog"
@@ -567,14 +594,14 @@ export default function ProductSupplierManagement({ storeId }) {
               }
             )}
             onMouseDown={(event) => event.stopPropagation()}
-            style={modalPanelStyle}
+            style={embedded ? embeddedPanelStyle : modalPanelStyle}
           >
             <div style={modalHeaderStyle}>
               <h3 style={{ margin: 0 }}>
                 {selectedProduct.product_name}
               </h3>
 
-              <button
+              {!embedded && <button
                 type="button"
                 aria-label={text(
                   "close_supplier_assignment",
@@ -585,7 +612,7 @@ export default function ProductSupplierManagement({ storeId }) {
                 style={modalCloseStyle}
               >
                 ×
-              </button>
+              </button>}
             </div>
 
             {panelError && (
@@ -1064,4 +1091,23 @@ const modalCloseStyle = {
   fontSize: 28,
   lineHeight: 1,
   padding: "0 4px"
+};
+
+const embeddedContainerStyle = {
+  position: "static",
+  display: "block",
+  padding: 0,
+  background: "transparent"
+};
+
+const embeddedPanelStyle = {
+  width: "100%",
+  maxHeight: "none",
+  overflow: "visible",
+  boxSizing: "border-box",
+  padding: 0,
+  border: "none",
+  borderRadius: 0,
+  background: "transparent",
+  boxShadow: "none"
 };
