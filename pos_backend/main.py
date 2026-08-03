@@ -4811,10 +4811,14 @@ def rebuild_store(store_id:int):
 @app.get("/products")
 def get_products(
     store_id: int,
+    include_archived: bool = False,
     current_user: AuthenticatedUser = Depends(
         get_current_user
     )
 ):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
     if current_user.store_id != store_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -4837,17 +4841,27 @@ def get_products(
                 cost,
                 price,
                 tracks_stock,
-                low_stock_threshold
+                low_stock_threshold,
+                location_code,
+                is_active,
+                created_at
 
             FROM products
 
             WHERE store_id = %s
-              AND is_active = 1
+              AND (
+                    %s
+                    OR is_active = 1
+              )
 
             ORDER BY
+                is_active DESC,
                 LOWER(name) ASC
             """,
-            (store_id,)
+            (
+                store_id,
+                include_archived
+            )
         )
 
         rows = cursor.fetchall()
@@ -4875,7 +4889,16 @@ def get_products(
                     int(row[5] or 0),
 
                 "low_stock_threshold":
-                    int(row[6] or 0)
+                    int(row[6] or 0),
+
+                "location_code":
+                    row[7],
+
+                "is_active":
+                    bool(row[8]),
+
+                "created_at":
+                    row[9]
             })
 
         return {
@@ -4902,7 +4925,6 @@ def get_products(
 
         if conn:
             conn.close()
-
 
 @app.get("/products/search")
 def search_products(
