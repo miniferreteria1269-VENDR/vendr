@@ -2616,6 +2616,10 @@ def create_product(
     price: float,
     tracks_stock: bool = Query(True),
     low_stock_threshold: int = 0,
+    location_code: Optional[str] = Query(
+        default=None,
+        max_length=24
+    ),
     current_user: AuthenticatedUser = Depends(
         get_current_user
     )
@@ -2634,7 +2638,7 @@ def create_product(
 
     try:
         # ---------------------------------------------
-        # VALIDATION
+        # NORMALIZE PRODUCT NAME
         # ---------------------------------------------
         normalized_name = str(
             name or ""
@@ -2653,6 +2657,36 @@ def create_product(
                 detail="Invalid product name"
             )
 
+        # ---------------------------------------------
+        # NORMALIZE LOCATION CODE
+        # ---------------------------------------------
+        normalized_location_code = (
+            str(location_code)
+            .strip()
+            .upper()
+            if location_code is not None
+            else None
+        )
+
+        # Store blank location codes as NULL.
+        if not normalized_location_code:
+            normalized_location_code = None
+
+        if (
+            normalized_location_code is not None
+            and len(normalized_location_code) > 24
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Location code cannot exceed "
+                    "24 characters"
+                )
+            )
+
+        # ---------------------------------------------
+        # VALIDATION
+        # ---------------------------------------------
         if initial_stock < 0:
             raise HTTPException(
                 status_code=400,
@@ -2700,12 +2734,12 @@ def create_product(
             low_stock_threshold
         )
 
-        # events.tracks_stock is BOOLEAN
+        # events.tracks_stock is BOOLEAN.
         tracks_stock_bool = bool(
             tracks_stock
         )
 
-        # products.tracks_stock is INTEGER
+        # products.tracks_stock is INTEGER.
         tracks_stock_value = (
             1
             if tracks_stock_bool
@@ -2740,7 +2774,7 @@ def create_product(
             )
 
         # ---------------------------------------------
-        # PREVENT DUPLICATE PRODUCT NAMES
+        # PREVENT DUPLICATE ACTIVE PRODUCT NAMES
         # ---------------------------------------------
         cursor.execute(
             """
@@ -2800,7 +2834,10 @@ def create_product(
 
         # ---------------------------------------------
         # WRITE CREATE EVENT
-        # events.tracks_stock expects BOOLEAN
+        #
+        # Location is product metadata, so it is stored
+        # in the product projection rather than as an
+        # inventory or financial event field.
         # ---------------------------------------------
         cursor.execute(
             """
@@ -2847,7 +2884,6 @@ def create_product(
 
         # ---------------------------------------------
         # INSERT PRODUCT PROJECTION
-        # products.tracks_stock expects INTEGER
         # ---------------------------------------------
         cursor.execute(
             """
@@ -2860,11 +2896,13 @@ def create_product(
                 price,
                 tracks_stock,
                 low_stock_threshold,
+                location_code,
                 lst_reviewed,
                 is_active,
                 created_at
             )
             VALUES (
+                %s,
                 %s,
                 %s,
                 %s,
@@ -2885,8 +2923,10 @@ def create_product(
                 price,
                 tracks_stock,
                 low_stock_threshold,
+                location_code,
                 lst_reviewed,
-                is_active
+                is_active,
+                created_at
             """,
             (
                 product_id,
@@ -2897,6 +2937,7 @@ def create_product(
                 normalized_price,
                 tracks_stock_value,
                 normalized_threshold,
+                normalized_location_code,
                 lst_reviewed,
                 1
             )
@@ -2912,30 +2953,48 @@ def create_product(
             "message": "Product created",
             "event_id": event_id,
             "product": {
-                "product_id": product_row[0],
-                "store_id": store_id,
-                "name": product_row[1],
+                "product_id":
+                    product_row[0],
+
+                "store_id":
+                    store_id,
+
+                "name":
+                    product_row[1],
+
                 "stock": int(
                     product_row[2] or 0
                 ),
+
                 "cost": float(
                     product_row[3] or 0
                 ),
+
                 "price": float(
                     product_row[4] or 0
                 ),
+
                 "tracks_stock": int(
                     product_row[5] or 0
                 ),
+
                 "low_stock_threshold": int(
                     product_row[6] or 0
                 ),
+
+                "location_code":
+                    product_row[7],
+
                 "lst_reviewed": bool(
-                    product_row[7]
+                    product_row[8]
                 ),
+
                 "is_active": int(
-                    product_row[8] or 0
-                )
+                    product_row[9] or 0
+                ),
+
+                "created_at":
+                    product_row[10]
             }
         }
 
@@ -7491,6 +7550,10 @@ def edit_product(
     name: str,
     low_stock_threshold: int,
     tracks_stock: bool,
+    location_code: Optional[str] = Query(
+        default=None,
+        max_length=24
+    ),
     current_user: AuthenticatedUser = Depends(
         get_current_user
     )
@@ -7504,6 +7567,9 @@ def edit_product(
             detail="Store access denied"
         )
 
+    # ---------------------------------------------
+    # NORMALIZE PRODUCT NAME
+    # ---------------------------------------------
     normalized_name = str(
         name or ""
     ).strip()
@@ -7514,6 +7580,9 @@ def edit_product(
             detail="Product name is required"
         )
 
+    # ---------------------------------------------
+    # VALIDATE LOW-STOCK THRESHOLD
+    # ---------------------------------------------
     if low_stock_threshold < 0:
         raise HTTPException(
             status_code=400,
@@ -7526,14 +7595,51 @@ def edit_product(
         low_stock_threshold
     )
 
-    # products.tracks_stock is INTEGER
+    # ---------------------------------------------
+    # NORMALIZE LOCATION CODE
+    #
+    # location_code omitted:
+    #     Preserve the current location.
+    #
+    # location_code provided as blank:
+    #     Clear the current location.
+    # ---------------------------------------------
+    location_code_provided = (
+        location_code is not None
+    )
+
+    normalized_location_code = None
+
+    if location_code_provided:
+        normalized_location_code = (
+            str(location_code)
+            .strip()
+            .upper()
+        )
+
+        if not normalized_location_code:
+            normalized_location_code = None
+
+        if (
+            normalized_location_code is not None
+            and len(normalized_location_code) > 24
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Location code cannot exceed "
+                    "24 characters"
+                )
+            )
+
+    # products.tracks_stock is INTEGER.
     tracks_stock_value = (
         1
         if bool(tracks_stock)
         else 0
     )
 
-    # events.tracks_stock is BOOLEAN
+    # events.tracks_stock is BOOLEAN.
     tracks_stock_bool = bool(
         tracks_stock
     )
@@ -7553,7 +7659,8 @@ def edit_product(
             SELECT
                 name,
                 low_stock_threshold,
-                tracks_stock
+                tracks_stock,
+                location_code
             FROM products
             WHERE product_id = %s
               AND store_id = %s
@@ -7586,6 +7693,18 @@ def edit_product(
             current_row[2] or 0
         )
 
+        current_location_code = (
+            str(current_row[3]).strip()
+            if current_row[3] is not None
+            else None
+        )
+
+        if not current_location_code:
+            current_location_code = None
+
+        # ---------------------------------------------
+        # DETERMINE CHANGES
+        # ---------------------------------------------
         name_changed = (
             current_name != normalized_name
         )
@@ -7598,6 +7717,12 @@ def edit_product(
         tracks_stock_changed = (
             current_tracks_stock !=
             tracks_stock_value
+        )
+
+        location_changed = (
+            location_code_provided
+            and current_location_code !=
+                normalized_location_code
         )
 
         # ---------------------------------------------
@@ -7632,35 +7757,53 @@ def edit_product(
 
         # ---------------------------------------------
         # UPDATE PRODUCT PROJECTION
-        # products.tracks_stock expects INTEGER
+        #
+        # If location_code was omitted by an older
+        # frontend, preserve the existing value.
+        # If it was supplied as an empty string, store
+        # NULL and clear the location.
         # ---------------------------------------------
         cursor.execute(
             """
             UPDATE products
             SET
                 name = %s,
+
                 low_stock_threshold = %s,
+
                 lst_reviewed = CASE
                     WHEN %s > 0
                     THEN TRUE
                     ELSE FALSE
                 END,
-                tracks_stock = %s
+
+                tracks_stock = %s,
+
+                location_code = CASE
+                    WHEN %s
+                    THEN %s
+                    ELSE location_code
+                END
+
             WHERE product_id = %s
               AND store_id = %s
               AND is_active = 1
+
             RETURNING
                 product_id,
                 name,
                 low_stock_threshold,
                 lst_reviewed,
-                tracks_stock
+                tracks_stock,
+                location_code
             """,
             (
                 normalized_name,
                 normalized_threshold,
                 normalized_threshold,
                 tracks_stock_value,
+                location_code_provided,
+                normalized_location_code,
                 product_id,
                 store_id
             )
@@ -7676,7 +7819,6 @@ def edit_product(
 
         # ---------------------------------------------
         # RECORD PRODUCT NAME CHANGE EVENT
-        # events.tracks_stock expects BOOLEAN
         # ---------------------------------------------
         if name_changed:
             cursor.execute(
@@ -7689,9 +7831,11 @@ def edit_product(
                     quantity,
                     cost_at_time,
                     price_at_time,
-                    tracks_stock
+                    tracks_stock,
+                    event_datetime
                 )
                 VALUES (
+                    %s,
                     %s,
                     %s,
                     %s,
@@ -7710,13 +7854,15 @@ def edit_product(
                     0,
                     0,
                     0,
-                    tracks_stock_bool
+                    tracks_stock_bool,
+                    datetime.now(
+                        timezone.utc
+                    )
                 )
             )
 
         # ---------------------------------------------
-        # RECORD LOW STOCK THRESHOLD CHANGE EVENT
-        # events.tracks_stock expects BOOLEAN
+        # RECORD LOW-STOCK THRESHOLD CHANGE EVENT
         # ---------------------------------------------
         if threshold_changed:
             cursor.execute(
@@ -7729,9 +7875,11 @@ def edit_product(
                     quantity,
                     cost_at_time,
                     price_at_time,
-                    tracks_stock
+                    tracks_stock,
+                    event_datetime
                 )
                 VALUES (
+                    %s,
                     %s,
                     %s,
                     %s,
@@ -7750,32 +7898,55 @@ def edit_product(
                     normalized_threshold,
                     0,
                     0,
-                    tracks_stock_bool
+                    tracks_stock_bool,
+                    datetime.now(
+                        timezone.utc
+                    )
                 )
             )
+
+        # Location is mutable store metadata. It does
+        # not create an inventory or financial event.
 
         conn.commit()
 
         return {
             "status": "accepted",
             "message": "Product updated",
-            "product_id": row[0],
-            "name": row[1],
+
+            "product_id":
+                row[0],
+
+            "name":
+                row[1],
+
             "low_stock_threshold": int(
                 row[2] or 0
             ),
+
             "lst_reviewed": bool(
                 row[3]
             ),
+
             "tracks_stock": int(
                 row[4] or 0
             ),
+
+            "location_code":
+                row[5],
+
             "changes": {
-                "name": name_changed,
+                "name":
+                    name_changed,
+
                 "low_stock_threshold":
                     threshold_changed,
+
                 "tracks_stock":
-                    tracks_stock_changed
+                    tracks_stock_changed,
+
+                "location_code":
+                    location_changed
             }
         }
 
