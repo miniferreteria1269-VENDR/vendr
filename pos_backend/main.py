@@ -14052,6 +14052,611 @@ def health_check():
         "service": "vendr-api"
     }
 
+@app.get(
+    "/products/{product_id}/performance"
+)
+def get_product_performance(
+    product_id: int,
+    start_date: date,
+    end_date: date,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    store_id = current_user.store_id
+
+    # ---------------------------------------------
+    # VALIDATE DATE RANGE
+    # ---------------------------------------------
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Start date cannot be after end date"
+            )
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        period = build_period_boundaries(
+            start_date,
+            end_date
+        )
+
+        start_datetime = period["start"]
+        end_exclusive = period["end_exclusive"]
+        days_in_period = period["days"]
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # LOAD PRODUCT
+        # Includes archived products so their
+        # historical performance remains available.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                product_id,
+                name,
+                stock,
+                cost,
+                price,
+                tracks_stock,
+                low_stock_threshold,
+                location_code,
+                is_active,
+                created_at
+
+            FROM products
+
+            WHERE store_id = %s
+              AND product_id = %s
+            """,
+            (
+                store_id,
+                product_id
+            )
+        )
+
+        product_row = cursor.fetchone()
+
+        if not product_row:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found"
+            )
+
+        product = {
+            "product_id":
+                product_row[0],
+
+            "name":
+                product_row[1],
+
+            "stock":
+                int(product_row[2] or 0),
+
+            "cost":
+                round(
+                    float(
+                        product_row[3] or 0
+                    ),
+                    2
+                ),
+
+            "price":
+                round(
+                    float(
+                        product_row[4] or 0
+                    ),
+                    2
+                ),
+
+            "tracks_stock":
+                int(
+                    product_row[5] or 0
+                ),
+
+            "low_stock_threshold":
+                int(
+                    product_row[6] or 0
+                ),
+
+            "location_code":
+                product_row[7],
+
+            "is_active":
+                int(
+                    product_row[8] or 0
+                ),
+
+            "created_at":
+                product_row[9]
+        }
+
+        # ---------------------------------------------
+        # GROSS SALES
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(
+                    SUM(quantity),
+                    0
+                ) AS units_sold,
+
+                COALESCE(
+                    SUM(
+                        quantity *
+                        price_at_time
+                    ),
+                    0
+                ) AS revenue,
+
+                COALESCE(
+                    SUM(
+                        quantity *
+                        cost_at_time
+                    ),
+                    0
+                ) AS cost,
+
+                COUNT(
+                    DISTINCT ticket_id
+                ) AS ticket_count
+
+            FROM events
+
+            WHERE store_id = %s
+              AND product_id = %s
+              AND event_type = 'sale'
+              AND event_datetime::timestamp >= %s
+              AND event_datetime::timestamp < %s
+            """,
+            (
+                store_id,
+                product_id,
+                start_datetime,
+                end_exclusive
+            )
+        )
+
+        sales_row = cursor.fetchone()
+
+        gross_units = int(
+            sales_row[0] or 0
+        )
+
+        gross_revenue = float(
+            sales_row[1] or 0
+        )
+
+        gross_cost = float(
+            sales_row[2] or 0
+        )
+
+        sale_tickets = int(
+            sales_row[3] or 0
+        )
+
+        gross_profit = (
+            gross_revenue -
+            gross_cost
+        )
+
+        gross_margin_percent = (
+            gross_profit /
+            gross_revenue *
+            100
+            if gross_revenue > 0
+            else 0
+        )
+
+        average_selling_price = (
+            gross_revenue /
+            gross_units
+            if gross_units > 0
+            else 0
+        )
+
+        # ---------------------------------------------
+        # PRODUCT RETURNS
+        # Generic refund-only cash events cannot be
+        # assigned to a specific product and therefore
+        # are intentionally excluded.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(
+                    SUM(quantity),
+                    0
+                ) AS units_returned,
+
+                COALESCE(
+                    SUM(
+                        quantity *
+                        price_at_time
+                    ),
+                    0
+                ) AS returned_revenue,
+
+                COALESCE(
+                    SUM(
+                        quantity *
+                        cost_at_time
+                    ),
+                    0
+                ) AS restored_cost,
+
+                COUNT(
+                    DISTINCT ticket_id
+                ) AS return_ticket_count
+
+            FROM events
+
+            WHERE store_id = %s
+              AND product_id = %s
+              AND event_type = 'return'
+              AND event_datetime::timestamp >= %s
+              AND event_datetime::timestamp < %s
+            """,
+            (
+                store_id,
+                product_id,
+                start_datetime,
+                end_exclusive
+            )
+        )
+
+        return_row = cursor.fetchone()
+
+        returned_units = int(
+            return_row[0] or 0
+        )
+
+        returned_revenue = float(
+            return_row[1] or 0
+        )
+
+        restored_cost = float(
+            return_row[2] or 0
+        )
+
+        return_tickets = int(
+            return_row[3] or 0
+        )
+
+        returned_profit = (
+            returned_revenue -
+            restored_cost
+        )
+
+        # ---------------------------------------------
+        # NET PERFORMANCE
+        # ---------------------------------------------
+        net_units = (
+            gross_units -
+            returned_units
+        )
+
+        net_revenue = (
+            gross_revenue -
+            returned_revenue
+        )
+
+        net_cost = (
+            gross_cost -
+            restored_cost
+        )
+
+        net_profit = (
+            net_revenue -
+            net_cost
+        )
+
+        net_margin_percent = (
+            net_profit /
+            net_revenue *
+            100
+            if net_revenue > 0
+            else 0
+        )
+
+        # Sales velocity is based on gross sold units.
+        # Returns remain visible separately.
+        units_per_day = (
+            gross_units /
+            days_in_period
+            if days_in_period > 0
+            else 0
+        )
+
+        units_per_week = (
+            units_per_day * 7
+        )
+
+        # ---------------------------------------------
+        # PRICE CHANGE HISTORY
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                event_id,
+                cost_at_time,
+                price_at_time,
+                event_datetime,
+                ticket_id,
+                note
+
+            FROM events
+
+            WHERE store_id = %s
+              AND product_id = %s
+              AND event_type = 'price_change'
+              AND event_datetime::timestamp >= %s
+              AND event_datetime::timestamp < %s
+
+            ORDER BY
+                event_datetime::timestamp ASC,
+                event_id ASC
+            """,
+            (
+                store_id,
+                product_id,
+                start_datetime,
+                end_exclusive
+            )
+        )
+
+        price_history = []
+
+        for row in cursor.fetchall():
+            price_history.append({
+                "event_id":
+                    row[0],
+
+                "cost":
+                    round(
+                        float(
+                            row[1] or 0
+                        ),
+                        2
+                    ),
+
+                "price":
+                    round(
+                        float(
+                            row[2] or 0
+                        ),
+                        2
+                    ),
+
+                "event_datetime":
+                    row[3],
+
+                "ticket_id":
+                    row[4],
+
+                "note":
+                    row[5]
+            })
+
+        recorded_prices = [
+            item["price"]
+            for item in price_history
+        ]
+
+        if recorded_prices:
+            lowest_recorded_price = min(
+                recorded_prices
+            )
+
+            highest_recorded_price = max(
+                recorded_prices
+            )
+
+            recorded_price_range = (
+                highest_recorded_price -
+                lowest_recorded_price
+            )
+        else:
+            lowest_recorded_price = None
+            highest_recorded_price = None
+            recorded_price_range = None
+
+        # ---------------------------------------------
+        # RESPONSE
+        # ---------------------------------------------
+        return {
+            "product":
+                product,
+
+            "period": {
+                "start_date":
+                    start_date,
+
+                "end_date":
+                    end_date,
+
+                "days":
+                    days_in_period
+            },
+
+            "gross": {
+                "units_sold":
+                    gross_units,
+
+                "revenue":
+                    round(
+                        gross_revenue,
+                        2
+                    ),
+
+                "cost":
+                    round(
+                        gross_cost,
+                        2
+                    ),
+
+                "profit":
+                    round(
+                        gross_profit,
+                        2
+                    ),
+
+                "margin_percent":
+                    round(
+                        gross_margin_percent,
+                        2
+                    ),
+
+                "sale_tickets":
+                    sale_tickets,
+
+                "average_selling_price":
+                    round(
+                        average_selling_price,
+                        2
+                    )
+            },
+
+            "returns": {
+                "units_returned":
+                    returned_units,
+
+                "returned_revenue":
+                    round(
+                        returned_revenue,
+                        2
+                    ),
+
+                "restored_cost":
+                    round(
+                        restored_cost,
+                        2
+                    ),
+
+                "returned_profit":
+                    round(
+                        returned_profit,
+                        2
+                    ),
+
+                "return_tickets":
+                    return_tickets
+            },
+
+            "net": {
+                "units":
+                    net_units,
+
+                "revenue":
+                    round(
+                        net_revenue,
+                        2
+                    ),
+
+                "cost":
+                    round(
+                        net_cost,
+                        2
+                    ),
+
+                "profit":
+                    round(
+                        net_profit,
+                        2
+                    ),
+
+                "margin_percent":
+                    round(
+                        net_margin_percent,
+                        2
+                    )
+            },
+
+            "sales_velocity": {
+                "units_per_day":
+                    round(
+                        units_per_day,
+                        2
+                    ),
+
+                "units_per_week":
+                    round(
+                        units_per_week,
+                        2
+                    )
+            },
+
+            "price_fluctuation": {
+                "change_count":
+                    len(
+                        price_history
+                    ),
+
+                "lowest_recorded_price":
+                    lowest_recorded_price,
+
+                "highest_recorded_price":
+                    highest_recorded_price,
+
+                "recorded_price_range":
+                    (
+                        round(
+                            recorded_price_range,
+                            2
+                        )
+                        if recorded_price_range
+                        is not None
+                        else None
+                    ),
+
+                "history":
+                    price_history
+            },
+
+            "notes": {
+                "generic_refunds_excluded":
+                    True,
+
+                "generic_refunds_explanation": (
+                    "Refund-only cash events are not "
+                    "linked to individual products and "
+                    "cannot be included in product-level "
+                    "performance."
+                )
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "PRODUCT PERFORMANCE ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load product performance"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
     rebuild_products(store_id)
