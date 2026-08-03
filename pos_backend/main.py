@@ -4485,6 +4485,15 @@ def intake_ticket(
                 or previous_price != price
             )
 
+            price_change_client_event_id = (
+                (
+                    f"{ticket.client_event_id}"
+                    f":price_change:{item.product_id}"
+                )
+                if ticket.client_event_id
+                else None
+            )
+
             # -----------------------------------------
             # RECORD INTAKE EVENT
             # -----------------------------------------
@@ -4570,7 +4579,7 @@ def intake_ticket(
                         ticket_id,
                         ticket.supplier_id,
                         supplier_name,
-                        ticket.client_event_id,
+                        price_change_client_event_id,
                         ticket.device_id,
                         ticket.client_created_at
                     )
@@ -4713,9 +4722,19 @@ def intake_ticket(
                 ticket.client_event_id
         }
 
-    except psycopg2.errors.UniqueViolation:
+    except psycopg2.errors.UniqueViolation as error:
         if conn:
             conn.rollback()
+
+        print(
+            "INTAKE UNIQUE VIOLATION:",
+            getattr(
+                error.diag,
+                "constraint_name",
+                None
+            ),
+            repr(error)
+        )
 
         if (
             cursor
