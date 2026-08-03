@@ -156,17 +156,340 @@ function ProductManagement({ storeId, onProductsChanged }) {
           {pmView === "archive" && <ArchiveProduct storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
           {pmView === "suppliers" && <ProductSupplierManagement storeId={storeId} product={selectedProduct} embedded onChanged={refreshProducts} />}
           {pmView === "performance" && (
-            <div>
-              <h3>{t("performance")}</h3>
-              <strong>{selectedProduct.name}</strong>
-              <p style={{ color: COLORS.textDim }}>{t("performance_coming_next")}</p>
-            </div>
+            <ProductPerformance
+              product={selectedProduct}
+            />
           )}
         </ToolModal>
       )}
     </div>
   );
 }
+
+const getLocalDateValue = date => {
+  const localDate = new Date(
+    date.getTime() -
+    date.getTimezoneOffset() * 60000
+  );
+
+  return localDate.toISOString().slice(0, 10);
+};
+
+function ProductPerformance({ product }) {
+  const { t } = useLang();
+
+  const text = (key, fallback) => {
+    const translated = t(key);
+    return !translated || translated === key
+      ? fallback
+      : translated;
+  };
+
+  const today = getLocalDateValue(new Date());
+  const currentMonthStart = `${today.slice(0, 7)}-01`;
+
+  const [startDate, setStartDate] = useState(currentMonthStart);
+  const [endDate, setEndDate] = useState(today);
+  const [performance, setPerformance] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const invalidDateRange =
+    !startDate ||
+    !endDate ||
+    startDate > endDate;
+
+  const loadPerformance = async () => {
+    if (!product?.product_id || invalidDateRange || loading) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await apiClient.get(
+        `/products/${product.product_id}/performance`,
+        {
+          params: {
+            start_date: startDate,
+            end_date: endDate
+          }
+        }
+      );
+
+      setPerformance(response.data);
+    } catch (err) {
+      console.error("PRODUCT PERFORMANCE LOAD ERROR:", err);
+      setPerformance(null);
+      setError(
+        err.response?.data?.detail ||
+        text(
+          "product_performance_load_failed",
+          "Unable to load product performance."
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPerformance();
+  }, [product?.product_id]);
+
+  const money = value =>
+    `$${Number(value || 0).toFixed(2)}`;
+
+  const number = value =>
+    Number(value || 0).toFixed(2);
+
+  const formatDateTime = value => {
+    if (!value) return "—";
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime())
+      ? String(value)
+      : parsed.toLocaleString();
+  };
+
+  const productData = performance?.product || product;
+  const gross = performance?.gross || {};
+  const returns = performance?.returns || {};
+  const net = performance?.net || {};
+  const velocity = performance?.sales_velocity || {};
+  const priceFluctuation = performance?.price_fluctuation || {};
+  const priceHistory = priceFluctuation.history || [];
+
+  return (
+    <div>
+      <div style={{ paddingRight: 34, marginBottom: 14 }}>
+        <h3 style={{ margin: 0 }}>
+          {text("product_performance", "Product Performance")}
+        </h3>
+        <div style={{ marginTop: 4, fontWeight: 700 }}>
+          {product.name}
+        </div>
+      </div>
+
+      <div style={performanceMetadataStyle}>
+        <MetadataItem
+          label={text("created", "Created")}
+          value={formatDateTime(productData.created_at)}
+        />
+        <MetadataItem
+          label={text("location", "Location")}
+          value={productData.location_code || "—"}
+        />
+        <MetadataItem
+          label={text("current_stock", "Current Stock")}
+          value={productData.tracks_stock ? Number(productData.stock || 0) : text("stock_not_tracked", "Stock not tracked")}
+        />
+        <MetadataItem
+          label={text("current_cost", "Current Cost")}
+          value={money(productData.cost)}
+        />
+        <MetadataItem
+          label={text("current_price", "Current Price")}
+          value={money(productData.price)}
+        />
+      </div>
+
+      <div style={performanceDateStyle}>
+        <label style={performanceFieldStyle}>
+          <span>{text("start_date", "Start Date")}</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={event => setStartDate(event.target.value)}
+            style={input}
+          />
+        </label>
+
+        <label style={performanceFieldStyle}>
+          <span>{text("end_date", "End Date")}</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={event => setEndDate(event.target.value)}
+            style={input}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={loadPerformance}
+          disabled={loading || invalidDateRange}
+          style={{
+            ...btnPrimary,
+            alignSelf: "end",
+            opacity: loading || invalidDateRange ? 0.6 : 1,
+            cursor: loading || invalidDateRange ? "default" : "pointer"
+          }}
+        >
+          {loading
+            ? text("loading", "Loading...")
+            : text("apply", "Apply")}
+        </button>
+      </div>
+
+      {invalidDateRange && (
+        <div style={performanceErrorStyle}>
+          {text(
+            "invalid_date_range",
+            "Start date cannot be after end date."
+          )}
+        </div>
+      )}
+
+      {error && <div style={performanceErrorStyle}>{error}</div>}
+
+      {!performance && loading && (
+        <p style={{ color: COLORS.textDim }}>
+          {text("loading_product_performance", "Loading product performance...")}
+        </p>
+      )}
+
+      {performance && (
+        <>
+          <div style={performanceMetricsStyle}>
+            <PerformanceMetric label={text("net_revenue", "Net Revenue")} value={money(net.revenue)} />
+            <PerformanceMetric label={text("net_profit", "Net Profit")} value={money(net.profit)} />
+            <PerformanceMetric label={text("net_units", "Net Units")} value={Number(net.units || 0)} />
+            <PerformanceMetric label={text("gross_units_sold", "Gross Units Sold")} value={Number(gross.units_sold || 0)} />
+            <PerformanceMetric label={text("units_returned", "Units Returned")} value={Number(returns.units_returned || 0)} danger={Number(returns.units_returned || 0) > 0} />
+            <PerformanceMetric label={text("sale_tickets", "Sale Tickets")} value={Number(gross.sale_tickets || 0)} />
+            <PerformanceMetric label={text("average_selling_price", "Average Selling Price")} value={money(gross.average_selling_price)} />
+            <PerformanceMetric label={text("net_margin", "Net Margin")} value={`${number(net.margin_percent)}%`} />
+            <PerformanceMetric label={text("units_per_week", "Units / Week")} value={number(velocity.units_per_week)} />
+          </div>
+
+          <div style={performanceSectionsStyle}>
+            <PerformanceSection
+              title={text("gross_sales", "Gross Sales")}
+              rows={[
+                [text("revenue", "Revenue"), money(gross.revenue)],
+                [text("cost_of_goods", "Cost of Goods"), money(gross.cost)],
+                [text("profit", "Profit"), money(gross.profit)],
+                [text("margin", "Margin"), `${number(gross.margin_percent)}%`]
+              ]}
+            />
+
+            <PerformanceSection
+              title={text("product_returns", "Product Returns")}
+              rows={[
+                [text("returned_revenue", "Returned Revenue"), money(returns.returned_revenue)],
+                [text("restored_cost", "Restored Cost"), money(returns.restored_cost)],
+                [text("returned_profit", "Returned Profit"), money(returns.returned_profit)],
+                [text("return_tickets", "Return Tickets"), Number(returns.return_tickets || 0)]
+              ]}
+            />
+
+            <PerformanceSection
+              title={text("sales_velocity", "Sales Velocity")}
+              rows={[
+                [text("units_per_day", "Units / Day"), number(velocity.units_per_day)],
+                [text("units_per_week", "Units / Week"), number(velocity.units_per_week)],
+                [text("period_days", "Days in Period"), Number(performance.period?.days || 0)],
+                [text("price_changes", "Price Changes"), Number(priceFluctuation.change_count || 0)]
+              ]}
+            />
+          </div>
+
+          <div style={{ ...card, marginTop: 14 }}>
+            <h4 style={{ marginTop: 0, marginBottom: 10 }}>
+              {text("price_history", "Price History")}
+            </h4>
+
+            {priceHistory.length === 0 ? (
+              <div style={{ color: COLORS.textDim }}>
+                {text(
+                  "no_price_changes_period",
+                  "No recorded price changes in this period."
+                )}
+              </div>
+            ) : (
+              <div style={{ overflow: "auto", maxHeight: 230, border: `1px solid ${COLORS.border}`, borderRadius: 8 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={performanceTableHeaderStyle}>{text("date", "Date")}</th>
+                      <th style={performanceTableHeaderStyle}>{text("cost", "Cost")}</th>
+                      <th style={performanceTableHeaderStyle}>{text("price", "Price")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {priceHistory.map(change => (
+                      <tr key={change.event_id}>
+                        <td style={performanceTableCellStyle}>{formatDateTime(change.event_datetime)}</td>
+                        <td style={performanceTableCellStyle}>{money(change.cost)}</td>
+                        <td style={performanceTableCellStyle}>{money(change.price)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {priceHistory.length > 0 && (
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 10, color: COLORS.textDim, fontSize: 13 }}>
+                <span>{text("lowest_price", "Lowest")}: {money(priceFluctuation.lowest_recorded_price)}</span>
+                <span>{text("highest_price", "Highest")}: {money(priceFluctuation.highest_recorded_price)}</span>
+                <span>{text("price_range", "Range")}: {money(priceFluctuation.recorded_price_range)}</span>
+              </div>
+            )}
+          </div>
+
+          <p style={{ color: COLORS.textDim, fontSize: 12, marginBottom: 0 }}>
+            {text(
+              "generic_refunds_excluded_note",
+              "Cash-only refunds are excluded because they are not linked to individual products."
+            )}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MetadataItem({ label, value }) {
+  return (
+    <div>
+      <div style={{ color: COLORS.textDim, fontSize: 11 }}>{label}</div>
+      <div style={{ fontWeight: 600 }}>{value}</div>
+    </div>
+  );
+}
+
+function PerformanceMetric({ label, value, danger = false }) {
+  return (
+    <div style={{ background: COLORS.panel, borderRadius: 10, padding: 10, minWidth: 0 }}>
+      <div style={{ color: COLORS.textDim, fontSize: 11 }}>{label}</div>
+      <div style={{ color: danger ? COLORS.danger : COLORS.primary, fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{value}</div>
+    </div>
+  );
+}
+
+function PerformanceSection({ title, rows }) {
+  return (
+    <div style={{ ...card, padding: 12 }}>
+      <h4 style={{ marginTop: 0, marginBottom: 8 }}>{title}</h4>
+      {rows.map(([label, value]) => (
+        <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "5px 0", borderBottom: `1px solid ${COLORS.border}` }}>
+          <span style={{ color: COLORS.textDim }}>{label}</span>
+          <strong style={{ whiteSpace: "nowrap" }}>{value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const performanceMetadataStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, padding: 10, marginBottom: 12, border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.panel };
+const performanceDateStyle = { display: "flex", alignItems: "end", gap: 10, flexWrap: "wrap", marginBottom: 12 };
+const performanceFieldStyle = { display: "flex", flexDirection: "column", gap: 4, minWidth: 155 };
+const performanceMetricsStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8, marginBottom: 12 };
+const performanceSectionsStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 };
+const performanceErrorStyle = { padding: 10, marginBottom: 12, borderRadius: 8, background: "rgba(255, 92, 92, 0.12)", color: COLORS.danger };
+const performanceTableHeaderStyle = { padding: "8px 10px", textAlign: "left", whiteSpace: "nowrap", position: "sticky", top: 0, background: COLORS.panelAlt, borderBottom: `1px solid ${COLORS.border}` };
+const performanceTableCellStyle = { padding: "8px 10px", whiteSpace: "nowrap", borderBottom: `1px solid ${COLORS.border}` };
 
 function ProductMasterTable({ products, loading, selectable, onSelect, t }) {
   if (loading) return <div style={card}>{t("loading")}</div>;
@@ -293,8 +616,9 @@ function CreateProduct({ storeId, goBack, onCompleted }) {
           cost,
           price,
           tracks_stock: tracksStock,
-          low_stock_threshold: threshold
-          ,location_code: locationCode.trim() || null
+          low_stock_threshold: threshold,
+          location_code:
+            locationCode.trim() || null
         }
       }
     );
