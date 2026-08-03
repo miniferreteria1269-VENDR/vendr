@@ -4994,6 +4994,9 @@ def search_products(
         get_current_user
     )
 ):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
     if current_user.store_id != store_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -5007,56 +5010,61 @@ def search_products(
         conn = db()
         cursor = conn.cursor()
 
+        normalized_search = str(
+            name or ""
+        ).strip()
+
         search_pattern = (
-            f"%{name.strip().lower()}%"
+            f"%{normalized_search}%"
         )
 
-        if include_inactive:
-            cursor.execute(
-                """
-                SELECT
-                    product_id,
-                    name,
-                    stock,
-                    cost,
-                    price,
-                    is_active,
-                    tracks_stock,
-                    low_stock_threshold
-                FROM products
-                WHERE store_id = %s
-                  AND LOWER(name) LIKE %s
-                ORDER BY LOWER(name) ASC
-                """,
-                (
-                    store_id,
-                    search_pattern
-                )
-            )
+        cursor.execute(
+            """
+            SELECT
+                product_id,
+                name,
+                stock,
+                cost,
+                price,
+                is_active,
+                tracks_stock,
+                low_stock_threshold,
+                location_code,
+                created_at
 
-        else:
-            cursor.execute(
-                """
-                SELECT
-                    product_id,
-                    name,
-                    stock,
-                    cost,
-                    price,
-                    is_active,
-                    tracks_stock,
-                    low_stock_threshold
-                FROM products
-                WHERE store_id = %s
-                  AND is_active = 1
-                  AND LOWER(name) LIKE %s
-                ORDER BY LOWER(name) ASC
-                """,
-                (
-                    store_id,
-                    search_pattern
-                )
+            FROM products
+
+            WHERE store_id = %s
+
+              AND (
+                    %s = TRUE
+                    OR is_active = 1
+              )
+
+              AND (
+                    name ILIKE %s
+
+                    OR COALESCE(
+                        location_code,
+                        ''
+                    ) ILIKE %s
+
+                    OR CAST(
+                        product_id AS TEXT
+                    ) ILIKE %s
+              )
+
+            ORDER BY
+                LOWER(name) ASC
+            """,
+            (
+                store_id,
+                include_inactive,
+                search_pattern,
+                search_pattern,
+                search_pattern
             )
+        )
 
         rows = cursor.fetchall()
 
@@ -5086,7 +5094,13 @@ def search_products(
                     int(row[6] or 0),
 
                 "low_stock_threshold":
-                    int(row[7] or 0)
+                    int(row[7] or 0),
+
+                "location_code":
+                    row[8],
+
+                "created_at":
+                    row[9]
             })
 
         return {
@@ -5113,7 +5127,7 @@ def search_products(
 
         if conn:
             conn.close()
-
+            
 @app.get("/product/{product_id}")
 def get_product(
     product_id: int,
