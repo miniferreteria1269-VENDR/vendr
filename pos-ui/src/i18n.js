@@ -36,6 +36,28 @@ export const translations = {
     low_stock: "Low Stock Threshold",
     tracks_stock: "Tracks Stock",
 
+        // PRODUCT MASTER / POS LOCATION
+    location: "Location",
+    location_code_placeholder: "Example: E3R2I",
+    active: "Active",
+    archived: "Archived",
+    yes: "Yes",
+    no: "No",
+
+    quick_items: "Quick Items",
+    no_quick_items: "No quick items available.",
+    clear_product_search: "Clear product search",
+    stock_not_tracked: "Stock not tracked",
+
+    // PRODUCT TOOLS
+    performance: "Performance",
+    performance_coming_next:
+      "Product performance details are coming next.",
+
+    stock_transfer: "Stock Transfer",
+    stock_transfer_recorded:
+      "Stock transfer recorded.",
+
     // SALES / ANALYSIS
     sales_analysis: "Sales Analysis",
     revenue: "Revenue",
@@ -434,6 +456,32 @@ export const translations = {
     price_change: "Cambio de precio",
     updated: "Actualizado",
     save: "Guardar",
+
+        // MAESTRO DE PRODUCTOS / UBICACIÓN EN POS
+    location: "Ubicación",
+    location_code_placeholder: "Ejemplo: E3R2I",
+    active: "Activo",
+    archived: "Archivado",
+    yes: "Sí",
+    no: "No",
+
+    quick_items: "Productos frecuentes",
+    no_quick_items:
+      "No hay productos frecuentes disponibles.",
+    clear_product_search:
+      "Limpiar búsqueda de productos",
+    stock_not_tracked:
+      "Inventario no controlado",
+
+    // HERRAMIENTAS DE PRODUCTOS
+    performance: "Rendimiento",
+    performance_coming_next:
+      "Los detalles de rendimiento del producto se agregarán a continuación.",
+
+    stock_transfer:
+      "Transferencia de inventario",
+    stock_transfer_recorded:
+      "Transferencia de inventario registrada.",
 
     create_product: "Crear producto",
     initial_stock: "Inventario inicial",
