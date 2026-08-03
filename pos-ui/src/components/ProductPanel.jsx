@@ -1,5 +1,10 @@
-import { useState, useEffect } from "react";
+import {
+  useEffect,
+  useState
+} from "react";
+
 import apiClient from "../apiClient";
+import { useLang } from "../LanguageContext";
 
 const COLORS = {
   panel: "#1a1d24",
@@ -15,20 +20,24 @@ function ProductPanel({
   searchTerm,
   setSearchTerm,
   addItem,
-  storeId   // ✅ ADDED (only change to props)
+  storeId
 }) {
+  const { t } = useLang();
 
-  // -----------------------------
-  // QUICK ITEMS STATE
-  // -----------------------------
-  const [quickItems, setQuickItems] = useState([]);
+  const [quickItems, setQuickItems] =
+    useState([]);
 
-  // -----------------------------
-  // FETCH QUICK ITEMS
-  // -----------------------------
+  // ---------------------------------------------
+  // LOAD QUICK ITEMS
+  // ---------------------------------------------
   const fetchQuickItems = async () => {
+    if (!storeId) {
+      setQuickItems([]);
+      return;
+    }
+
     try {
-      const res =
+      const response =
         await apiClient.get(
           "/quick-items",
           {
@@ -39,31 +48,29 @@ function ProductPanel({
         );
 
       setQuickItems(
-        res.data.products
+        response.data.products || []
+      );
+    } catch (error) {
+      console.error(
+        "Failed to fetch quick items:",
+        error
       );
 
-    } catch (err) {
-      console.error(
-        "Failed to fetch quick items",
-        err
-      );
+      setQuickItems([]);
     }
   };
 
-  // -----------------------------
-  // INITIAL LOAD
-  // -----------------------------
   useEffect(() => {
-    if (storeId) {
-      fetchQuickItems();
-    }
-  }, [storeId]);   // ✅ ensures reload if store changes
+    fetchQuickItems();
+  }, [storeId]);
 
-  // -----------------------------
-  // DISPLAY LOGIC
-  // -----------------------------
+  // ---------------------------------------------
+  // DISPLAY PRODUCTS
+  // ---------------------------------------------
   const displayProducts =
-    searchTerm.trim() === "" ? quickItems : products;
+    searchTerm.trim() === ""
+      ? quickItems
+      : products;
 
   return (
     <div
@@ -76,12 +83,13 @@ function ProductPanel({
         background: COLORS.panel,
         borderRadius: 14,
         padding: 16,
+
         display: "flex",
         flexDirection: "column",
+
         color: COLORS.text
       }}
     >
-
       {/* SEARCH */}
       <div
         style={{
@@ -92,7 +100,7 @@ function ProductPanel({
       >
         <input
           type="text"
-          placeholder="Search products..."
+          placeholder={t("search_products")}
           value={searchTerm}
           onChange={event =>
             setSearchTerm(
@@ -103,13 +111,17 @@ function ProductPanel({
             flex: 1,
             minWidth: 0,
             padding: 10,
+
             borderRadius: 8,
             border:
               `1px solid ${COLORS.border}`,
+
             background:
               COLORS.panelAlt,
+
             color:
               COLORS.text,
+
             boxSizing:
               "border-box"
           }}
@@ -121,18 +133,31 @@ function ProductPanel({
             onClick={() =>
               setSearchTerm("")
             }
-            aria-label="Clear product search"
+            aria-label={
+              t("clear_product_search")
+            }
+            title={
+              t("clear_product_search")
+            }
             style={{
               width: 42,
               minWidth: 42,
+
               border: "none",
               borderRadius: 8,
-              background: COLORS.panelAlt,
-              color: COLORS.text,
+
+              background:
+                COLORS.panelAlt,
+
+              color:
+                COLORS.text,
+
               fontSize: 18,
               fontWeight: "bold",
+
               cursor: "pointer",
-              touchAction: "manipulation"
+              touchAction:
+                "manipulation"
             }}
           >
             ✕
@@ -142,74 +167,178 @@ function ProductPanel({
 
       {/* QUICK ITEMS LABEL */}
       {searchTerm.trim() === "" && (
-        <div style={{
-          marginBottom: 8,
-          color: COLORS.textDim,
-          fontSize: 13
-        }}>
-          Quick Items
+        <div
+          style={{
+            marginBottom: 8,
+            color: COLORS.textDim,
+            fontSize: 13
+          }}
+        >
+          {t("quick_items")}
         </div>
       )}
 
       {/* PRODUCT LIST */}
-      <div style={{
-        flex: 1,
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8
-      }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
 
-        {displayProducts.map((product) => (
+          overflowY: "auto",
+
+          display: "flex",
+          flexDirection: "column",
+          gap: 8
+        }}
+      >
+        {displayProducts.map(
+          product => (
+            <div
+              key={
+                product.product_id
+              }
+              onClick={() =>
+                addItem(product)
+              }
+              style={{
+                background:
+                  COLORS.panelAlt,
+
+                borderRadius: 10,
+                padding: 10,
+
+                cursor: "pointer",
+
+                display: "flex",
+                justifyContent:
+                  "space-between",
+                alignItems: "center",
+                gap: 12,
+
+                transition: "0.15s",
+
+                border:
+                  "1px solid transparent"
+              }}
+              onMouseEnter={event => {
+                event.currentTarget
+                  .style.border =
+                    `1px solid ${COLORS.primary}`;
+              }}
+              onMouseLeave={event => {
+                event.currentTarget
+                  .style.border =
+                    "1px solid transparent";
+              }}
+            >
+              {/* LEFT SIDE */}
+              <div
+                style={{
+                  minWidth: 0,
+                  flex: 1
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 500,
+                    overflow: "hidden",
+                    textOverflow:
+                      "ellipsis"
+                  }}
+                >
+                  {product.name}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 3,
+
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexWrap: "wrap",
+
+                    fontSize: 12,
+                    color:
+                      COLORS.textDim
+                  }}
+                >
+                  {product.tracks_stock ===
+                    1 ||
+                  product.tracks_stock ===
+                    true ? (
+                    <span>
+                      {t("stock")}:{" "}
+                      {Number(
+                        product.stock || 0
+                      )}
+                    </span>
+                  ) : (
+                    <span>
+                      {t(
+                        "stock_not_tracked"
+                      )}
+                    </span>
+                  )}
+
+                  {product.location_code && (
+                    <span
+                      style={{
+                        color:
+                          COLORS.primary,
+                        fontWeight: 600,
+                        whiteSpace:
+                          "nowrap"
+                      }}
+                    >
+                      {t("location")}:{" "}
+                      {
+                        product.location_code
+                      }
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* RIGHT SIDE */}
+              <div
+                style={{
+                  flex: "0 0 auto",
+
+                  fontWeight: "bold",
+                  color:
+                    COLORS.primary,
+
+                  whiteSpace: "nowrap"
+                }}
+              >
+                $
+                {Number(
+                  product.price || 0
+                ).toFixed(2)}
+              </div>
+            </div>
+          )
+        )}
+
+        {displayProducts.length === 0 && (
           <div
-            key={product.product_id}
-            onClick={() => addItem(product)}
             style={{
-              background: COLORS.panelAlt,
-              borderRadius: 10,
-              padding: 10,
-              cursor: "pointer",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              transition: "0.15s",
-              border: "1px solid transparent"
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.border = `1px solid ${COLORS.primary}`;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.border = "1px solid transparent";
+              padding: 12,
+              textAlign: "center",
+              color: COLORS.textDim
             }}
           >
-
-            {/* LEFT SIDE */}
-            <div>
-              <div style={{ fontWeight: 500 }}>
-                {product.name}
-              </div>
-
-              <div style={{
-                fontSize: 12,
-                color: COLORS.textDim
-              }}>
-                Stock: {product.stock}
-              </div>
-            </div>
-
-            {/* RIGHT SIDE */}
-            <div style={{
-              fontWeight: "bold",
-              color: COLORS.primary
-            }}>
-              ${Number(product.price).toFixed(2)}
-            </div>
-
+            {searchTerm.trim()
+              ? t(
+                  "no_products_found"
+                )
+              : t(
+                  "no_quick_items"
+                )}
           </div>
-        ))}
-
+        )}
       </div>
-
     </div>
   );
 }
