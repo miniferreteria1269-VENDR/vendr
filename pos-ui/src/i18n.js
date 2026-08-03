@@ -359,6 +359,57 @@ export const translations = {
     credit_tickets_load_failed:
       "Unable to load credit tickets.",
     credit_payment_failed: "Unable to record payment.",
+        // PRODUCT PERFORMANCE
+    product_performance: "Product Performance",
+    product_performance_load_failed:
+      "Unable to load product performance.",
+    loading_product_performance:
+      "Loading product performance...",
+
+    created: "Created",
+    current_cost: "Current Cost",
+    current_price: "Current Price",
+
+    start_date: "Start Date",
+    end_date: "End Date",
+    invalid_date_range:
+      "Start date cannot be after end date.",
+
+    net_revenue: "Net Revenue",
+    net_profit: "Net Profit",
+    net_units: "Net Units",
+    net_margin: "Net Margin",
+
+    gross_sales: "Gross Sales",
+    gross_units_sold: "Gross Units Sold",
+    sale_tickets: "Sale Tickets",
+    average_selling_price:
+      "Average Selling Price",
+    cost_of_goods: "Cost of Goods",
+    margin: "Margin",
+
+    product_returns: "Product Returns",
+    units_returned: "Units Returned",
+    returned_revenue: "Returned Revenue",
+    restored_cost: "Restored Cost",
+    returned_profit: "Returned Profit",
+    return_tickets: "Return Tickets",
+
+    sales_velocity: "Sales Velocity",
+    units_per_day: "Units / Day",
+    units_per_week: "Units / Week",
+    period_days: "Days in Period",
+
+    price_changes: "Price Changes",
+    price_history: "Price History",
+    no_price_changes_period:
+      "No recorded price changes in this period.",
+    lowest_price: "Lowest",
+    highest_price: "Highest",
+    price_range: "Range",
+
+    generic_refunds_excluded_note:
+      "Cash-only refunds are excluded because they are not linked to individual products.",
 
     // SUPPLIERS
     suppliers: "Suppliers",
@@ -814,6 +865,61 @@ export const translations = {
     supplier_load_failed:
       "No se pudieron cargar los proveedores.",
     supplier_create_failed: "No se pudo crear el proveedor.",
+        // RENDIMIENTO DEL PRODUCTO
+    product_performance:
+      "Rendimiento del producto",
+    product_performance_load_failed:
+      "No se pudo cargar el rendimiento del producto.",
+    loading_product_performance:
+      "Cargando rendimiento del producto...",
+
+    created: "Creado",
+    current_cost: "Costo actual",
+    current_price: "Precio actual",
+
+    start_date: "Fecha inicial",
+    end_date: "Fecha final",
+    invalid_date_range:
+      "La fecha inicial no puede ser posterior a la fecha final.",
+
+    net_revenue: "Ingresos netos",
+    net_profit: "Ganancia neta",
+    net_units: "Unidades netas",
+    net_margin: "Margen neto",
+
+    gross_sales: "Ventas brutas",
+    gross_units_sold:
+      "Unidades brutas vendidas",
+    sale_tickets: "Tickets de venta",
+    average_selling_price:
+      "Precio promedio de venta",
+    cost_of_goods: "Costo de ventas",
+    margin: "Margen",
+
+    product_returns:
+      "Devoluciones de producto",
+    units_returned: "Unidades devueltas",
+    returned_revenue: "Ingresos revertidos",
+    restored_cost: "Costo restituido",
+    returned_profit: "Ganancia revertida",
+    return_tickets:
+      "Tickets de devolución",
+
+    sales_velocity: "Velocidad de venta",
+    units_per_day: "Unidades / Día",
+    units_per_week: "Unidades / Semana",
+    period_days: "Días del período",
+
+    price_changes: "Cambios de precio",
+    price_history: "Historial de precios",
+    no_price_changes_period:
+      "No se registraron cambios de precio en este período.",
+    lowest_price: "Mínimo",
+    highest_price: "Máximo",
+    price_range: "Rango",
+
+    generic_refunds_excluded_note:
+      "Los reembolsos únicamente de caja se excluyen porque no están vinculados a productos individuales.",
 
     // PROVEEDORES DE PRODUCTOS
     product_suppliers: "Proveedores de productos",
