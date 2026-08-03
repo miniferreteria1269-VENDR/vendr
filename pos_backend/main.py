@@ -5758,6 +5758,9 @@ def quick_items(
         get_current_user
     )
 ):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
     if current_user.store_id != store_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -5777,25 +5780,42 @@ def quick_items(
                 e.product_id,
                 p.name,
                 p.stock,
+                p.cost,
                 p.price,
+                p.tracks_stock,
+                p.location_code,
                 COUNT(*) AS sale_count
+
             FROM events e
-            JOIN products p
-              ON e.product_id = p.product_id
-             AND e.store_id = p.store_id
+
+            INNER JOIN products p
+                ON p.product_id = e.product_id
+               AND p.store_id = e.store_id
+
             WHERE e.store_id = %s
               AND e.event_type = 'sale'
+              AND p.is_active = 1
               AND e.event_datetime::timestamptz >=
                   NOW() - INTERVAL '90 days'
+
             GROUP BY
                 e.product_id,
                 p.name,
                 p.stock,
-                p.price
-            ORDER BY sale_count DESC
+                p.cost,
+                p.price,
+                p.tracks_stock,
+                p.location_code
+
+            ORDER BY
+                sale_count DESC,
+                LOWER(p.name) ASC
+
             LIMIT 6
             """,
-            (store_id,)
+            (
+                store_id,
+            )
         )
 
         rows = cursor.fetchall()
@@ -5813,8 +5833,20 @@ def quick_items(
                 "stock":
                     int(row[2] or 0),
 
+                "cost":
+                    float(row[3] or 0),
+
                 "price":
-                    float(row[3] or 0)
+                    float(row[4] or 0),
+
+                "tracks_stock":
+                    int(row[5] or 0),
+
+                "location_code":
+                    row[6],
+
+                "sale_count":
+                    int(row[7] or 0)
             })
 
         return {
