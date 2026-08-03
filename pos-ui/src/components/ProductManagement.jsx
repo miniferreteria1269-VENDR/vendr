@@ -23,24 +23,67 @@ import {
 // ==============================
 // MAIN PANEL
 // ==============================
-function ProductManagement({ storeId }) {
-
+function ProductManagement({ storeId, onProductsChanged }) {
   const { t } = useLang();
-
   const [pmView, setPmView] = useState("menu");
+  const [products, setProducts] = useState([]);
+  const [search, setSearch] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const immediateTool = pmView === "create" || pmView === "import";
+  const requiresProduct = pmView !== "menu" && !immediateTool;
+
+  const loadProducts = async () => {
+    if (!storeId) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await apiClient.get("/products", {
+        params: { store_id: storeId, include_archived: true }
+      });
+      setProducts(response.data.products || []);
+    } catch (err) {
+      console.error("PRODUCT MASTER LOAD ERROR:", err);
+      setProducts([]);
+      setError(err.response?.data?.detail || t("unable_load_products"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProducts();
+  }, [storeId]);
+
+  const refreshProducts = async () => {
+    await loadProducts();
+    if (onProductsChanged) await onProductsChanged();
+  };
+
+  const chooseTool = key => {
+    setSelectedProduct(null);
+    setPmView(key);
+  };
+
+  const filteredProducts = products.filter(product => {
+    const term = search.trim().toLowerCase();
+    if (!term) return true;
+
+    return (
+      String(product.name || "").toLowerCase().includes(term) ||
+      String(product.product_id || "").includes(term) ||
+      String(product.location_code || "").toLowerCase().includes(term)
+    );
+  });
 
   return (
-    <div style={{ padding: 16 }}>
-
+    <div style={{ padding: 16, minHeight: 0 }}>
       <h2 style={{ marginBottom: 12 }}>{t("product_management")}</h2>
 
-      {/* NAV */}
-      <div style={{
-        display: "flex",
-        gap: 8,
-        marginBottom: 16,
-        flexWrap: "wrap"
-      }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         {[
           ["create", "create"],
           ["price", "price"],
@@ -49,11 +92,13 @@ function ProductManagement({ storeId }) {
           ["loss", "loss"],
           ["transfer", "transfer"],
           ["archive", "archive"],
-          ["import", "import"]
+          ["import", "import"],
+          ["performance", "performance"]
         ].map(([key, label]) => (
           <button
             key={key}
-            onClick={() => setPmView(key)}
+            type="button"
+            onClick={() => chooseTool(key)}
             style={pmView === key ? btnPrimary : btnSecondary}
           >
             {t(label)}
@@ -61,23 +106,123 @@ function ProductManagement({ storeId }) {
         ))}
       </div>
 
-      <div style={card}>
-        {pmView === "menu" && <div>{t("select_tool")}</div>}
-        {pmView === "create" && <CreateProduct storeId={storeId} goBack={() => setPmView("menu")} />}
-        {pmView === "price" && <PriceChange storeId={storeId} />}
-        {pmView === "edit" && <EditDetails storeId={storeId} />}
-        {pmView === "loss" && <LogLoss storeId={storeId} />}
-        {pmView === "transfer" && <StockTransfer storeId={storeId} />}
-        {pmView === "archive" && <ArchiveProduct storeId={storeId} />}
-        {pmView === "suppliers" && (
-          <ProductSupplierManagement storeId={storeId} />
-        )}
-        {pmView === "import" && <ProductImporter storeId={storeId} />}
+      <div style={{ color: COLORS.textDim, marginBottom: 10 }}>
+        {requiresProduct ? t("select_product") : t("select_tool")}
       </div>
 
+      <input
+        type="text"
+        value={search}
+        onChange={event => setSearch(event.target.value)}
+        placeholder={t("search_products")}
+        style={{ ...input, width: "100%", maxWidth: 440, marginBottom: 12 }}
+      />
+
+      {error && <div style={{ color: COLORS.danger, marginBottom: 10 }}>{error}</div>}
+
+      <ProductMasterTable
+        products={filteredProducts}
+        loading={loading}
+        selectable={requiresProduct}
+        onSelect={setSelectedProduct}
+        t={t}
+      />
+
+      {pmView === "create" && (
+        <ToolModal onClose={() => setPmView("menu")}>
+          <CreateProduct
+            storeId={storeId}
+            goBack={() => setPmView("menu")}
+            onCompleted={refreshProducts}
+          />
+        </ToolModal>
+      )}
+
+      {pmView === "import" && (
+        <ToolModal onClose={() => setPmView("menu")} wide>
+          <ProductImporter storeId={storeId} />
+        </ToolModal>
+      )}
+
+      {selectedProduct && (
+        <ToolModal
+          onClose={() => setSelectedProduct(null)}
+          wide={pmView === "suppliers" || pmView === "performance"}
+        >
+          {pmView === "price" && <PriceChange storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
+          {pmView === "edit" && <EditDetails storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
+          {pmView === "loss" && <LogLoss storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
+          {pmView === "transfer" && <StockTransfer storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
+          {pmView === "archive" && <ArchiveProduct storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
+          {pmView === "suppliers" && <ProductSupplierManagement storeId={storeId} product={selectedProduct} embedded onChanged={refreshProducts} />}
+          {pmView === "performance" && (
+            <div>
+              <h3>{t("performance")}</h3>
+              <strong>{selectedProduct.name}</strong>
+              <p style={{ color: COLORS.textDim }}>{t("performance_coming_next")}</p>
+            </div>
+          )}
+        </ToolModal>
+      )}
     </div>
   );
 }
+
+function ProductMasterTable({ products, loading, selectable, onSelect, t }) {
+  if (loading) return <div style={card}>{t("loading")}</div>;
+
+  return (
+    <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 8, overflow: "auto", maxHeight: "calc(100dvh - 245px)", minHeight: 220 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {["product", "location", "stock", "cost", "price", "tracks_stock", "status"].map(key => (
+              <th key={key} style={masterHeaderStyle}>{t(key)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {products.length === 0 ? (
+            <tr><td colSpan={7} style={{ padding: 18, textAlign: "center", color: COLORS.textDim }}>{t("no_products_found")}</td></tr>
+          ) : products.map(product => (
+            <tr
+              key={product.product_id}
+              onClick={() => selectable && onSelect(product)}
+              style={{ cursor: selectable ? "pointer" : "default", opacity: product.is_active ? 1 : 0.58 }}
+            >
+              <td style={masterCellStyle}><strong>{product.name}</strong><div style={{ fontSize: 11, color: COLORS.textDim }}>#{product.product_id}</div></td>
+              <td style={masterCellStyle}>{product.location_code || "—"}</td>
+              <td style={masterCellStyle}>{product.tracks_stock ? Number(product.stock || 0) : "—"}</td>
+              <td style={masterCellStyle}>${Number(product.cost || 0).toFixed(2)}</td>
+              <td style={masterCellStyle}>${Number(product.price || 0).toFixed(2)}</td>
+              <td style={masterCellStyle}>{product.tracks_stock ? t("yes") : t("no")}</td>
+              <td style={{ ...masterCellStyle, color: product.is_active ? "#3ddc84" : COLORS.danger, fontWeight: 600 }}>
+                {product.is_active ? t("active") : t("archived")}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ToolModal({ children, onClose, wide = false }) {
+  return (
+    <div role="presentation" onMouseDown={onClose} style={toolBackdropStyle}>
+      <div role="dialog" aria-modal="true" onMouseDown={event => event.stopPropagation()} style={{ ...toolModalStyle, width: wide ? "min(1000px, 100%)" : "min(520px, 100%)" }}>
+        <button type="button" onClick={onClose} aria-label="Close" style={toolCloseStyle}>×</button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const masterHeaderStyle = { padding: "10px 12px", textAlign: "left", whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 1, background: COLORS.panelAlt, borderBottom: `1px solid ${COLORS.border}` };
+const masterCellStyle = { padding: "9px 12px", whiteSpace: "nowrap", borderBottom: `1px solid ${COLORS.border}` };
+const toolBackdropStyle = { position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 18, background: "rgba(0, 0, 0, 0.72)" };
+const toolModalStyle = { position: "relative", maxHeight: "90dvh", overflow: "auto", boxSizing: "border-box", padding: 20, border: `1px solid ${COLORS.border}`, borderRadius: 10, background: COLORS.panelAlt, boxShadow: "0 18px 60px rgba(0, 0, 0, 0.5)" };
+const toolCloseStyle = { position: "absolute", top: 8, right: 10, border: "none", background: "transparent", color: COLORS.text, cursor: "pointer", fontSize: 28, lineHeight: 1 };
 
 // ==============================
 const resultCard = () => ({
@@ -89,7 +234,7 @@ const resultCard = () => ({
   border: "1px solid transparent"
 });
 
-function CreateProduct({ storeId, goBack }) {
+function CreateProduct({ storeId, goBack, onCompleted }) {
 
   const { t } = useLang();
 
@@ -99,6 +244,7 @@ function CreateProduct({ storeId, goBack }) {
   const [price, setPrice] = useState(0);
   const [tracksStock, setTracksStock] = useState(true);
   const [threshold, setThreshold] = useState(0);
+  const [locationCode, setLocationCode] = useState("");
   const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => {
@@ -148,10 +294,12 @@ function CreateProduct({ storeId, goBack }) {
           price,
           tracks_stock: tracksStock,
           low_stock_threshold: threshold
+          ,location_code: locationCode.trim() || null
         }
       }
     );
 
+    if (onCompleted) await onCompleted();
     alert(t("product_created"));
     goBack();
 
@@ -208,6 +356,16 @@ function CreateProduct({ storeId, goBack }) {
         onChange={(e) => setThreshold(Number(e.target.value))}
       />
 
+      <label>{t("location")}</label>
+      <input
+        style={{ ...input, width: "100%", marginBottom: 8, textTransform: "uppercase" }}
+        type="text"
+        maxLength={24}
+        value={locationCode}
+        onChange={e => setLocationCode(e.target.value.toUpperCase())}
+        placeholder={t("location_code_placeholder")}
+      />
+
       <div style={{ marginTop: 10, marginBottom: 10 }}>
         <label>
           <input
@@ -237,15 +395,15 @@ function CreateProduct({ storeId, goBack }) {
 // ==============================
 // PRICE CHANGE
 // ==============================
-function PriceChange({ storeId }) {
+function PriceChange({ storeId, product, onCompleted, onClose }) {
 
   const { t } = useLang();
 
   const [search, setSearch] = useState("");
   const [products, setProducts] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [cost, setCost] = useState(0);
-  const [price, setPrice] = useState(0);
+  const [selected, setSelected] = useState(product || null);
+  const [cost, setCost] = useState(Number(product?.cost || 0));
+  const [price, setPrice] = useState(Number(product?.price || 0));
 
   const searchProducts = async (term) => {
     const res = await apiClient.get(
@@ -273,8 +431,9 @@ function PriceChange({ storeId }) {
         }
       }
     );
+    if (onCompleted) await onCompleted();
     alert(t("updated"));
-    setSelected(null);
+    if (onClose) onClose();
   };
 
   return (
@@ -323,7 +482,7 @@ function PriceChange({ storeId }) {
           >
               {t("save")}
           </button>
-          <button style={btnSecondary} onClick={()=>setSelected(null)}>
+          <button style={btnSecondary} onClick={()=>onClose ? onClose() : setSelected(null)}>
             {t("cancel")}
           </button>
         </>
@@ -335,13 +494,13 @@ function PriceChange({ storeId }) {
 // ==============================
 // LOG LOSS
 // ==============================
-function LogLoss({ storeId }) {
+function LogLoss({ storeId, product, onCompleted, onClose }) {
 
   const { t } = useLang();
 
   const [search, setSearch] = useState("");
   const [products, setProducts] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(product || null);
   const [notes, setNotes] = useState("");
   const [quantity, setQuantity] = useState(1);
 
@@ -371,8 +530,10 @@ function LogLoss({ storeId }) {
         }
       }
     );
+    if (onCompleted) await onCompleted();
     alert(t("loss_recorded"));
-    setSelected(null);
+    if (onClose) onClose();
+    else setSelected(null);
     setNotes("");
     setQuantity(1);
   };
@@ -417,7 +578,7 @@ function LogLoss({ storeId }) {
           >
             {t("submit")}
           </button>
-          <button style={btnSecondary} onClick={()=>setSelected(null)}>
+          <button style={btnSecondary} onClick={()=>onClose ? onClose() : setSelected(null)}>
             {t("cancel")}
           </button>
         </>
@@ -429,17 +590,18 @@ function LogLoss({ storeId }) {
 // ==============================
 // EDIT DETAILS
 // ==============================
-function EditDetails({ storeId }) {
+function EditDetails({ storeId, product, onCompleted, onClose }) {
 
   const { t } = useLang();
 
   const [search, setSearch] = useState("");
   const [products, setProducts] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(product || null);
 
-  const [name, setName] = useState("");
-  const [threshold, setThreshold] = useState(0);
-  const [tracksStock, setTracksStock] = useState(true);
+  const [name, setName] = useState(product?.name || "");
+  const [threshold, setThreshold] = useState(Number(product?.low_stock_threshold || 0));
+  const [tracksStock, setTracksStock] = useState(Boolean(product?.tracks_stock));
+  const [locationCode, setLocationCode] = useState(product?.location_code || "");
 
   const searchProducts = async (term) => {
     const res = await apiClient.get(
@@ -465,12 +627,15 @@ function EditDetails({ storeId }) {
           product_id: selected.product_id,
           name,
           low_stock_threshold: threshold,
-          tracks_stock: tracksStock ? 1 : 0
+          tracks_stock: tracksStock ? 1 : 0,
+          location_code: locationCode
         }
       }
     );
+    if (onCompleted) await onCompleted();
     alert(t("updated"));
-    setSelected(null);
+    if (onClose) onClose();
+    else setSelected(null);
   };
 
   return (
@@ -491,6 +656,7 @@ function EditDetails({ storeId }) {
               setName(p.name);
               setThreshold(p.low_stock_threshold||0);
               setTracksStock(p.tracks_stock);
+              setLocationCode(p.location_code || "");
             }} style={resultCard()}>
               {p.name}
             </div>
@@ -507,6 +673,15 @@ function EditDetails({ storeId }) {
           <input style={input} value={threshold}
             onChange={e=>setThreshold(Number(e.target.value))}/>
 
+          <label>{t("location")}</label>
+          <input
+            style={input}
+            maxLength={24}
+            value={locationCode}
+            onChange={e=>setLocationCode(e.target.value.toUpperCase())}
+            placeholder={t("location_code_placeholder")}
+          />
+
           <label>
             <input type="checkbox" checked={tracksStock}
               onChange={e=>setTracksStock(e.target.checked)}/>
@@ -516,7 +691,7 @@ function EditDetails({ storeId }) {
           <button style={btnPrimary} onClick={submit}>
             {t("save")}
           </button>
-          <button style={btnSecondary} onClick={()=>setSelected(null)}>
+          <button style={btnSecondary} onClick={()=>onClose ? onClose() : setSelected(null)}>
             {t("cancel")}
           </button>
         </>
@@ -528,7 +703,7 @@ function EditDetails({ storeId }) {
 // ==============================
 // ARCHIVE
 // ==============================
-function ArchiveProduct({ storeId }) {
+function ArchiveProduct({ storeId, product, onCompleted, onClose }) {
 
   const { t } = useLang();
 
@@ -564,6 +739,13 @@ function ArchiveProduct({ storeId }) {
 
     alert(t("updated"));
 
+    if (onCompleted) await onCompleted();
+
+    if (onClose) {
+      onClose();
+      return;
+    }
+
     setProducts(prev =>
       prev.map(x =>
         x.product_id === p.product_id
@@ -576,6 +758,22 @@ function ArchiveProduct({ storeId }) {
   return (
     <div style={{ maxWidth: 400 }}>
       <h3>{t("archive_product")}</h3>
+
+      {product ? (
+        <div style={resultCard()}>
+          <p><strong>{product.name}</strong></p>
+          <p style={{ color: COLORS.textDim }}>
+            {product.is_active ? t("active") : t("archived")}
+          </p>
+          <button style={product.is_active ? btnDanger : btnPrimary} onClick={() => archive(product)}>
+            {product.is_active ? t("archive") : t("restore")}
+          </button>
+          <button style={{ ...btnSecondary, marginLeft: 8 }} onClick={onClose}>
+            {t("cancel")}
+          </button>
+        </div>
+      ) : (
+        <>
 
       <input
         style={{ ...input, width: "100%", marginBottom: 10 }}
@@ -598,6 +796,8 @@ function ArchiveProduct({ storeId }) {
           </div>
         </div>
       ))}
+        </>
+      )}
     </div>
   );
 }
@@ -1005,11 +1205,11 @@ const searchProducts = async term => {
   );
 }
 
-function StockTransfer({ storeId }) {
+function StockTransfer({ storeId, product, onCompleted, onClose }) {
   const { t } = useLang();
   const [search, setSearch] = useState("");
   const [products, setProducts] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(product || null);
   const [quantity, setQuantity] = useState(1);
   const [direction, setDirection] = useState("out");
   const [note, setNote] = useState("");
@@ -1039,8 +1239,10 @@ function StockTransfer({ storeId }) {
       }
     );
 
-    alert("Stock transfer recorded.");
-    setSelected(null);
+    if (onCompleted) await onCompleted();
+    alert(t("stock_transfer_recorded"));
+    if (onClose) onClose();
+    else setSelected(null);
     setQuantity(1);
     setDirection("out");
     setNote("");
@@ -1048,7 +1250,7 @@ function StockTransfer({ storeId }) {
 
   return (
     <div style={card}>
-      <h3>Stock Transfer</h3>
+      <h3>{t("stock_transfer")}</h3>
 
       {!selected && (
         <>
@@ -1076,15 +1278,15 @@ function StockTransfer({ storeId }) {
           <p><strong>{selected.name}</strong></p>
 
           <select value={direction} onChange={e => setDirection(e.target.value)} style={input}>
-            <option value="out">Transfer Out</option>
-            <option value="in">Transfer In</option>
+            <option value="out">{t("transfer_out")}</option>
+            <option value="in">{t("transfer_in")}</option>
           </select>
 
           <input type="number" value={quantity} min="1" onChange={e => setQuantity(Number(e.target.value))} style={input} />
-          <input placeholder="Note" value={note} onChange={e => setNote(e.target.value)} style={input} />
+          <input placeholder={t("note")} value={note} onChange={e => setNote(e.target.value)} style={input} />
 
-          <button onClick={submit} style={btnPrimary}>Submit</button>
-          <button onClick={() => setSelected(null)} style={btnSecondary}>Cancel</button>
+          <button onClick={submit} style={btnPrimary}>{t("submit")}</button>
+          <button onClick={() => onClose ? onClose() : setSelected(null)} style={btnSecondary}>{t("cancel")}</button>
         </>
       )}
     </div>
