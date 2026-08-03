@@ -4416,6 +4416,7 @@ def intake_ticket(
         ).isoformat()
 
         total_cost = 0.0
+        price_changes_recorded = 0
 
         # ---------------------------------------------
         # PROCESS INTAKE ITEMS
@@ -4423,7 +4424,10 @@ def intake_ticket(
         for item in ticket.items:
             cursor.execute(
                 """
-                SELECT name
+                SELECT
+                    name,
+                    cost,
+                    price
                 FROM products
                 WHERE product_id = %s
                   AND store_id = %s
@@ -4446,7 +4450,11 @@ def intake_ticket(
                     )
                 )
 
-            product_name = product[0]
+            (
+                product_name,
+                current_cost,
+                current_price
+            ) = product
 
             quantity = int(
                 item.quantity
@@ -4460,6 +4468,21 @@ def intake_ticket(
             price = round(
                 float(item.price),
                 2
+            )
+
+            previous_cost = round(
+                float(current_cost or 0),
+                2
+            )
+
+            previous_price = round(
+                float(current_price or 0),
+                2
+            )
+
+            pricing_changed = (
+                previous_cost != cost
+                or previous_price != price
             )
 
             # -----------------------------------------
@@ -4507,6 +4530,53 @@ def intake_ticket(
                     ticket.client_created_at
                 )
             )
+
+            # -----------------------------------------
+            # RECORD INTAKE-DRIVEN PRICE CHANGE
+            # -----------------------------------------
+            if pricing_changed:
+                cursor.execute(
+                    """
+                    INSERT INTO events (
+                        store_id,
+                        event_type,
+                        product_id,
+                        product_name_at_time,
+                        cost_at_time,
+                        price_at_time,
+                        event_datetime,
+                        ticket_id,
+                        supplier_id,
+                        supplier_name_at_time,
+                        client_event_id,
+                        device_id,
+                        client_created_at
+                    )
+                    VALUES (
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s
+                    )
+                    """,
+                    (
+                        ticket.store_id,
+                        "price_change",
+                        item.product_id,
+                        product_name,
+                        cost,
+                        price,
+                        now,
+                        ticket_id,
+                        ticket.supplier_id,
+                        supplier_name,
+                        ticket.client_event_id,
+                        ticket.device_id,
+                        ticket.client_created_at
+                    )
+                )
+
+                price_changes_recorded += 1
 
             # -----------------------------------------
             # UPDATE PRODUCT
@@ -4637,6 +4707,8 @@ def intake_ticket(
         return {
             "status": "accepted",
             "ticket_id": ticket_id,
+            "price_changes_recorded":
+                price_changes_recorded,
             "client_event_id":
                 ticket.client_event_id
         }
