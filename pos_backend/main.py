@@ -11,6 +11,9 @@ import os
 import psycopg2
 import jwt
 from decimal import Decimal
+from calendar import monthrange
+from zoneinfo import ZoneInfo
+
 
 from jwt.exceptions import InvalidTokenError
 from fastapi.security import (
@@ -2424,6 +2427,47 @@ class CreditPaymentCreate(BaseModel):
     client_event_id: Optional[str] = None
     device_id: Optional[str] = None
     client_created_at: Optional[str] = None
+
+class AgendaItemCompletion(BaseModel):
+    store_id: int
+    occurrence_date: date
+
+class AgendaItemCreate(BaseModel):
+    store_id: int
+
+    title: str
+    notes: Optional[str] = None
+
+    scheduled_date: date
+    scheduled_time: Optional[time] = None
+
+    recurrence_type: str = "none"
+
+    recurrence_weekdays: Optional[
+        List[int]
+    ] = None
+
+    recurrence_day_of_month: Optional[
+        int
+    ] = None
+
+
+class AgendaItemUpdate(BaseModel):
+    title: str
+    notes: Optional[str] = None
+
+    scheduled_date: date
+    scheduled_time: Optional[time] = None
+
+    recurrence_type: str = "none"
+
+    recurrence_weekdays: Optional[
+        List[int]
+    ] = None
+
+    recurrence_day_of_month: Optional[
+        int
+    ] = None
 
 class StockAdjustmentRequest(BaseModel):
     store_id: int
@@ -14647,6 +14691,1701 @@ def get_product_performance(
             status_code=500,
             detail=(
                 "Unable to load product performance"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.post("/agenda-items")
+def create_agenda_item(
+    item: AgendaItemCreate,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != item.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    # ---------------------------------------------
+    # NORMALIZE BASIC FIELDS
+    # ---------------------------------------------
+    normalized_title = str(
+        item.title or ""
+    ).strip()
+
+    if not normalized_title:
+        raise HTTPException(
+            status_code=400,
+            detail="Agenda item title is required"
+        )
+
+    if len(normalized_title) > 160:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Agenda item title cannot exceed "
+                "160 characters"
+            )
+        )
+
+    normalized_notes = (
+        str(item.notes).strip()
+        if item.notes is not None
+        else None
+    )
+
+    if normalized_notes == "":
+        normalized_notes = None
+
+    recurrence_type = str(
+        item.recurrence_type or "none"
+    ).strip().lower()
+
+    allowed_recurrence_types = {
+        "none",
+        "daily",
+        "weekly",
+        "monthly"
+    }
+
+    if (
+        recurrence_type
+        not in allowed_recurrence_types
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid recurrence type"
+        )
+
+    recurrence_weekdays = None
+    recurrence_day_of_month = None
+
+    # ---------------------------------------------
+    # VALIDATE WEEKLY RECURRENCE
+    # ISO weekdays:
+    # 1 = Monday
+    # 7 = Sunday
+    # ---------------------------------------------
+    if recurrence_type == "weekly":
+        supplied_weekdays = (
+            item.recurrence_weekdays or []
+        )
+
+        if not supplied_weekdays:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Weekly recurrence requires "
+                    "at least one weekday"
+                )
+            )
+
+        try:
+            recurrence_weekdays = sorted(
+                {
+                    int(day)
+                    for day
+                    in supplied_weekdays
+                }
+            )
+        except (
+            TypeError,
+            ValueError
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recurrence weekdays must "
+                    "be integers"
+                )
+            )
+
+        if any(
+            day < 1 or day > 7
+            for day in recurrence_weekdays
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recurrence weekdays must "
+                    "be between 1 and 7"
+                )
+            )
+
+    # ---------------------------------------------
+    # VALIDATE MONTHLY RECURRENCE
+    # ---------------------------------------------
+    elif recurrence_type == "monthly":
+        if (
+            item.recurrence_day_of_month
+            is None
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Monthly recurrence requires "
+                    "a day of the month"
+                )
+            )
+
+        recurrence_day_of_month = int(
+            item.recurrence_day_of_month
+        )
+
+        if (
+            recurrence_day_of_month < 1
+            or recurrence_day_of_month > 31
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recurrence day of month must "
+                    "be between 1 and 31"
+                )
+            )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VERIFY STORE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT 1
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (
+                item.store_id,
+            )
+        )
+
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        # ---------------------------------------------
+        # CREATE AGENDA ITEM
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO agenda_items (
+                store_id,
+                title,
+                notes,
+                scheduled_date,
+                scheduled_time,
+                recurrence_type,
+                recurrence_weekdays,
+                recurrence_day_of_month
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+            RETURNING
+                agenda_item_id,
+                store_id,
+                title,
+                notes,
+                scheduled_date,
+                scheduled_time,
+                recurrence_type,
+                recurrence_weekdays,
+                recurrence_day_of_month,
+                last_completed_at,
+                created_at,
+                updated_at
+            """,
+            (
+                item.store_id,
+                normalized_title,
+                normalized_notes,
+                item.scheduled_date,
+                item.scheduled_time,
+                recurrence_type,
+                recurrence_weekdays,
+                recurrence_day_of_month
+            )
+        )
+
+        row = cursor.fetchone()
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "message": "Agenda item created",
+            "agenda_item": {
+                "agenda_item_id":
+                    row[0],
+
+                "store_id":
+                    row[1],
+
+                "title":
+                    row[2],
+
+                "notes":
+                    row[3],
+
+                "scheduled_date":
+                    row[4],
+
+                "scheduled_time":
+                    row[5],
+
+                "recurrence_type":
+                    row[6],
+
+                "recurrence_weekdays":
+                    row[7],
+
+                "recurrence_day_of_month":
+                    row[8],
+
+                "last_completed_at":
+                    row[9],
+
+                "created_at":
+                    row[10],
+
+                "updated_at":
+                    row[11]
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CREATE AGENDA ITEM ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create agenda item"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.get("/agenda-items")
+def get_agenda_items(
+    store_id: int,
+    start_date: date,
+    end_date: date,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    # ---------------------------------------------
+    # VALIDATE DATE RANGE
+    # ---------------------------------------------
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Start date cannot be after end date"
+            )
+        )
+
+    days_in_range = (
+        end_date - start_date
+    ).days + 1
+
+    if days_in_range > 366:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Agenda date range cannot exceed "
+                "366 days"
+            )
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # LOAD AGENDA DEFINITIONS
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                agenda_item_id,
+                store_id,
+                title,
+                notes,
+                scheduled_date,
+                scheduled_time,
+                recurrence_type,
+                recurrence_weekdays,
+                recurrence_day_of_month,
+                last_completed_at,
+                created_at,
+                updated_at
+
+            FROM agenda_items
+
+            WHERE store_id = %s
+              AND scheduled_date <= %s
+              AND (
+                    recurrence_type != 'none'
+                    OR scheduled_date >= %s
+              )
+
+            ORDER BY
+                scheduled_date ASC,
+                scheduled_time ASC NULLS LAST,
+                LOWER(title) ASC
+            """,
+            (
+                store_id,
+                end_date,
+                start_date
+            )
+        )
+
+        agenda_rows = cursor.fetchall()
+
+        # ---------------------------------------------
+        # LOAD COMPLETIONS FOR REQUESTED RANGE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                agenda_item_id,
+                occurrence_date,
+                completed_at
+
+            FROM agenda_item_completions
+
+            WHERE store_id = %s
+              AND occurrence_date >= %s
+              AND occurrence_date <= %s
+            """,
+            (
+                store_id,
+                start_date,
+                end_date
+            )
+        )
+
+        completion_map = {}
+
+        for completion_row in cursor.fetchall():
+            completion_key = (
+                completion_row[0],
+                completion_row[1]
+            )
+
+            completion_map[
+                completion_key
+            ] = completion_row[2]
+
+        occurrences = []
+
+        business_timezone = ZoneInfo(
+            "America/El_Salvador"
+        )
+
+        today = datetime.now(
+            business_timezone
+        ).date()
+
+        # ---------------------------------------------
+        # EXPAND DEFINITIONS INTO OCCURRENCES
+        # ---------------------------------------------
+        for row in agenda_rows:
+            agenda_item_id = row[0]
+            item_store_id = row[1]
+            title = row[2]
+            notes = row[3]
+            scheduled_date = row[4]
+            scheduled_time = row[5]
+
+            recurrence_type = (
+                row[6] or "none"
+            )
+
+            recurrence_weekdays = (
+                row[7] or []
+            )
+
+            recurrence_day_of_month = row[8]
+            last_completed_at = row[9]
+            created_at = row[10]
+            updated_at = row[11]
+
+            occurrence_start = max(
+                start_date,
+                scheduled_date
+            )
+
+            current_date = occurrence_start
+
+            while current_date <= end_date:
+                is_due = False
+
+                # -------------------------------------
+                # ONE-TIME
+                # -------------------------------------
+                if recurrence_type == "none":
+                    is_due = (
+                        current_date ==
+                        scheduled_date
+                    )
+
+                # -------------------------------------
+                # DAILY
+                # -------------------------------------
+                elif recurrence_type == "daily":
+                    is_due = True
+
+                # -------------------------------------
+                # WEEKLY
+                # Monday = 1
+                # Sunday = 7
+                # -------------------------------------
+                elif recurrence_type == "weekly":
+                    is_due = (
+                        current_date.isoweekday()
+                        in recurrence_weekdays
+                    )
+
+                # -------------------------------------
+                # MONTHLY
+                # -------------------------------------
+                elif (
+                    recurrence_type == "monthly"
+                    and recurrence_day_of_month
+                    is not None
+                ):
+                    final_day_of_month = (
+                        monthrange(
+                            current_date.year,
+                            current_date.month
+                        )[1]
+                    )
+
+                    effective_day = min(
+                        recurrence_day_of_month,
+                        final_day_of_month
+                    )
+
+                    is_due = (
+                        current_date.day ==
+                        effective_day
+                    )
+
+                if is_due:
+                    completion_key = (
+                        agenda_item_id,
+                        current_date
+                    )
+
+                    occurrence_completed_at = (
+                        completion_map.get(
+                            completion_key
+                        )
+                    )
+
+                    is_completed = (
+                        occurrence_completed_at
+                        is not None
+                    )
+
+                    occurrences.append({
+                        "agenda_item_id":
+                            agenda_item_id,
+
+                        "store_id":
+                            item_store_id,
+
+                        "title":
+                            title,
+
+                        "notes":
+                            notes,
+
+                        # Original starting date of
+                        # the agenda definition.
+                        "scheduled_date":
+                            scheduled_date,
+
+                        "scheduled_time":
+                            scheduled_time,
+
+                        # Actual date represented by
+                        # this expanded occurrence.
+                        "occurrence_date":
+                            current_date,
+
+                        "recurrence_type":
+                            recurrence_type,
+
+                        "recurrence_weekdays":
+                            recurrence_weekdays,
+
+                        "recurrence_day_of_month":
+                            recurrence_day_of_month,
+
+                        "is_completed":
+                            is_completed,
+
+                        "is_overdue": (
+                            current_date < today
+                            and not is_completed
+                        ),
+
+                        "completed_at":
+                            occurrence_completed_at,
+
+                        "last_completed_at":
+                            last_completed_at,
+
+                        "created_at":
+                            created_at,
+
+                        "updated_at":
+                            updated_at
+                    })
+
+                # A one-time definition can only
+                # generate one occurrence.
+                if recurrence_type == "none":
+                    break
+
+                current_date += timedelta(
+                    days=1
+                )
+
+        # ---------------------------------------------
+        # SORT OCCURRENCES
+        # ---------------------------------------------
+        occurrences.sort(
+            key=lambda occurrence: (
+                occurrence[
+                    "occurrence_date"
+                ],
+
+                occurrence[
+                    "scheduled_time"
+                ] is None,
+
+                occurrence[
+                    "scheduled_time"
+                ] or datetime.min.time(),
+
+                str(
+                    occurrence["title"]
+                ).lower()
+            )
+        )
+
+        completed_count = sum(
+            1
+            for occurrence in occurrences
+            if occurrence["is_completed"]
+        )
+
+        overdue_count = sum(
+            1
+            for occurrence in occurrences
+            if occurrence["is_overdue"]
+        )
+
+        return {
+            "status":
+                "accepted",
+
+            "start_date":
+                start_date,
+
+            "end_date":
+                end_date,
+
+            "occurrence_count":
+                len(occurrences),
+
+            "completed_count":
+                completed_count,
+
+            "overdue_count":
+                overdue_count,
+
+            "agenda_items":
+                occurrences
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET AGENDA ITEMS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load agenda items"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.patch(
+    "/agenda-items/{agenda_item_id}/complete"
+)
+def complete_agenda_item(
+    agenda_item_id: int,
+    completion: AgendaItemCompletion,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if (
+        current_user.store_id
+        != completion.store_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # LOAD AND LOCK AGENDA ITEM
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                title,
+                scheduled_date,
+                recurrence_type,
+                recurrence_weekdays,
+                recurrence_day_of_month
+
+            FROM agenda_items
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+
+            FOR UPDATE
+            """,
+            (
+                completion.store_id,
+                agenda_item_id
+            )
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Agenda item not found"
+            )
+
+        title = row[0]
+        scheduled_date = row[1]
+        recurrence_type = (
+            row[2] or "none"
+        )
+        recurrence_weekdays = (
+            row[3] or []
+        )
+        recurrence_day_of_month = row[4]
+
+        occurrence_date = (
+            completion.occurrence_date
+        )
+
+        # ---------------------------------------------
+        # VALIDATE OCCURRENCE DATE
+        # ---------------------------------------------
+        if occurrence_date < scheduled_date:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Occurrence date cannot be before "
+                    "the agenda item's starting date"
+                )
+            )
+
+        is_valid_occurrence = False
+
+        # ---------------------------------------------
+        # ONE-TIME
+        # ---------------------------------------------
+        if recurrence_type == "none":
+            is_valid_occurrence = (
+                occurrence_date ==
+                scheduled_date
+            )
+
+        # ---------------------------------------------
+        # DAILY
+        # ---------------------------------------------
+        elif recurrence_type == "daily":
+            is_valid_occurrence = True
+
+        # ---------------------------------------------
+        # WEEKLY
+        # Monday = 1
+        # Sunday = 7
+        # ---------------------------------------------
+        elif recurrence_type == "weekly":
+            is_valid_occurrence = (
+                occurrence_date.isoweekday()
+                in recurrence_weekdays
+            )
+
+        # ---------------------------------------------
+        # MONTHLY
+        # Days beyond the end of a short month are
+        # moved to that month's final valid day.
+        # ---------------------------------------------
+        elif recurrence_type == "monthly":
+            final_day_of_month = monthrange(
+                occurrence_date.year,
+                occurrence_date.month
+            )[1]
+
+            effective_day = min(
+                recurrence_day_of_month,
+                final_day_of_month
+            )
+
+            is_valid_occurrence = (
+                occurrence_date.day ==
+                effective_day
+            )
+
+        if not is_valid_occurrence:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The supplied date is not a valid "
+                    "occurrence of this agenda item"
+                )
+            )
+
+        # ---------------------------------------------
+        # RECORD COMPLETION EXACTLY ONCE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO agenda_item_completions (
+                store_id,
+                agenda_item_id,
+                occurrence_date,
+                completed_at
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                NOW()
+            )
+
+            ON CONFLICT (
+                store_id,
+                agenda_item_id,
+                occurrence_date
+            )
+            DO NOTHING
+
+            RETURNING completed_at
+            """,
+            (
+                completion.store_id,
+                agenda_item_id,
+                occurrence_date
+            )
+        )
+
+        completion_row = cursor.fetchone()
+
+        # ---------------------------------------------
+        # IDEMPOTENT RETRY
+        # ---------------------------------------------
+        if not completion_row:
+            cursor.execute(
+                """
+                SELECT completed_at
+
+                FROM agenda_item_completions
+
+                WHERE store_id = %s
+                  AND agenda_item_id = %s
+                  AND occurrence_date = %s
+                """,
+                (
+                    completion.store_id,
+                    agenda_item_id,
+                    occurrence_date
+                )
+            )
+
+            existing_completion = (
+                cursor.fetchone()
+            )
+
+            conn.commit()
+
+            return {
+                "status":
+                    "already_processed",
+
+                "message":
+                    "Agenda occurrence was already completed",
+
+                "agenda_item_id":
+                    agenda_item_id,
+
+                "title":
+                    title,
+
+                "occurrence_date":
+                    occurrence_date,
+
+                "completed_at":
+                    (
+                        existing_completion[0]
+                        if existing_completion
+                        else None
+                    )
+            }
+
+        completed_at = completion_row[0]
+
+        # ---------------------------------------------
+        # UPDATE CONVENIENCE TIMESTAMP
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            UPDATE agenda_items
+
+            SET
+                last_completed_at = %s,
+                updated_at = NOW()
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+            """,
+            (
+                completed_at,
+                completion.store_id,
+                agenda_item_id
+            )
+        )
+
+        conn.commit()
+
+        return {
+            "status":
+                "accepted",
+
+            "message":
+                "Agenda occurrence completed",
+
+            "agenda_item_id":
+                agenda_item_id,
+
+            "title":
+                title,
+
+            "occurrence_date":
+                occurrence_date,
+
+            "completed_at":
+                completed_at
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "COMPLETE AGENDA ITEM ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to complete agenda item"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.put(
+    "/agenda-items/{agenda_item_id}"
+)
+def update_agenda_item(
+    agenda_item_id: int,
+    store_id: int,
+    item: AgendaItemUpdate,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    # ---------------------------------------------
+    # NORMALIZE BASIC FIELDS
+    # ---------------------------------------------
+    normalized_title = str(
+        item.title or ""
+    ).strip()
+
+    if not normalized_title:
+        raise HTTPException(
+            status_code=400,
+            detail="Agenda item title is required"
+        )
+
+    if len(normalized_title) > 160:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Agenda item title cannot exceed "
+                "160 characters"
+            )
+        )
+
+    normalized_notes = (
+        str(item.notes).strip()
+        if item.notes is not None
+        else None
+    )
+
+    if normalized_notes == "":
+        normalized_notes = None
+
+    recurrence_type = str(
+        item.recurrence_type or "none"
+    ).strip().lower()
+
+    allowed_recurrence_types = {
+        "none",
+        "daily",
+        "weekly",
+        "monthly"
+    }
+
+    if (
+        recurrence_type
+        not in allowed_recurrence_types
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid recurrence type"
+        )
+
+    recurrence_weekdays = None
+    recurrence_day_of_month = None
+
+    # ---------------------------------------------
+    # WEEKLY RECURRENCE
+    # Monday = 1
+    # Sunday = 7
+    # ---------------------------------------------
+    if recurrence_type == "weekly":
+        supplied_weekdays = (
+            item.recurrence_weekdays or []
+        )
+
+        if not supplied_weekdays:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Weekly recurrence requires "
+                    "at least one weekday"
+                )
+            )
+
+        try:
+            recurrence_weekdays = sorted(
+                {
+                    int(day)
+                    for day
+                    in supplied_weekdays
+                }
+            )
+        except (
+            TypeError,
+            ValueError
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recurrence weekdays must "
+                    "be integers"
+                )
+            )
+
+        if any(
+            day < 1 or day > 7
+            for day in recurrence_weekdays
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recurrence weekdays must "
+                    "be between 1 and 7"
+                )
+            )
+
+    # ---------------------------------------------
+    # MONTHLY RECURRENCE
+    # ---------------------------------------------
+    elif recurrence_type == "monthly":
+        if (
+            item.recurrence_day_of_month
+            is None
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Monthly recurrence requires "
+                    "a day of the month"
+                )
+            )
+
+        try:
+            recurrence_day_of_month = int(
+                item.recurrence_day_of_month
+            )
+        except (
+            TypeError,
+            ValueError
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recurrence day of month must "
+                    "be an integer"
+                )
+            )
+
+        if (
+            recurrence_day_of_month < 1
+            or recurrence_day_of_month > 31
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recurrence day of month must "
+                    "be between 1 and 31"
+                )
+            )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # LOAD AND LOCK EXISTING ITEM
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                agenda_item_id
+
+            FROM agenda_items
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+
+            FOR UPDATE
+            """,
+            (
+                store_id,
+                agenda_item_id
+            )
+        )
+
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail="Agenda item not found"
+            )
+
+        # ---------------------------------------------
+        # UPDATE ITEM
+        #
+        # Completion history is preserved. If the
+        # schedule changes, old completions remain
+        # historical records but will no longer mark
+        # newly generated dates as completed.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            UPDATE agenda_items
+
+            SET
+                title = %s,
+                notes = %s,
+                scheduled_date = %s,
+                scheduled_time = %s,
+                recurrence_type = %s,
+                recurrence_weekdays = %s,
+                recurrence_day_of_month = %s,
+                updated_at = NOW()
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+
+            RETURNING
+                agenda_item_id,
+                store_id,
+                title,
+                notes,
+                scheduled_date,
+                scheduled_time,
+                recurrence_type,
+                recurrence_weekdays,
+                recurrence_day_of_month,
+                last_completed_at,
+                created_at,
+                updated_at
+            """,
+            (
+                normalized_title,
+                normalized_notes,
+                item.scheduled_date,
+                item.scheduled_time,
+                recurrence_type,
+                recurrence_weekdays,
+                recurrence_day_of_month,
+                store_id,
+                agenda_item_id
+            )
+        )
+
+        row = cursor.fetchone()
+
+        conn.commit()
+
+        return {
+            "status":
+                "accepted",
+
+            "message":
+                "Agenda item updated",
+
+            "agenda_item": {
+                "agenda_item_id":
+                    row[0],
+
+                "store_id":
+                    row[1],
+
+                "title":
+                    row[2],
+
+                "notes":
+                    row[3],
+
+                "scheduled_date":
+                    row[4],
+
+                "scheduled_time":
+                    row[5],
+
+                "recurrence_type":
+                    row[6],
+
+                "recurrence_weekdays":
+                    row[7],
+
+                "recurrence_day_of_month":
+                    row[8],
+
+                "last_completed_at":
+                    row[9],
+
+                "created_at":
+                    row[10],
+
+                "updated_at":
+                    row[11]
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "UPDATE AGENDA ITEM ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update agenda item"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.delete(
+    "/agenda-items/{agenda_item_id}"
+)
+def delete_agenda_item(
+    agenda_item_id: int,
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # LOAD AND LOCK ITEM
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                title,
+                recurrence_type
+
+            FROM agenda_items
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+
+            FOR UPDATE
+            """,
+            (
+                store_id,
+                agenda_item_id
+            )
+        )
+
+        item = cursor.fetchone()
+
+        if not item:
+            raise HTTPException(
+                status_code=404,
+                detail="Agenda item not found"
+            )
+
+        title = item[0]
+        recurrence_type = (
+            item[1] or "none"
+        )
+
+        # ---------------------------------------------
+        # COUNT COMPLETION RECORDS
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+
+            FROM agenda_item_completions
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+            """,
+            (
+                store_id,
+                agenda_item_id
+            )
+        )
+
+        completion_count = int(
+            cursor.fetchone()[0] or 0
+        )
+
+        # ---------------------------------------------
+        # DELETE ITEM
+        #
+        # agenda_item_completions records are removed
+        # automatically through ON DELETE CASCADE.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            DELETE FROM agenda_items
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+
+            RETURNING agenda_item_id
+            """,
+            (
+                store_id,
+                agenda_item_id
+            )
+        )
+
+        deleted = cursor.fetchone()
+
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail="Agenda item not found"
+            )
+
+        conn.commit()
+
+        return {
+            "status":
+                "accepted",
+
+            "message":
+                "Agenda item deleted",
+
+            "agenda_item_id":
+                deleted[0],
+
+            "title":
+                title,
+
+            "recurrence_type":
+                recurrence_type,
+
+            "deleted_completion_count":
+                completion_count
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "DELETE AGENDA ITEM ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to delete agenda item"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.delete(
+    "/agenda-items/{agenda_item_id}/completions/"
+    "{occurrence_date}"
+)
+def reopen_agenda_occurrence(
+    agenda_item_id: int,
+    occurrence_date: date,
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # LOAD AND LOCK AGENDA ITEM
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                title
+
+            FROM agenda_items
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+
+            FOR UPDATE
+            """,
+            (
+                store_id,
+                agenda_item_id
+            )
+        )
+
+        item = cursor.fetchone()
+
+        if not item:
+            raise HTTPException(
+                status_code=404,
+                detail="Agenda item not found"
+            )
+
+        title = item[0]
+
+        # ---------------------------------------------
+        # DELETE COMPLETION
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            DELETE FROM agenda_item_completions
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+              AND occurrence_date = %s
+
+            RETURNING completed_at
+            """,
+            (
+                store_id,
+                agenda_item_id,
+                occurrence_date
+            )
+        )
+
+        deleted_completion = (
+            cursor.fetchone()
+        )
+
+        # ---------------------------------------------
+        # IDEMPOTENT RETRY
+        # ---------------------------------------------
+        if not deleted_completion:
+            conn.commit()
+
+            return {
+                "status":
+                    "already_processed",
+
+                "message":
+                    "Agenda occurrence is already open",
+
+                "agenda_item_id":
+                    agenda_item_id,
+
+                "title":
+                    title,
+
+                "occurrence_date":
+                    occurrence_date
+            }
+
+        previous_completed_at = (
+            deleted_completion[0]
+        )
+
+        # ---------------------------------------------
+        # RECALCULATE LAST COMPLETION
+        #
+        # If an older completion remains, preserve its
+        # timestamp. Otherwise set last_completed_at
+        # back to NULL.
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            UPDATE agenda_items
+
+            SET
+                last_completed_at = (
+                    SELECT MAX(
+                        completed_at
+                    )
+
+                    FROM agenda_item_completions
+
+                    WHERE store_id = %s
+                      AND agenda_item_id = %s
+                ),
+
+                updated_at = NOW()
+
+            WHERE store_id = %s
+              AND agenda_item_id = %s
+
+            RETURNING last_completed_at
+            """,
+            (
+                store_id,
+                agenda_item_id,
+                store_id,
+                agenda_item_id
+            )
+        )
+
+        updated_row = cursor.fetchone()
+
+        conn.commit()
+
+        return {
+            "status":
+                "accepted",
+
+            "message":
+                "Agenda occurrence reopened",
+
+            "agenda_item_id":
+                agenda_item_id,
+
+            "title":
+                title,
+
+            "occurrence_date":
+                occurrence_date,
+
+            "previous_completed_at":
+                previous_completed_at,
+
+            "last_completed_at":
+                (
+                    updated_row[0]
+                    if updated_row
+                    else None
+                )
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "REOPEN AGENDA OCCURRENCE ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to reopen agenda occurrence"
             )
         )
 
