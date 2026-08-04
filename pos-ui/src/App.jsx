@@ -15,11 +15,11 @@ import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
 import SupplierManagement from "./components/SupplierManagement";
+import AgendaPanel from "./components/AgendaPanel";
 // Client management navigation and view
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
 
-import AgendaPanel from "./components/AgendaPanel";
 import {
   cacheProducts,
   getCachedProducts,
@@ -114,6 +114,8 @@ function App() {
   const [intakePaid, setIntakePaid] = useState(false);
   const [intakeSuppliers, setIntakeSuppliers] = useState([]);
   const [saleClients, setSaleClients] = useState([]);
+  const [agendaIndicator, setAgendaIndicator] =
+    useState("green");
 
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState("percent");
@@ -121,6 +123,80 @@ function App() {
     useState(null);
 
   const storeId = user?.store_id;
+
+  const updateAgendaIndicator = items => {
+    const incompleteItems = (items || []).filter(
+      item => !item.is_completed
+    );
+
+    if (
+      incompleteItems.some(
+        item => item.is_overdue
+      )
+    ) {
+      setAgendaIndicator("red");
+      return;
+    }
+
+    if (incompleteItems.length > 0) {
+      setAgendaIndicator("yellow");
+      return;
+    }
+
+    setAgendaIndicator("green");
+  };
+
+  // Keep the Agenda navigation indicator current even
+  // while the Agenda view itself is closed.
+  useEffect(() => {
+    if (!storeId) {
+      setAgendaIndicator("green");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAgendaIndicator = async () => {
+      const now = new Date();
+
+      const localDate = new Date(
+        now.getTime() -
+        now.getTimezoneOffset() * 60000
+      )
+        .toISOString()
+        .slice(0, 10);
+
+      try {
+        const response = await apiClient.get(
+          "/agenda-items",
+          {
+            params: {
+              store_id: storeId,
+              start_date: localDate,
+              end_date: localDate
+            }
+          }
+        );
+
+        if (cancelled) return;
+
+        updateAgendaIndicator(
+          response.data.agenda_items || []
+        );
+      } catch (error) {
+        console.warn(
+          "Unable to load Agenda status:",
+          error
+        );
+      }
+    };
+
+    loadAgendaIndicator();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId, view]);
 
   const [finalizingIntake, setFinalizingIntake] =
     useState(false);
@@ -1635,11 +1711,45 @@ const finalizeIntake = async () => {
                   "nowrap"
               }}
             >
-              {t(
-                navView === "sales"
-                  ? "history"
-                  : navView
-              ).toUpperCase()}
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6
+                }}
+              >
+                {navView === "agenda" && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      flex: "0 0 auto",
+                      borderRadius: "50%",
+                      background:
+                        agendaIndicator === "red"
+                          ? "#ff5c5c"
+                          : agendaIndicator === "yellow"
+                            ? "#f5c542"
+                            : "#3ddc84",
+                      boxShadow:
+                        `0 0 6px ${
+                          agendaIndicator === "red"
+                            ? "#ff5c5c"
+                            : agendaIndicator === "yellow"
+                              ? "#f5c542"
+                              : "#3ddc84"
+                        }`
+                    }}
+                  />
+                )}
+
+                {t(
+                  navView === "sales"
+                    ? "history"
+                    : navView
+                ).toUpperCase()}
+              </span>
             </button>
           ))}
         </div>
@@ -1657,8 +1767,6 @@ const finalizeIntake = async () => {
             padding: 12
           }}
         >
-         
-          
           <ProductPanel
             products={products}
             searchTerm={searchTerm}
@@ -1711,12 +1819,15 @@ const finalizeIntake = async () => {
         </div>
       )}
 
-       {/* AGENDA */}
-          {view === "agenda" && (
-            <AgendaPanel
-              storeId={storeId}
-            />
-          )}
+      {/* AGENDA */}
+      {view === "agenda" && (
+        <AgendaPanel
+          storeId={storeId}
+          onItemsChanged={
+            updateAgendaIndicator
+          }
+        />
+      )}
 
       {/* HISTORY */}
       {view === "sales" && (
