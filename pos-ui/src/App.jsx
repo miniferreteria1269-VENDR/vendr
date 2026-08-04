@@ -19,6 +19,7 @@ import SupplierManagement from "./components/SupplierManagement";
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
 
+import AgendaPanel from "./components/AgendaPanel";
 import {
   cacheProducts,
   getCachedProducts,
@@ -1595,6 +1596,7 @@ const finalizeIntake = async () => {
         >
           {[
             "pos",
+            "agenda",
             "sales",
             "inventory",
             "suppliers",
@@ -1655,6 +1657,13 @@ const finalizeIntake = async () => {
             padding: 12
           }}
         >
+          {/* AGENDA */}
+          {view === "agenda" && (
+            <AgendaPanel
+              storeId={storeId}
+            />
+          )}
+          
           <ProductPanel
             products={products}
             searchTerm={searchTerm}
