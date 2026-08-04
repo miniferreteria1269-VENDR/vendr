@@ -35,6 +35,59 @@ export const translations = {
     cost: "Cost",
     low_stock: "Low Stock Threshold",
     tracks_stock: "Tracks Stock",
+        // AGENDA
+    agenda: "Agenda",
+    today: "Today",
+    this_week: "This Week",
+    custom_range: "Custom Range",
+
+    agenda_occurrences: "Agenda Items",
+    new_agenda_item: "New Agenda Item",
+    edit_agenda_item: "Edit Agenda Item",
+    no_agenda_items:
+      "No agenda items were found for this period.",
+
+    title: "Title",
+    scheduled_date: "Scheduled Date",
+    scheduled_time: "Scheduled Time",
+    any_time: "Any time",
+
+    recurrence: "Recurrence",
+    one_time: "One time",
+    daily: "Daily",
+    weekly: "Weekly",
+    monthly: "Monthly",
+    weekdays: "Weekdays",
+    day_of_month: "Day of Month",
+
+    monday_short: "Mon",
+    tuesday_short: "Tue",
+    wednesday_short: "Wed",
+    thursday_short: "Thu",
+    friday_short: "Fri",
+    saturday_short: "Sat",
+    sunday_short: "Sun",
+
+    open: "Open",
+    completed: "Completed",
+    complete: "Complete",
+    reopen: "Reopen",
+    delete: "Delete",
+
+    agenda_title_required:
+      "An agenda item title is required.",
+    agenda_weekday_required:
+      "Select at least one weekday.",
+    agenda_month_day_required:
+      "Enter a valid day of the month.",
+    agenda_load_failed:
+      "Unable to load agenda items.",
+    agenda_save_failed:
+      "Unable to save the agenda item.",
+    agenda_completion_failed:
+      "Unable to update the agenda item.",
+    agenda_delete_failed:
+      "Unable to delete the agenda item.",
 
         // PRODUCT MASTER / POS LOCATION
     location: "Location",
@@ -487,6 +540,59 @@ export const translations = {
     store_name: "Nombre del negocio",
     sign_up: "Registrarse",
     back_to_login: "Volver",
+        // AGENDA
+    agenda: "Agenda",
+    today: "Hoy",
+    this_week: "Esta semana",
+    custom_range: "Rango personalizado",
+
+    agenda_occurrences: "Elementos de agenda",
+    new_agenda_item: "Nuevo elemento",
+    edit_agenda_item: "Editar elemento",
+    no_agenda_items:
+      "No se encontraron elementos de agenda para este período.",
+
+    title: "Título",
+    scheduled_date: "Fecha programada",
+    scheduled_time: "Hora programada",
+    any_time: "Cualquier hora",
+
+    recurrence: "Repetición",
+    one_time: "Una sola vez",
+    daily: "Diariamente",
+    weekly: "Semanalmente",
+    monthly: "Mensualmente",
+    weekdays: "Días de la semana",
+    day_of_month: "Día del mes",
+
+    monday_short: "Lun",
+    tuesday_short: "Mar",
+    wednesday_short: "Mié",
+    thursday_short: "Jue",
+    friday_short: "Vie",
+    saturday_short: "Sáb",
+    sunday_short: "Dom",
+
+    open: "Pendientes",
+    completed: "Completados",
+    complete: "Completar",
+    reopen: "Reabrir",
+    delete: "Eliminar",
+
+    agenda_title_required:
+      "El título del elemento es obligatorio.",
+    agenda_weekday_required:
+      "Seleccione al menos un día de la semana.",
+    agenda_month_day_required:
+      "Ingrese un día del mes válido.",
+    agenda_load_failed:
+      "No se pudo cargar la agenda.",
+    agenda_save_failed:
+      "No se pudo guardar el elemento de agenda.",
+    agenda_completion_failed:
+      "No se pudo actualizar el elemento de agenda.",
+    agenda_delete_failed:
+      "No se pudo eliminar el elemento de agenda.",
 
     // PRODUCT MANAGEMENT
     product_management: "Gestión de productos",
