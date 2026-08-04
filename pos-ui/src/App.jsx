@@ -1657,12 +1657,7 @@ const finalizeIntake = async () => {
             padding: 12
           }}
         >
-          {/* AGENDA */}
-          {view === "agenda" && (
-            <AgendaPanel
-              storeId={storeId}
-            />
-          )}
+         
           
           <ProductPanel
             products={products}
@@ -1715,6 +1710,13 @@ const finalizeIntake = async () => {
           />
         </div>
       )}
+
+       {/* AGENDA */}
+          {view === "agenda" && (
+            <AgendaPanel
+              storeId={storeId}
+            />
+          )}
 
       {/* HISTORY */}
       {view === "sales" && (
