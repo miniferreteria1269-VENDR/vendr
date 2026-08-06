@@ -34,6 +34,16 @@ function InventoryReport({ storeId }) {
   const [reorderLoading, setReorderLoading] = useState(false);
   const [reorderSaving, setReorderSaving] = useState(false);
   const [reorderError, setReorderError] = useState("");
+  const [reorderProductPickerOpen, setReorderProductPickerOpen] =
+    useState(false);
+  const [reorderProductSearch, setReorderProductSearch] =
+    useState("");
+  const [reorderProductOptions, setReorderProductOptions] =
+    useState([]);
+  const [reorderProductOptionsLoading, setReorderProductOptionsLoading] =
+    useState(false);
+  const [reorderProductOptionsError, setReorderProductOptionsError] =
+    useState("");
   const [paretoItems, setParetoItems] = useState([]);
   const [deadStockItems, setDeadStockItems] = useState([]);
   const [serviceItems, setServiceItems] = useState([]);
@@ -127,6 +137,69 @@ function InventoryReport({ storeId }) {
     );
 
     setAllSuppliers(sortedSuppliers);
+  };
+
+  const openReorderProductPicker = async () => {
+    setReorderProductPickerOpen(true);
+    setReorderProductSearch("");
+    setReorderProductOptionsError("");
+    setReorderProductOptionsLoading(true);
+
+    try {
+      const response = await apiClient.get(
+        "/products",
+        {
+          params: {
+            store_id: storeId,
+          },
+        }
+      );
+
+      const loadedProducts = [
+        ...(response.data.products || []),
+      ]
+        .filter(
+          (product) =>
+            Number(product.tracks_stock) === 1
+        )
+        .sort((a, b) =>
+          String(a.name || "").localeCompare(
+            String(b.name || ""),
+            undefined,
+            { sensitivity: "base" }
+          )
+        );
+
+      setReorderProductOptions(loadedProducts);
+    } catch (error) {
+      console.error(
+        "LOAD REORDER PRODUCT OPTIONS ERROR:",
+        error
+      );
+
+      setReorderProductOptions([]);
+      setReorderProductOptionsError(
+        error.response?.data?.detail ||
+          "Unable to load products."
+      );
+    } finally {
+      setReorderProductOptionsLoading(false);
+    }
+  };
+
+  const closeReorderProductPicker = () => {
+    setReorderProductPickerOpen(false);
+    setReorderProductSearch("");
+    setReorderProductOptionsError("");
+  };
+
+  const selectReorderProduct = (product) => {
+    closeReorderProductPicker();
+
+    openReorderModal({
+      ...product,
+      threshold: product.low_stock_threshold,
+    });
   };
 
   const loadPareto = async () => {
@@ -242,6 +315,18 @@ function InventoryReport({ storeId }) {
       item.stock !== undefined &&
       item.threshold !== null
   );
+
+  const normalizedReorderProductSearch =
+    reorderProductSearch.trim().toLowerCase();
+
+  const visibleReorderProductOptions =
+    reorderProductOptions.filter((product) =>
+      normalizedReorderProductSearch === ""
+        ? true
+        : String(product.name || "")
+            .toLowerCase()
+            .includes(normalizedReorderProductSearch)
+    );
 
   const filteredServices = serviceItems.filter(
     (service) => service.instances !== undefined
@@ -882,6 +967,17 @@ function InventoryReport({ storeId }) {
                     ))}
                   </select>
                 )}
+
+                <button
+                  type="button"
+                  onClick={openReorderProductPicker}
+                  style={{
+                    ...btnPrimary,
+                    marginLeft: "auto",
+                  }}
+                >
+                  + Add Product
+                </button>
               </div>
 
               <div
@@ -1387,6 +1483,163 @@ function InventoryReport({ storeId }) {
         </div>
       )}
 
+      {reorderProductPickerOpen && (
+        <div
+          role="presentation"
+          onMouseDown={closeReorderProductPicker}
+          style={reorderModalBackdrop}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Select a product for the reorder list"
+            onMouseDown={(event) => event.stopPropagation()}
+            style={reorderModalPanel}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
+              <h3 style={{ margin: 0 }}>
+                Add Product to Reorder List
+              </h3>
+
+              <button
+                type="button"
+                aria-label="Close product selector"
+                onClick={closeReorderProductPicker}
+                style={reorderModalClose}
+              >
+                ×
+              </button>
+            </div>
+
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search products..."
+              value={reorderProductSearch}
+              onChange={(event) =>
+                setReorderProductSearch(
+                  event.target.value
+                )
+              }
+              style={{
+                ...input,
+                width: "100%",
+                marginBottom: 12,
+                boxSizing: "border-box",
+              }}
+            />
+
+            {reorderProductOptionsError && (
+              <div
+                style={{
+                  padding: 10,
+                  marginBottom: 12,
+                  borderRadius: 8,
+                  background: COLORS.panelAlt,
+                  color: COLORS.danger,
+                }}
+              >
+                {reorderProductOptionsError}
+              </div>
+            )}
+
+            <div style={reorderProductPickerList}>
+              {reorderProductOptionsLoading ? (
+                <div style={reorderProductPickerEmpty}>
+                  Loading products...
+                </div>
+              ) : visibleReorderProductOptions.length === 0 ? (
+                <div style={reorderProductPickerEmpty}>
+                  No products found.
+                </div>
+              ) : (
+                visibleReorderProductOptions.map((product) => {
+                  const existingItem = reorderItems.find(
+                    (item) =>
+                      item.product_id === product.product_id
+                  );
+
+                  return (
+                    <button
+                      key={product.product_id}
+                      type="button"
+                      onClick={() =>
+                        selectReorderProduct(product)
+                      }
+                      style={reorderProductPickerRow}
+                    >
+                      <span
+                        style={{
+                          minWidth: 0,
+                          textAlign: "left",
+                        }}
+                      >
+                        <strong>{product.name}</strong>
+
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 3,
+                            color: COLORS.textDim,
+                            fontSize: 12,
+                          }}
+                        >
+                          Stock: {Number(product.stock || 0)}
+                          {product.low_stock_threshold != null
+                            ? ` · Minimum: ${Number(
+                                product.low_stock_threshold || 0
+                              )}`
+                            : ""}
+                        </span>
+                      </span>
+
+                      <span
+                        style={{
+                          flex: "0 0 auto",
+                          color: existingItem
+                            ? COLORS.textDim
+                            : COLORS.primary,
+                          fontSize: 12,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {existingItem
+                          ? `On list · Qty ${existingItem.quantity}`
+                          : "Add"}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: 14,
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeReorderProductPicker}
+                style={btnSecondary}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeReorderProduct && (
         <div
           role="presentation"
@@ -1633,6 +1886,39 @@ const reorderFieldStyle = {
   display: "flex",
   flexDirection: "column",
   gap: 5,
+};
+
+const reorderProductPickerList = {
+  maxHeight: "52vh",
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: 7,
+  paddingRight: 3,
+};
+
+const reorderProductPickerRow = {
+  width: "100%",
+  boxSizing: "border-box",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 14,
+  padding: "10px 12px",
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 8,
+  background: COLORS.panelAlt,
+  color: "inherit",
+  cursor: "pointer",
+};
+
+const reorderProductPickerEmpty = {
+  padding: 22,
+  textAlign: "center",
+  color: COLORS.textDim,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 8,
+  background: COLORS.panelAlt,
 };
 
 export default InventoryReport;
