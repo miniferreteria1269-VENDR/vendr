@@ -16882,6 +16882,542 @@ def get_organization_access_session(
         }
     }
 
+@app.get("/organization-access/availability")
+def get_organization_access_availability(
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                o.organization_id,
+                o.name
+            FROM stores s
+
+            INNER JOIN organizations o
+                ON o.organization_id =
+                   s.organization_id
+
+            INNER JOIN organization_report_credentials orc
+                ON orc.organization_id =
+                   o.organization_id
+
+            WHERE s.store_id = %s
+              AND o.is_active = TRUE
+              AND orc.is_active = TRUE
+            """,
+            (
+                current_user.store_id,
+            )
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            return {
+                "available": False,
+                "organization": None
+            }
+
+        return {
+            "available": True,
+            "organization": {
+                "organization_id": int(
+                    row[0]
+                ),
+                "organization_name": str(
+                    row[1]
+                )
+            }
+        }
+
+    except Exception as error:
+        print(
+            "ORGANIZATION ACCESS AVAILABILITY ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to determine organization "
+                "report availability"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.get("/organization-report/stores")
+def get_organization_report_stores(
+    organization_access: OrganizationReportAccess = Depends(
+        get_organization_report_access
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                store_id,
+                name
+            FROM stores
+            WHERE organization_id = %s
+            ORDER BY
+                LOWER(
+                    COALESCE(name, '')
+                ) ASC,
+                store_id ASC
+            """,
+            (
+                organization_access.organization_id,
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        stores = []
+
+        for row in rows:
+            store_id = int(
+                row[0]
+            )
+
+            store_name = (
+                str(row[1]).strip()
+                if row[1]
+                else f"Store {store_id}"
+            )
+
+            stores.append({
+                "store_id":
+                    store_id,
+
+                "store_name":
+                    store_name
+            })
+
+        return {
+            "status": "accepted",
+
+            "organization": {
+                "organization_id":
+                    organization_access.organization_id,
+
+                "organization_name":
+                    organization_access.organization_name
+            },
+
+            "stores":
+                stores
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "ORGANIZATION REPORT STORES ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load organization stores"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.get("/organization-report/sales")
+def get_organization_sales_report(
+    start_date: date,
+    end_date: date,
+    store_ids: Optional[str] = Query(
+        default=None
+    ),
+    organization_access: OrganizationReportAccess = Depends(
+        get_organization_report_access
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        # ---------------------------------------------
+        # BUILD DATE BOUNDARIES
+        # ---------------------------------------------
+        period = build_period_boundaries(
+            start_date,
+            end_date
+        )
+
+        # ---------------------------------------------
+        # PARSE REQUESTED STORE IDS
+        # ---------------------------------------------
+        requested_store_ids = None
+
+        if (
+            store_ids is not None
+            and store_ids.strip()
+        ):
+            try:
+                requested_store_ids = {
+                    int(value.strip())
+                    for value in store_ids.split(",")
+                    if value.strip()
+                }
+
+            except (
+                TypeError,
+                ValueError
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "store_ids must be a "
+                        "comma-separated list of integers"
+                    )
+                )
+
+            if not requested_store_ids:
+                requested_store_ids = None
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # LOAD ORGANIZATION STORES
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                store_id,
+                name
+            FROM stores
+            WHERE organization_id = %s
+            ORDER BY
+                LOWER(
+                    COALESCE(name, '')
+                ) ASC,
+                store_id ASC
+            """,
+            (
+                organization_access.organization_id,
+            )
+        )
+
+        rows = cursor.fetchall()
+
+        organization_stores = []
+
+        for row in rows:
+            organization_stores.append({
+                "store_id":
+                    int(row[0]),
+
+                "store_name":
+                    (
+                        str(row[1]).strip()
+                        if row[1]
+                        else f"Store {int(row[0])}"
+                    )
+            })
+
+        valid_store_ids = {
+            store["store_id"]
+            for store in organization_stores
+        }
+
+        # ---------------------------------------------
+        # VALIDATE REQUESTED STORES
+        # ---------------------------------------------
+        if requested_store_ids is not None:
+            invalid_store_ids = (
+                requested_store_ids
+                - valid_store_ids
+            )
+
+            if invalid_store_ids:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "One or more selected stores "
+                        "do not belong to this organization"
+                    )
+                )
+
+            selected_stores = [
+                store
+                for store in organization_stores
+                if store["store_id"]
+                in requested_store_ids
+            ]
+
+        else:
+            selected_stores = (
+                organization_stores
+            )
+
+        # ---------------------------------------------
+        # BUILD STORE REPORTS
+        # ---------------------------------------------
+        store_reports = []
+
+        total_revenue = 0.0
+        total_profit = 0.0
+        total_tickets = 0
+
+        for store in selected_stores:
+            analysis = build_sales_analysis_data(
+                cursor=cursor,
+                store_id=store["store_id"],
+                start_datetime=period["start"],
+                end_exclusive=period[
+                    "end_exclusive"
+                ],
+                days_in_period=period["days"]
+            )
+
+            summary = analysis["summary"]
+
+            revenue = float(
+                summary["revenue"] or 0
+            )
+
+            profit = float(
+                summary["gross_profit"] or 0
+            )
+
+            tickets = int(
+                summary["tickets"] or 0
+            )
+
+            average_ticket = (
+                revenue / tickets
+                if tickets > 0
+                else 0
+            )
+
+            average_daily_revenue = (
+                revenue / period["days"]
+                if period["days"] > 0
+                else 0
+            )
+
+            average_daily_profit = (
+                profit / period["days"]
+                if period["days"] > 0
+                else 0
+            )
+
+            total_revenue += revenue
+            total_profit += profit
+            total_tickets += tickets
+
+            store_reports.append({
+                "store_id":
+                    store["store_id"],
+
+                "store_name":
+                    store["store_name"],
+
+                "revenue":
+                    round(
+                        revenue,
+                        2
+                    ),
+
+                "profit":
+                    round(
+                        profit,
+                        2
+                    ),
+
+                "tickets":
+                    tickets,
+
+                "average_ticket":
+                    round(
+                        average_ticket,
+                        2
+                    ),
+
+                "average_daily_revenue":
+                    round(
+                        average_daily_revenue,
+                        2
+                    ),
+
+                "average_daily_profit":
+                    round(
+                        average_daily_profit,
+                        2
+                    )
+            })
+
+        # ---------------------------------------------
+        # ORGANIZATION TOTALS
+        # ---------------------------------------------
+        organization_average_ticket = (
+            total_revenue / total_tickets
+            if total_tickets > 0
+            else 0
+        )
+
+        organization_average_daily_revenue = (
+            total_revenue / period["days"]
+            if period["days"] > 0
+            else 0
+        )
+
+        organization_average_daily_profit = (
+            total_profit / period["days"]
+            if period["days"] > 0
+            else 0
+        )
+
+        # ---------------------------------------------
+        # ADD CONTRIBUTION PERCENTAGES
+        # ---------------------------------------------
+        for report in store_reports:
+            report["revenue_share_percent"] = round(
+                (
+                    report["revenue"]
+                    / total_revenue
+                    * 100
+                )
+                if total_revenue > 0
+                else 0,
+                2
+            )
+
+            report["profit_share_percent"] = round(
+                (
+                    report["profit"]
+                    / total_profit
+                    * 100
+                )
+                if total_profit > 0
+                else 0,
+                2
+            )
+
+        return {
+            "status": "accepted",
+
+            "organization": {
+                "organization_id":
+                    organization_access.organization_id,
+
+                "organization_name":
+                    organization_access.organization_name
+            },
+
+            "period": {
+                "start_date":
+                    start_date.isoformat(),
+
+                "end_date":
+                    end_date.isoformat(),
+
+                "days":
+                    period["days"]
+            },
+
+            "selected_store_ids": [
+                store["store_id"]
+                for store in selected_stores
+            ],
+
+            "summary": {
+                "revenue":
+                    round(
+                        total_revenue,
+                        2
+                    ),
+
+                "profit":
+                    round(
+                        total_profit,
+                        2
+                    ),
+
+                "tickets":
+                    total_tickets,
+
+                "average_ticket":
+                    round(
+                        organization_average_ticket,
+                        2
+                    ),
+
+                "average_daily_revenue":
+                    round(
+                        organization_average_daily_revenue,
+                        2
+                    ),
+
+                "average_daily_profit":
+                    round(
+                        organization_average_daily_profit,
+                        2
+                    ),
+
+                "store_count":
+                    len(selected_stores)
+            },
+
+            "stores":
+                store_reports
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "ORGANIZATION SALES REPORT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load organization "
+                "sales report"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 @app.get("/rebuild-products")
