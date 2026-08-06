@@ -16,6 +16,7 @@ import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
 import SupplierManagement from "./components/SupplierManagement";
 import AgendaPanel from "./components/AgendaPanel";
+import OrganizationPanel from "./components/OrganizationPanel";
 // Client management navigation and view
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
@@ -116,6 +117,11 @@ function App() {
   const [saleClients, setSaleClients] = useState([]);
   const [agendaIndicator, setAgendaIndicator] =
     useState("green");
+  const [organizationAvailability, setOrganizationAvailability] =
+    useState({
+      available: false,
+      organization: null
+    });
 
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState("percent");
@@ -197,6 +203,56 @@ function App() {
       cancelled = true;
     };
   }, [storeId, view]);
+
+  // Only organization-linked stores with an active
+  // report credential receive the Organization tab.
+  useEffect(() => {
+    if (!storeId) {
+      setOrganizationAvailability({
+        available: false,
+        organization: null
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadOrganizationAvailability = async () => {
+      try {
+        const response = await apiClient.get(
+          "/organization-access/availability"
+        );
+
+        if (cancelled) return;
+
+        setOrganizationAvailability({
+          available: Boolean(
+            response.data.available
+          ),
+          organization:
+            response.data.organization || null
+        });
+      } catch (error) {
+        console.warn(
+          "Unable to determine organization availability:",
+          error
+        );
+
+        if (cancelled) return;
+
+        setOrganizationAvailability({
+          available: false,
+          organization: null
+        });
+      }
+    };
+
+    loadOrganizationAvailability();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId]);
 
   const [finalizingIntake, setFinalizingIntake] =
     useState(false);
@@ -354,6 +410,9 @@ function App() {
   localStorage.removeItem("tickets");
   localStorage.removeItem(
     "activeTicket"
+  );
+  sessionStorage.removeItem(
+    "vendr_organization_report_token"
   );
 
   setUser(null);
@@ -1679,6 +1738,9 @@ const finalizeIntake = async () => {
             "clients",
             "products",
             "analysis",
+            ...(organizationAvailability.available
+              ? ["organization"]
+              : []),
             "diagnostics",
             "cash"
           ].map(navView => (
@@ -1873,6 +1935,19 @@ const finalizeIntake = async () => {
           storeId={storeId}
         />
       )}
+
+      {/* ORGANIZATION REPORTS */}
+      {view === "organization" &&
+        organizationAvailability.available && (
+          <OrganizationPanel
+            organization={
+              organizationAvailability.organization
+            }
+            onLocked={() =>
+              setView("pos")
+            }
+          />
+        )}
 
       {/* CASH */}
       {view === "cash" && (
