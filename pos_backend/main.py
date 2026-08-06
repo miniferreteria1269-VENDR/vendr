@@ -13,7 +13,8 @@ import jwt
 from decimal import Decimal
 from calendar import monthrange
 from zoneinfo import ZoneInfo
-
+from fastapi import Header
+import secrets
 
 from jwt.exceptions import InvalidTokenError
 from fastapi.security import (
@@ -101,11 +102,29 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/login"
 )
 
+JWT_ORGANIZATION_REPORT_TOKEN_MINUTES = int(
+    os.environ.get(
+        "JWT_ORGANIZATION_REPORT_TOKEN_MINUTES",
+        "30"
+    )
+)
+
+ORGANIZATION_REPORT_BOOTSTRAP_KEY = (
+    os.environ.get(
+        "ORGANIZATION_REPORT_BOOTSTRAP_KEY"
+    )
+)
+
 class AuthenticatedUser(BaseModel):
     user_id: int
     store_id: int
     email: str
 
+
+class OrganizationReportLogin(BaseModel):
+    username: str
+    password: str
+    
 def create_access_token(
     user_id: int,
     store_id: int
@@ -131,6 +150,52 @@ def create_access_token(
         "iat": now,
 
         "exp": expires_at
+    }
+
+    return jwt.encode(
+        payload,
+        JWT_SECRET_KEY,
+        algorithm=JWT_ALGORITHM
+    )
+
+def create_organization_report_token(
+    user_id: int,
+    store_id: int,
+    organization_id: int,
+    credential_version: int
+) -> str:
+    now = datetime.now(
+        timezone.utc
+    )
+
+    expires_at = (
+        now
+        + timedelta(
+            minutes=
+                JWT_ORGANIZATION_REPORT_TOKEN_MINUTES
+        )
+    )
+
+    payload = {
+        "sub": str(user_id),
+
+        "token_type":
+            "organization_report",
+
+        "store_id":
+            int(store_id),
+
+        "organization_id":
+            int(organization_id),
+
+        "credential_version":
+            int(credential_version),
+
+        "iat":
+            now,
+
+        "exp":
+            expires_at
     }
 
     return jwt.encode(
@@ -2451,6 +2516,12 @@ class AgendaItemCreate(BaseModel):
         int
     ] = None
 
+class OrganizationReportCredentialBootstrap(
+    BaseModel
+):
+    organization_id: int
+    access_username: str
+    password: str
 
 class AgendaItemUpdate(BaseModel):
     title: str
@@ -16386,6 +16457,433 @@ def reopen_agenda_occurrence(
             status_code=500,
             detail=(
                 "Unable to reopen agenda occurrence"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.post("/organization-access/login")
+def login_to_organization_reports(
+    data: OrganizationReportLogin,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        normalized_username = str(
+            data.username or ""
+        ).strip().lower()
+
+        plain_password = str(
+            data.password or ""
+        )
+
+        if (
+            not normalized_username
+            or not plain_password
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Invalid organization "
+                    "credentials"
+                )
+            )
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # RESOLVE ORGANIZATION FROM LOGGED-IN STORE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                s.organization_id,
+
+                o.name,
+                o.is_active,
+
+                c.access_username,
+                c.password_hash,
+                c.credential_version,
+                c.is_active
+
+            FROM stores s
+
+            LEFT JOIN organizations o
+                ON o.organization_id =
+                   s.organization_id
+
+            LEFT JOIN
+                organization_report_credentials c
+                ON c.organization_id =
+                   s.organization_id
+
+            WHERE s.store_id = %s
+            """,
+            (
+                current_user.store_id,
+            )
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        (
+            organization_id,
+            organization_name,
+            organization_is_active,
+            stored_username,
+            stored_password_hash,
+            credential_version,
+            credential_is_active
+        ) = row
+
+        # ---------------------------------------------
+        # STORE DOES NOT BELONG TO AN ORGANIZATION
+        # ---------------------------------------------
+        if organization_id is None:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Organization reports are "
+                    "not available for this store"
+                )
+            )
+
+        # ---------------------------------------------
+        # ORGANIZATION OR REPORT ACCESS IS DISABLED
+        # ---------------------------------------------
+        if (
+            not organization_is_active
+            or not credential_is_active
+            or not stored_username
+            or not stored_password_hash
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Organization report access "
+                    "is unavailable"
+                )
+            )
+
+        stored_normalized_username = str(
+            stored_username
+        ).strip().lower()
+
+        # Verify both values before deciding whether
+        # authentication succeeded.
+        username_valid = secrets.compare_digest(
+            normalized_username,
+            stored_normalized_username
+        )
+
+        password_valid = verify_password(
+            plain_password,
+            stored_password_hash
+        )
+
+        if (
+            not username_valid
+            or not password_valid
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Invalid organization "
+                    "credentials"
+                )
+            )
+
+        # ---------------------------------------------
+        # ISSUE SHORT-LIVED ORGANIZATION TOKEN
+        # ---------------------------------------------
+        organization_access_token = (
+            create_organization_report_token(
+                user_id=current_user.user_id,
+                store_id=current_user.store_id,
+                organization_id=organization_id,
+                credential_version=
+                    credential_version
+            )
+        )
+
+        return {
+            "status":
+                "accepted",
+
+            "organization_access_token":
+                organization_access_token,
+
+            "token_type":
+                "organization_report",
+
+            "expires_in_seconds":
+                (
+                    JWT_ORGANIZATION_REPORT_TOKEN_MINUTES
+                    * 60
+                ),
+
+            "organization": {
+                "organization_id":
+                    organization_id,
+
+                "organization_name":
+                    organization_name
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "ORGANIZATION ACCESS LOGIN ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to authenticate "
+                "organization report access"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.post(
+    "/internal/"
+    "organization-report-credentials/"
+    "bootstrap"
+)
+def bootstrap_organization_report_credentials(
+    data:
+        OrganizationReportCredentialBootstrap,
+
+    bootstrap_key: Optional[str] = Header(
+        default=None,
+        alias=(
+            "X-Organization-"
+            "Bootstrap-Key"
+        )
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        # ---------------------------------------------
+        # BOOTSTRAP MUST BE EXPLICITLY ENABLED
+        # ---------------------------------------------
+        if (
+            not ORGANIZATION_REPORT_BOOTSTRAP_KEY
+            or not bootstrap_key
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Not found"
+            )
+
+        if not secrets.compare_digest(
+            bootstrap_key,
+            ORGANIZATION_REPORT_BOOTSTRAP_KEY
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Not found"
+            )
+
+        normalized_username = str(
+            data.access_username or ""
+        ).strip()
+
+        plain_password = str(
+            data.password or ""
+        )
+
+        if (
+            len(normalized_username) < 3
+            or len(normalized_username) > 120
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Organization username must "
+                    "contain 3 to 120 characters"
+                )
+            )
+
+        if len(plain_password) < 12:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Organization password must "
+                    "contain at least 12 characters"
+                )
+            )
+
+        conn = db()
+        cursor = conn.cursor()
+
+        # ---------------------------------------------
+        # VERIFY ACTIVE ORGANIZATION
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                organization_id,
+                name
+            FROM organizations
+            WHERE organization_id = %s
+              AND is_active = TRUE
+            """,
+            (
+                data.organization_id,
+            )
+        )
+
+        organization = cursor.fetchone()
+
+        if not organization:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Active organization "
+                    "not found"
+                )
+            )
+
+        # ---------------------------------------------
+        # PREVENT ACCIDENTAL OVERWRITE
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            SELECT 1
+            FROM organization_report_credentials
+            WHERE organization_id = %s
+            """,
+            (
+                data.organization_id,
+            )
+        )
+
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Organization report "
+                    "credentials already exist"
+                )
+            )
+
+        generated_hash = hash_password(
+            plain_password
+        )
+
+        # ---------------------------------------------
+        # CREATE HASHED CREDENTIAL
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO
+                organization_report_credentials (
+                    organization_id,
+                    access_username,
+                    password_hash
+                )
+            VALUES (
+                %s,
+                %s,
+                %s
+            )
+            RETURNING
+                organization_id,
+                access_username,
+                credential_version,
+                is_active,
+                created_at
+            """,
+            (
+                data.organization_id,
+                normalized_username,
+                generated_hash
+            )
+        )
+
+        row = cursor.fetchone()
+
+        conn.commit()
+
+        return {
+            "status":
+                "accepted",
+
+            "message":
+                (
+                    "Organization report "
+                    "credentials created"
+                ),
+
+            "credential": {
+                "organization_id":
+                    row[0],
+
+                "access_username":
+                    row[1],
+
+                "credential_version":
+                    row[2],
+
+                "is_active":
+                    row[3],
+
+                "created_at":
+                    row[4]
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "ORGANIZATION CREDENTIAL "
+            "BOOTSTRAP ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to create organization "
+                "report credentials"
             )
         )
 
