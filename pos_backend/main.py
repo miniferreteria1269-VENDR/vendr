@@ -16859,6 +16859,29 @@ def login_to_organization_reports(
         if conn:
             conn.close()
 
+@app.get("/organization-access/session")
+def get_organization_access_session(
+    organization_access: OrganizationReportAccess = Depends(
+        get_organization_report_access
+    )
+):
+    return {
+        "status": "accepted",
+        "organization_access": {
+            "user_id":
+                organization_access.user_id,
+
+            "store_id":
+                organization_access.store_id,
+
+            "organization_id":
+                organization_access.organization_id,
+
+            "organization_name":
+                organization_access.organization_name
+        }
+    }
+
 
 
 @app.get("/rebuild-products")
