@@ -805,7 +805,7 @@ function InventoryReport({ storeId }) {
                   : btnSecondary
               }
             >
-              Low Stock
+              {t("lowstock")}
             </button>
 
             <button
@@ -820,7 +820,7 @@ function InventoryReport({ storeId }) {
                   : btnSecondary
               }
             >
-              Reorder List
+              {t("reorder_list")}
             </button>
           </div>
 
@@ -896,8 +896,8 @@ function InventoryReport({ storeId }) {
                         }
                       >
                         {existingReorderItem
-                          ? "Update Reorder"
-                          : "Add to Reorder"}
+                          ? t("update_reorder")
+                          : t("add_to_reorder")}
                       </button>
                     </div>
                   );
@@ -918,9 +918,9 @@ function InventoryReport({ storeId }) {
                 }}
               >
                 {[
-                  ["master", "Master List"],
-                  ["supplier", "By Supplier"],
-                  ["unassigned", "Unassigned"],
+                  ["master", t("master_list")],
+                  ["supplier", t("by_supplier")],
+                  ["unassigned", t("unassigned")],
                 ].map(([filter, label]) => (
                   <button
                     key={filter}
@@ -976,7 +976,7 @@ function InventoryReport({ storeId }) {
                     marginLeft: "auto",
                   }}
                 >
-                  + Add Product
+                  + {t("add_product")}
                 </button>
               </div>
 
@@ -1085,7 +1085,7 @@ function InventoryReport({ storeId }) {
                                 onClick={() => openReorderModal(item)}
                                 style={btnSecondary}
                               >
-                                Edit
+                                {t("edit")}
                               </button>
 
                               <button
@@ -1093,7 +1093,7 @@ function InventoryReport({ storeId }) {
                                 onClick={() => removeReorderItem(item)}
                                 style={btnDanger}
                               >
-                                Remove
+                                {t("remove")}
                               </button>
                             </div>
                           </td>
@@ -1149,10 +1149,10 @@ function InventoryReport({ storeId }) {
                     style={btnDanger}
                   >
                     {reorderFilter === "master"
-                      ? "Clear All"
+                      ? t("clear_all")
                       : reorderFilter === "supplier"
-                      ? "Clear Supplier List"
-                      : "Clear Unassigned"}
+                      ? t("clear_supplier_list")
+                      : t("clear_unassigned")}
                   </button>
                 )}
               </div>
@@ -1613,7 +1613,7 @@ function InventoryReport({ storeId }) {
                       >
                         {existingItem
                           ? `On list · Qty ${existingItem.quantity}`
-                          : "Add"}
+                          : t("add")}
                       </span>
                     </button>
                   );
@@ -1633,7 +1633,7 @@ function InventoryReport({ storeId }) {
                 onClick={closeReorderProductPicker}
                 style={btnSecondary}
               >
-                Cancel
+                {t("cancel")}
               </button>
             </div>
           </div>
@@ -1811,7 +1811,7 @@ function InventoryReport({ storeId }) {
                   >
                     {reorderSaving
                       ? "Saving..."
-                      : "Save to Reorder List"}
+                      : t("save_to_reorder_list")}
                   </button>
 
                   <button
@@ -1820,7 +1820,7 @@ function InventoryReport({ storeId }) {
                     disabled={reorderSaving}
                     style={btnSecondary}
                   >
-                    Cancel
+                    {t("cancel")}
                   </button>
                 </div>
               </>
