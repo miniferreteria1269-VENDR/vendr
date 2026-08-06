@@ -9,6 +9,37 @@ export const translations = {
     store_name: "Store Name",
     sign_up: "Sign Up",
     back_to_login: "Back to Login",
+    // ORGANIZATION REPORTS
+organization: "Organization",
+organization_reports: "Organization Reports",
+organization_sales_report: "Aggregate Sales Report",
+
+organization_unlock_description:
+  "Enter the secondary organization credentials to view sensitive aggregate reports.",
+
+username: "Username",
+unlock_organization: "Unlock Organization",
+unlocking: "Unlocking...",
+lock_organization: "Lock Organization",
+all_stores: "All Stores",
+
+select_at_least_one_store:
+  "Select at least one store.",
+
+revenue_share: "Revenue Share",
+profit_share: "Profit Share",
+
+organization_credentials_required:
+  "Enter the organization username and password.",
+
+organization_login_failed:
+  "Unable to unlock organization reports.",
+
+organization_session_expired:
+  "Organization access expired. Enter the secondary credentials again.",
+
+organization_report_load_failed:
+  "Unable to load the organization report.",
 
     // PRODUCT MANAGEMENT
     product_management: "Product Management",
@@ -558,6 +589,41 @@ export const translations = {
     today: "Hoy",
     this_week: "Esta semana",
     custom_range: "Rango personalizado",
+    // REPORTES DE ORGANIZACIÓN
+organization: "Organización",
+organization_reports: "Reportes de organización",
+organization_sales_report:
+  "Reporte consolidado de ventas",
+
+organization_unlock_description:
+  "Ingrese las credenciales secundarias de la organización para consultar reportes consolidados confidenciales.",
+
+username: "Usuario",
+unlock_organization: "Desbloquear organización",
+unlocking: "Desbloqueando...",
+lock_organization: "Bloquear organización",
+all_stores: "Todas las tiendas",
+
+select_at_least_one_store:
+  "Seleccione al menos una tienda.",
+
+revenue_share:
+  "Participación en ventas",
+
+profit_share:
+  "Participación en ganancias",
+
+organization_credentials_required:
+  "Ingrese el usuario y la contraseña de la organización.",
+
+organization_login_failed:
+  "No se pudieron desbloquear los reportes de la organización.",
+
+organization_session_expired:
+  "El acceso a la organización venció. Ingrese nuevamente las credenciales secundarias.",
+
+organization_report_load_failed:
+  "No se pudo cargar el reporte de la organización.",
 
     agenda_occurrences: "Elementos de agenda",
     new_agenda_item: "Nuevo elemento",
