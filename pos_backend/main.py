@@ -15,6 +15,10 @@ from calendar import monthrange
 from zoneinfo import ZoneInfo
 from fastapi import Header
 import secrets
+import json
+
+from enum import Enum
+from openai import OpenAI
 
 from jwt.exceptions import InvalidTokenError
 from fastapi.security import (
@@ -127,7 +131,30 @@ JWT_ORGANIZATION_REPORT_TOKEN_MINUTES = int(
     )
 )
 
+OPENAI_API_KEY = os.environ.get(
+    "OPENAI_API_KEY"
+)
 
+OPENAI_MODEL = os.environ.get(
+    "OPENAI_MODEL",
+    "gpt-5.6-luna"
+)
+
+AI_REPORT_PROMPT_VERSION = int(
+    os.environ.get(
+        "AI_REPORT_PROMPT_VERSION",
+        "1"
+    )
+)
+
+
+openai_client = (
+    OpenAI(
+        api_key=OPENAI_API_KEY
+    )
+    if OPENAI_API_KEY
+    else None
+)
 
 class AuthenticatedUser(BaseModel):
     user_id: int
@@ -138,6 +165,63 @@ class AuthenticatedUser(BaseModel):
 class OrganizationReportLogin(BaseModel):
     username: str
     password: str
+
+class AIReportPriority(
+    str,
+    Enum
+):
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class AIReportFinding(BaseModel):
+    title: str
+    explanation: str
+    evidence: list[str]
+    priority: AIReportPriority
+
+
+class AIReportAction(BaseModel):
+    title: str
+    action: str
+    reason: str
+    priority: AIReportPriority
+
+
+class AIReportSection(BaseModel):
+    summary: str
+    evidence: list[str]
+
+
+class AIWeeklyBusinessReport(BaseModel):
+    headline: str
+
+    executive_summary: str
+
+    sales_performance:
+        AIReportSection
+
+    profitability:
+        AIReportSection
+
+    cash_activity:
+        AIReportSection
+
+    inventory_activity:
+        AIReportSection
+
+    positive_signals:
+        list[AIReportFinding]
+
+    concerns:
+        list[AIReportFinding]
+
+    recommended_actions:
+        list[AIReportAction]
+
+    data_limitations:
+        list[str]
     
 def create_access_token(
     user_id: int,
