@@ -9191,8 +9191,12 @@ def weekly_briefing_data(
             
 @app.get("/internal/growth-analysis-data")
 def growth_analysis_data(
-    store_id: int
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
 ):
+    store_id = current_user.store_id
+
     conn = None
     cursor = None
 
@@ -9208,7 +9212,9 @@ def growth_analysis_data(
             FROM stores
             WHERE store_id = %s
             """,
-            (store_id,)
+            (
+                store_id,
+            )
         )
 
         store = cursor.fetchone()
@@ -9225,17 +9231,13 @@ def growth_analysis_data(
 
         organization_id = store[1]
 
-        history = (
-            build_growth_history_data(
-                cursor=cursor,
-                store_id=store_id
-            )
+        history = build_growth_history_data(
+            cursor=cursor,
+            store_id=store_id
         )
 
-        readiness = (
-            classify_growth_data_readiness(
-                history
-            )
+        readiness = classify_growth_data_readiness(
+            history
         )
 
         monthly_comparison = (
@@ -9292,23 +9294,20 @@ def growth_analysis_data(
         }
 
     except HTTPException:
-        if conn:
-            conn.rollback()
-
         raise
 
     except Exception as error:
-        if conn:
-            conn.rollback()
-
         print(
-            "🔥 GROWTH ANALYSIS DATA ERROR:",
+            "GROWTH ANALYSIS DATA ERROR:",
             repr(error)
         )
 
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail=(
+                "Unable to build growth "
+                "analysis data"
+            )
         )
 
     finally:
