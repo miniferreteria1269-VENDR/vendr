@@ -19,6 +19,7 @@ import json
 from fastapi.encoders import jsonable_encoder
 from psycopg2.extras import Json
 
+
 from enum import Enum
 from openai import OpenAI
 
@@ -158,6 +159,10 @@ openai_client = (
     else None
 )
 
+AI_REPORT_CRON_SECRET = os.environ.get(
+    "AI_REPORT_CRON_SECRET"
+)
+    
 class AuthenticatedUser(BaseModel):
     user_id: int
     store_id: int
@@ -498,6 +503,38 @@ def round_money(value):
 password_hash = (
     PasswordHash.recommended()
 )
+
+def verify_ai_report_cron_secret(
+    x_vendr_cron_key: Optional[str] = Header(
+        default=None,
+        alias="X-VENDR-CRON-KEY"
+    )
+):
+    if not AI_REPORT_CRON_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "AI report generation is "
+                "not configured"
+            )
+        )
+
+    if not x_vendr_cron_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing cron credentials"
+        )
+
+    authenticated = secrets.compare_digest(
+        x_vendr_cron_key,
+        AI_REPORT_CRON_SECRET
+    )
+
+    if not authenticated:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid cron credentials"
+        )
 
 def verify_product(
     cursor,
@@ -18525,6 +18562,203 @@ def generate_weekly_ai_report(
 
         if conn:
             conn.close()
+
+@app.post(
+    "/internal/ai-reports/generate-weekly"
+)
+def generate_weekly_ai_reports(
+    _: None = Depends(
+        verify_ai_report_cron_secret
+    )
+):
+    week_end = (
+        get_last_completed_week_end()
+    )
+
+    week_start = (
+        week_end
+        - timedelta(days=6)
+    )
+
+    conn = None
+    cursor = None
+
+    try:
+        # ---------------------------------------------
+        # LOAD STORES WITH AI REPORTING ENABLED
+        # ---------------------------------------------
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                store_id,
+                name,
+                ai_report_language
+            FROM stores
+            WHERE ai_reports_enabled = TRUE
+            ORDER BY store_id ASC
+            """
+        )
+
+        rows = cursor.fetchall()
+
+    except Exception as error:
+        print(
+            "LOAD AI REPORT STORES ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load stores "
+                "for AI reporting"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+    results = []
+
+    generated_count = 0
+    existing_count = 0
+    skipped_count = 0
+    failed_count = 0
+
+    # Each store runs independently. One failure does
+    # not prevent the remaining stores from processing.
+    for row in rows:
+        store_id = int(row[0])
+
+        store_name = str(
+            row[1] or ""
+        ).strip()
+
+        report_language = str(
+            row[2] or "es"
+        ).strip().lower()
+
+        try:
+            result = (
+                generate_weekly_ai_report(
+                    store_id=store_id,
+                    week_end=week_end,
+                    report_language=(
+                        report_language
+                    )
+                )
+            )
+
+            report_status = result.get(
+                "status"
+            )
+
+            generated = bool(
+                result.get("generated")
+            )
+
+            if generated:
+                generated_count += 1
+
+            elif report_status == "completed":
+                existing_count += 1
+
+            else:
+                skipped_count += 1
+
+            results.append({
+                "store_id":
+                    store_id,
+
+                "store_name":
+                    store_name,
+
+                "status":
+                    report_status,
+
+                "generated":
+                    generated,
+
+                "report_id":
+                    result.get(
+                        "report_id"
+                    )
+            })
+
+        except Exception as error:
+            failed_count += 1
+
+            print(
+                "WEEKLY AI REPORT ERROR:",
+                store_id,
+                repr(error)
+            )
+
+            results.append({
+                "store_id":
+                    store_id,
+
+                "store_name":
+                    store_name,
+
+                "status":
+                    "failed",
+
+                "generated":
+                    False,
+
+                "error":
+                    str(error)[:300]
+            })
+
+    response = {
+        "status": (
+            "completed"
+            if failed_count == 0
+            else "partial_failure"
+        ),
+
+        "period_start":
+            week_start.isoformat(),
+
+        "period_end":
+            week_end.isoformat(),
+
+        "stores_checked":
+            len(rows),
+
+        "generated":
+            generated_count,
+
+        "already_generated":
+            existing_count,
+
+        "skipped":
+            skipped_count,
+
+        "failed":
+            failed_count,
+
+        "results":
+            results
+    }
+
+    # Return a failure status so the cron provider can
+    # notify us when one or more stores fail.
+    if failed_count > 0:
+        raise HTTPException(
+            status_code=500,
+            detail=response
+        )
+
+    return response
 
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
