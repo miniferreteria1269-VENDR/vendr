@@ -64,7 +64,25 @@ def hash_password(
         plain_password
     )
 
+BUSINESS_TIMEZONE = ZoneInfo(
+    "America/El_Salvador"
+)
 
+def get_last_completed_week_end() -> date:
+    today = datetime.now(
+        BUSINESS_TIMEZONE
+    ).date()
+
+    # Monday = 0 and Sunday = 6.
+    # This always returns the Sunday ending the
+    # most recently completed Monday–Sunday week.
+    return (
+        today
+        - timedelta(
+            days=today.weekday() + 1
+        )
+    )
+    
 def verify_password(
     plain_password: str,
     stored_hash: str
@@ -8666,11 +8684,10 @@ def sales_analysis(
         if conn:
             conn.close()
 
-@app.get("/internal/weekly-briefing-data")
-def weekly_briefing_data(
+def build_weekly_briefing_snapshot(
     store_id: int,
     week_end: Optional[date] = None
-):
+) -> dict:
     conn = None
     cursor = None
 
@@ -17418,6 +17435,575 @@ def get_organization_sales_report(
         if conn:
             conn.close()
 
+@app.get("/internal/weekly-briefing-data")
+def weekly_briefing_data(
+    week_end: Optional[date] = None,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    store_id = current_user.store_id
+
+    conn = None
+    cursor = None
+
+    try:
+        # ---------------------------------------------
+        # RESOLVE REPORT PERIOD
+        # ---------------------------------------------
+        latest_completed_week_end = (
+            get_last_completed_week_end()
+        )
+
+        if week_end is None:
+            week_end = (
+                latest_completed_week_end
+            )
+
+        # Reports must always cover complete
+        # Monday-through-Sunday periods.
+        if week_end.weekday() != 6:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "week_end must be a Sunday"
+                )
+            )
+
+        if week_end > latest_completed_week_end:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The selected week has not "
+                    "finished yet"
+                )
+            )
+
+        week_start = (
+            week_end
+            - timedelta(days=6)
+        )
+
+        previous_end = (
+            week_start
+            - timedelta(days=1)
+        )
+
+        previous_start = (
+            previous_end
+            - timedelta(days=6)
+        )
+
+        current_period = (
+            build_period_boundaries(
+                week_start,
+                week_end
+            )
+        )
+
+        previous_period = (
+            build_period_boundaries(
+                previous_start,
+                previous_end
+            )
+        )
+
+        # ---------------------------------------------
+        # DATABASE
+        # ---------------------------------------------
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                name,
+                organization_id
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (
+                store_id,
+            )
+        )
+
+        store = cursor.fetchone()
+
+        if not store:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        store_name = str(
+            store[0] or ""
+        ).strip()
+
+        organization_id = store[1]
+
+        # ---------------------------------------------
+        # CURRENT WEEK SALES + INVENTORY
+        # ---------------------------------------------
+        current_analysis = (
+            build_sales_analysis_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    current_period["start"],
+                end_exclusive=
+                    current_period[
+                        "end_exclusive"
+                    ],
+                days_in_period=
+                    current_period["days"]
+            )
+        )
+
+        # ---------------------------------------------
+        # PREVIOUS WEEK SALES + INVENTORY
+        # ---------------------------------------------
+        previous_analysis = (
+            build_sales_analysis_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    previous_period["start"],
+                end_exclusive=
+                    previous_period[
+                        "end_exclusive"
+                    ],
+                days_in_period=
+                    previous_period["days"]
+            )
+        )
+
+        # ---------------------------------------------
+        # CURRENT WEEK CASH ACTIVITY
+        # ---------------------------------------------
+        current_cash = (
+            build_cash_activity_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    current_period["start"],
+                end_exclusive=
+                    current_period[
+                        "end_exclusive"
+                    ]
+            )
+        )
+
+        # ---------------------------------------------
+        # PREVIOUS WEEK CASH ACTIVITY
+        # ---------------------------------------------
+        previous_cash = (
+            build_cash_activity_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    previous_period["start"],
+                end_exclusive=
+                    previous_period[
+                        "end_exclusive"
+                    ]
+            )
+        )
+
+        # ---------------------------------------------
+        # CURRENT WEEK CATALOG PROFILE
+        # ---------------------------------------------
+        current_catalog_profile = (
+            build_catalog_profile_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    current_period["start"],
+                end_exclusive=
+                    current_period[
+                        "end_exclusive"
+                    ]
+            )
+        )
+
+        # ---------------------------------------------
+        # PREVIOUS WEEK CATALOG PROFILE
+        # ---------------------------------------------
+        previous_catalog_profile = (
+            build_catalog_profile_data(
+                cursor=cursor,
+                store_id=store_id,
+                start_datetime=
+                    previous_period["start"],
+                end_exclusive=
+                    previous_period[
+                        "end_exclusive"
+                    ]
+            )
+        )
+
+        current_summary = (
+            current_analysis["summary"]
+        )
+
+        previous_summary = (
+            previous_analysis["summary"]
+        )
+
+        current_inventory = (
+            current_analysis.get(
+                "inventory",
+                {}
+            )
+        )
+
+        previous_inventory = (
+            previous_analysis.get(
+                "inventory",
+                {}
+            )
+        )
+
+        # ---------------------------------------------
+        # ALERTS
+        # ---------------------------------------------
+        alerts = (
+            build_weekly_alerts_data(
+                cursor=cursor,
+                store_id=store_id,
+                current_inventory=
+                    current_inventory,
+                current_sales=
+                    current_summary
+            )
+        )
+
+        # ---------------------------------------------
+        # REVIEW QUEUE
+        # ---------------------------------------------
+        review_queue = (
+            build_review_queue_data(
+                alerts
+            )
+        )
+
+        current_net_cash = float(
+            current_cash.get(
+                "net_cash_movement",
+                0
+            ) or 0
+        )
+
+        previous_net_cash = float(
+            previous_cash.get(
+                "net_cash_movement",
+                0
+            ) or 0
+        )
+
+        # ---------------------------------------------
+        # NET CASH POSITION CLASSIFICATION
+        # ---------------------------------------------
+        if (
+            previous_net_cash < 0
+            and current_net_cash >= 0
+        ):
+            net_cash_position_change = (
+                "negative_to_positive"
+            )
+
+        elif (
+            previous_net_cash >= 0
+            and current_net_cash < 0
+        ):
+            net_cash_position_change = (
+                "positive_to_negative"
+            )
+
+        elif (
+            current_net_cash
+            > previous_net_cash
+        ):
+            net_cash_position_change = (
+                "improved"
+            )
+
+        elif (
+            current_net_cash
+            < previous_net_cash
+        ):
+            net_cash_position_change = (
+                "declined"
+            )
+
+        else:
+            net_cash_position_change = (
+                "unchanged"
+            )
+
+        # ---------------------------------------------
+        # PERIOD COMPARISON
+        # ---------------------------------------------
+        comparison = {
+            "revenue_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "revenue"
+                    ],
+                    previous_summary[
+                        "revenue"
+                    ]
+                ),
+
+            "profit_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "gross_profit"
+                    ],
+                    previous_summary[
+                        "gross_profit"
+                    ]
+                ),
+
+            "ticket_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "tickets"
+                    ],
+                    previous_summary[
+                        "tickets"
+                    ]
+                ),
+
+            "average_ticket_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "average_ticket"
+                    ],
+                    previous_summary[
+                        "average_ticket"
+                    ]
+                ),
+
+            "units_sold_change_percent":
+                calculate_percent_change(
+                    current_summary[
+                        "units_sold"
+                    ],
+                    previous_summary[
+                        "units_sold"
+                    ]
+                ),
+
+            "margin_change_points": (
+                round(
+                    current_summary[
+                        "gross_margin_percent"
+                    ]
+                    -
+                    previous_summary[
+                        "gross_margin_percent"
+                    ],
+                    2
+                )
+                if (
+                    current_summary[
+                        "revenue"
+                    ] > 0
+                    and
+                    previous_summary[
+                        "revenue"
+                    ] > 0
+                )
+                else None
+            ),
+
+            "cash_inflow_change_percent":
+                calculate_percent_change(
+                    current_cash[
+                        "total_inflows"
+                    ],
+                    previous_cash[
+                        "total_inflows"
+                    ]
+                ),
+
+            "cash_outflow_change_percent":
+                calculate_percent_change(
+                    current_cash[
+                        "total_outflows"
+                    ],
+                    previous_cash[
+                        "total_outflows"
+                    ]
+                ),
+
+            # Net cash movement may cross zero,
+            # so absolute change is safer.
+            "net_cash_movement_change":
+                round_money(
+                    current_net_cash
+                    - previous_net_cash
+                ),
+
+            "net_cash_position_change":
+                net_cash_position_change
+        }
+
+        # ---------------------------------------------
+        # DEFAULT INVENTORY OBJECT
+        # ---------------------------------------------
+        empty_inventory = {
+            "intake_tickets": 0,
+            "intake_units": 0,
+            "intake_cost": 0.0,
+
+            "positive_adjustment_events": 0,
+            "positive_adjustment_units": 0,
+
+            "negative_adjustment_events": 0,
+            "negative_adjustment_units": 0,
+
+            "loss_events": 0,
+            "loss_units": 0,
+            "loss_cost": 0.0,
+
+            "transfer_in_events": 0,
+            "transfer_in_units": 0,
+
+            "transfer_out_events": 0,
+            "transfer_out_units": 0
+        }
+
+        # ---------------------------------------------
+        # RESPONSE
+        # ---------------------------------------------
+        return {
+            "metadata": {
+                "store_id":
+                    store_id,
+
+                "store_name":
+                    store_name,
+
+                "organization_id":
+                    organization_id,
+
+                "period_start":
+                    week_start.isoformat(),
+
+                "period_end":
+                    week_end.isoformat(),
+
+                "previous_period_start":
+                    previous_start.isoformat(),
+
+                "previous_period_end":
+                    previous_end.isoformat(),
+
+                "days_in_period":
+                    current_period["days"],
+
+                "generated_at":
+                    datetime.now(
+                        timezone.utc
+                    ).isoformat()
+            },
+
+            "sales":
+                current_summary,
+
+            "previous_sales":
+                previous_summary,
+
+            "comparison":
+                comparison,
+
+            "products": {
+                "top_revenue":
+                    current_analysis[
+                        "top_revenue_products"
+                    ],
+
+                "top_profit":
+                    current_analysis[
+                        "top_profit_products"
+                    ],
+
+                "top_volume":
+                    current_analysis[
+                        "top_volume_products"
+                    ]
+            },
+
+            "inventory": {
+                "current_week":
+                    current_inventory
+                    or empty_inventory.copy(),
+
+                "previous_week":
+                    previous_inventory
+                    or empty_inventory.copy()
+            },
+
+            "cash": {
+                "current_week":
+                    current_cash,
+
+                "previous_week":
+                    previous_cash
+            },
+
+            "catalog_profile": {
+                "current_week":
+                    current_catalog_profile,
+
+                "previous_week":
+                    previous_catalog_profile
+            },
+
+            "alerts":
+                alerts,
+
+            "review_queue":
+                review_queue
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "WEEKLY BRIEFING DATA ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to build weekly "
+                "briefing data"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
+@app.get("/internal/weekly-briefing-data")
+def weekly_briefing_data(
+    week_end: Optional[date] = None,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    return build_weekly_briefing_snapshot(
+        store_id=current_user.store_id,
+        week_end=week_end
+    )
 
 @app.get("/rebuild-products")
 def rebuild_products_endpoint(store_id: int):
