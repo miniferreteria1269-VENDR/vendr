@@ -196,32 +196,15 @@ class AIReportSection(BaseModel):
 
 class AIWeeklyBusinessReport(BaseModel):
     headline: str
-
     executive_summary: str
-
-    sales_performance:
-        AIReportSection
-
-    profitability:
-        AIReportSection
-
-    cash_activity:
-        AIReportSection
-
-    inventory_activity:
-        AIReportSection
-
-    positive_signals:
-        list[AIReportFinding]
-
-    concerns:
-        list[AIReportFinding]
-
-    recommended_actions:
-        list[AIReportAction]
-
-    data_limitations:
-        list[str]
+    sales_performance: AIReportSection
+    profitability: AIReportSection
+    cash_activity: AIReportSection
+    inventory_activity: AIReportSection
+    positive_signals: list[AIReportFinding]
+    concerns: list[AIReportFinding]
+    recommended_actions: list[AIReportAction]
+    data_limitations: list[str]
     
 def create_access_token(
     user_id: int,
