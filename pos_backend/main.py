@@ -4848,7 +4848,9 @@ def intake_ticket(
         if ticket.client_event_id:
             cursor.execute(
                 """
-                SELECT ticket_id
+                SELECT
+                    ticket_id,
+                    store_ticket_number
                 FROM events
                 WHERE store_id = %s
                   AND client_event_id = %s
@@ -4865,8 +4867,15 @@ def intake_ticket(
 
             if existing:
                 return {
-                    "status": "already_processed",
-                    "ticket_id": existing[0],
+                    "status":
+                        "already_processed",
+
+                    "ticket_id":
+                        existing[0],
+
+                    "ticket_number":
+                        existing[1],
+
                     "client_event_id":
                         ticket.client_event_id
                 }
@@ -4882,22 +4891,15 @@ def intake_ticket(
                 ticket.supplier_id
             )
 
-            # supplier tuple:
-            # (
-            #   supplier_id,
-            #   organization_id,
-            #   store_id,
-            #   is_active
-            # )
-
             supplier_org = supplier[1]
             supplier_store = supplier[2]
 
-            organization_id, owner_store_id = (
-                get_supplier_owner(
-                    cursor,
-                    current_user.store_id
-                )
+            (
+                organization_id,
+                owner_store_id
+            ) = get_supplier_owner(
+                cursor,
+                current_user.store_id
             )
 
             if organization_id is not None:
@@ -4926,7 +4928,9 @@ def intake_ticket(
                 FROM suppliers
                 WHERE supplier_id = %s
                 """,
-                (ticket.supplier_id,)
+                (
+                    ticket.supplier_id,
+                )
             )
 
             supplier_row = cursor.fetchone()
@@ -4940,13 +4944,18 @@ def intake_ticket(
             supplier_name = supplier_row[0]
 
         # ---------------------------------------------
-        # SERIALIZE TICKET ID GENERATION
+        # GENERATE GLOBAL INTERNAL TICKET ID
+        #
+        # Sales and intake must use the same advisory
+        # lock because both obtain IDs from events.
         # ---------------------------------------------
         cursor.execute(
             """
             SELECT pg_advisory_xact_lock(%s)
             """,
-            (1269002,)
+            (
+                1269001,
+            )
         )
 
         cursor.execute(
@@ -4959,8 +4968,50 @@ def intake_ticket(
             """
         )
 
-        ticket_id = (
-            cursor.fetchone()[0] + 1
+        ticket_id = int(
+            cursor.fetchone()[0]
+        ) + 1
+
+        # ---------------------------------------------
+        # GENERATE STORE-LOCAL INTAKE NUMBER
+        # ---------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO store_ticket_counters (
+                store_id,
+                ticket_type,
+                current_number,
+                updated_at
+            )
+            VALUES (
+                %s,
+                'intake',
+                1,
+                NOW()
+            )
+
+            ON CONFLICT (
+                store_id,
+                ticket_type
+            )
+            DO UPDATE
+            SET
+                current_number =
+                    store_ticket_counters.current_number
+                    + 1,
+
+                updated_at =
+                    NOW()
+
+            RETURNING current_number
+            """,
+            (
+                ticket.store_id,
+            )
+        )
+
+        store_ticket_number = int(
+            cursor.fetchone()[0]
         )
 
         now = datetime.now(
@@ -5017,9 +5068,10 @@ def intake_ticket(
                 2
             )
 
+            # Product sale prices support three decimals.
             price = round(
                 float(item.price),
-                2
+                3
             )
 
             previous_cost = round(
@@ -5029,7 +5081,7 @@ def intake_ticket(
 
             previous_price = round(
                 float(current_price or 0),
-                2
+                3
             )
 
             pricing_changed = (
@@ -5061,6 +5113,7 @@ def intake_ticket(
                     price_at_time,
                     event_datetime,
                     ticket_id,
+                    store_ticket_number,
                     supplier_id,
                     supplier_name_at_time,
                     client_event_id,
@@ -5071,7 +5124,7 @@ def intake_ticket(
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s
+                    %s, %s, %s
                 )
                 """,
                 (
@@ -5084,6 +5137,7 @@ def intake_ticket(
                     price,
                     now,
                     ticket_id,
+                    store_ticket_number,
                     ticket.supplier_id,
                     supplier_name,
                     ticket.client_event_id,
@@ -5107,6 +5161,7 @@ def intake_ticket(
                         price_at_time,
                         event_datetime,
                         ticket_id,
+                        store_ticket_number,
                         supplier_id,
                         supplier_name_at_time,
                         client_event_id,
@@ -5117,7 +5172,7 @@ def intake_ticket(
                         %s, %s, %s, %s,
                         %s, %s, %s, %s,
                         %s, %s, %s, %s,
-                        %s
+                        %s, %s
                     )
                     """,
                     (
@@ -5129,6 +5184,7 @@ def intake_ticket(
                         price,
                         now,
                         ticket_id,
+                        store_ticket_number,
                         ticket.supplier_id,
                         supplier_name,
                         price_change_client_event_id,
@@ -5148,10 +5204,14 @@ def intake_ticket(
                 SET
                     stock =
                         COALESCE(stock, 0) + %s,
+
                     cost = %s,
+
                     price = %s
+
                 WHERE product_id = %s
                   AND store_id = %s
+                  AND is_active = 1
                 """,
                 (
                     quantity,
@@ -5182,10 +5242,13 @@ def intake_ticket(
                         FALSE,
                         %s
                     )
+
                     ON CONFLICT ON CONSTRAINT
                         product_suppliers_pkey
+
                     DO UPDATE SET
-                        last_cost = EXCLUDED.last_cost
+                        last_cost =
+                            EXCLUDED.last_cost
                     """,
                     (
                         ticket.store_id,
@@ -5206,6 +5269,9 @@ def intake_ticket(
 
         # ---------------------------------------------
         # PAID INTAKE CASH OUTFLOW
+        #
+        # Cash-event reference_id continues using the
+        # global internal ticket_id.
         # ---------------------------------------------
         if ticket.paid:
             cursor.execute(
@@ -5214,7 +5280,9 @@ def intake_ticket(
                 FROM stores
                 WHERE store_id = %s
                 """,
-                (ticket.store_id,)
+                (
+                    ticket.store_id,
+                )
             )
 
             store = cursor.fetchone()
@@ -5266,10 +5334,20 @@ def intake_ticket(
         conn.commit()
 
         return {
-            "status": "accepted",
-            "ticket_id": ticket_id,
+            "status":
+                "accepted",
+
+            # Global internal identifier
+            "ticket_id":
+                ticket_id,
+
+            # Store-local intake number
+            "ticket_number":
+                store_ticket_number,
+
             "price_changes_recorded":
                 price_changes_recorded,
+
             "client_event_id":
                 ticket.client_event_id
         }
@@ -5294,7 +5372,9 @@ def intake_ticket(
         ):
             cursor.execute(
                 """
-                SELECT ticket_id
+                SELECT
+                    ticket_id,
+                    store_ticket_number
                 FROM events
                 WHERE store_id = %s
                   AND client_event_id = %s
@@ -5311,8 +5391,15 @@ def intake_ticket(
 
             if existing:
                 return {
-                    "status": "already_processed",
-                    "ticket_id": existing[0],
+                    "status":
+                        "already_processed",
+
+                    "ticket_id":
+                        existing[0],
+
+                    "ticket_number":
+                        existing[1],
+
                     "client_event_id":
                         ticket.client_event_id
                 }
