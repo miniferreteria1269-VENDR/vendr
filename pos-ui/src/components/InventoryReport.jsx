@@ -4,6 +4,9 @@ import ProductMovementSummary from "./ProductMovementSummary";
 import { StockAdjustment } from "./ProductManagement";
 import apiClient from "../apiClient";
 import {
+  exportInventoryToExcel
+} from "../utils/excelExport";
+import {
   COLORS,
   card,
   btnPrimary,
@@ -58,6 +61,14 @@ function InventoryReport({ storeId }) {
   });
 
   const formatMoney = (value) => Number(value || 0).toFixed(2);
+
+  const translatedText = (key, fallback) => {
+    const translated = t(key);
+
+    return translated && translated !== key
+      ? translated
+      : fallback;
+  };
 
   const loadInventory = async () => {
     const res = await apiClient.get(
@@ -331,6 +342,27 @@ function InventoryReport({ storeId }) {
   const filteredServices = serviceItems.filter(
     (service) => service.instances !== undefined
   );
+
+  const exportVisibleInventory = () => {
+    if (filteredProducts.length === 0) return;
+
+    exportInventoryToExcel({
+      products: filteredProducts,
+      totals,
+      storeId,
+      labels: {
+        product: translatedText("product", "Product"),
+        quantity: translatedText("quantity", "Quantity"),
+        cost: translatedText("cost", "Cost"),
+        price: translatedText("price", "Price"),
+        totalCost: translatedText("total_cost", "Total Cost"),
+        totalValue: translatedText("total_value", "Total Value"),
+        profit: translatedText("profit", "Profit"),
+        total: translatedText("total", "Total"),
+        inventorySheet: translatedText("inventory", "Inventory")
+      }
+    });
+  };
 
   const sortedPareto = [...paretoItems].sort((a, b) => {
     const getValue = (product) =>
@@ -638,18 +670,51 @@ function InventoryReport({ storeId }) {
       </div>
 
       {inventoryView === "stock" && (
-        <input
-          placeholder={t("search_inventory")}
-          value={searchTerm}
-          onChange={(event) =>
-            setSearchTerm(event.target.value)
-          }
+        <div
           style={{
-            ...input,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
             marginBottom: 16,
-            width: 300,
           }}
-        />
+        >
+          <input
+            placeholder={t("search_inventory")}
+            value={searchTerm}
+            onChange={(event) =>
+              setSearchTerm(event.target.value)
+            }
+            style={{
+              ...input,
+              width: 300,
+              maxWidth: "100%"
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={exportVisibleInventory}
+            disabled={filteredProducts.length === 0}
+            title={translatedText(
+              "export_excel",
+              "Export the visible inventory to Excel"
+            )}
+            style={{
+              ...btnSecondary,
+              opacity:
+                filteredProducts.length === 0
+                  ? 0.55
+                  : 1,
+              cursor:
+                filteredProducts.length === 0
+                  ? "not-allowed"
+                  : "pointer"
+            }}
+          >
+            ↓ Excel (.xlsx)
+          </button>
+        </div>
       )}
 
       {/* STOCK */}
