@@ -962,7 +962,10 @@ function App() {
               ? {
                   ...item,
                   quantity:
-                    item.quantity + 1
+                    Math.max(
+                      Number(item.quantity) || 0,
+                      0
+                    ) + 1
                 }
               : item
           )
