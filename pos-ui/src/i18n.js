@@ -14,6 +14,12 @@ organization: "Organization",
 organization_reports: "Organization Reports",
 organization_sales_report: "Aggregate Sales Report",
 
+    // English
+unit_cost: "Unit Cost",
+sales_price_per_unit:
+  "Sales Price per Unit",
+line_total: "Total",
+
 organization_unlock_description:
   "Enter the secondary organization credentials to view sensitive aggregate reports.",
 
@@ -594,6 +600,11 @@ organization: "Organización",
 organization_reports: "Reportes de organización",
 organization_sales_report:
   "Reporte consolidado de ventas",
+    // Spanish
+unit_cost: "Costo unitario",
+sales_price_per_unit:
+  "Precio de venta unitario",
+line_total: "Total",
 
 organization_unlock_description:
   "Ingrese las credenciales secundarias de la organización para consultar reportes consolidados confidenciales.",
