@@ -896,27 +896,58 @@ const errorStyle = {
 };
 
 const metricGridStyle = {
+  flex: "0 0 auto",
+  minHeight: 92,
+
   display: "grid",
   gridTemplateColumns:
     "repeat(6, minmax(120px, 1fr))",
   gap: 10,
-  overflowX: "auto"
+
+  overflowX: "auto",
+  overflowY: "hidden",
+
+  paddingBottom: 2,
+
+  WebkitOverflowScrolling:
+    "touch"
 };
 
 const metricStyle = {
-  minWidth: 120,
+  minWidth: 0,
+  minHeight: 86,
+  boxSizing: "border-box",
+
   background: COLORS.panel,
-  border: `1px solid ${COLORS.border}`,
+  border:
+    `1px solid ${COLORS.border}`,
   borderRadius: 10,
-  padding: 12
+  padding: 12,
+
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center"
 };
 
 const tableShellStyle = {
-  flex: 1,
+  flex: "0 0 auto",
+  width: "100%",
+
   minHeight: 180,
-  overflow: "auto",
-  border: `1px solid ${COLORS.border}`,
-  borderRadius: 10
+  maxHeight:
+    "clamp(220px, 42dvh, 420px)",
+
+  overflowX: "auto",
+  overflowY: "auto",
+
+  border:
+    `1px solid ${COLORS.border}`,
+  borderRadius: 10,
+
+  boxSizing: "border-box",
+
+  WebkitOverflowScrolling:
+    "touch"
 };
 
 const tableStyle = {
