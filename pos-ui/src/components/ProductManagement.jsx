@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { useLang } from "../LanguageContext";
 import apiClient from "../apiClient";
 import {
+  exportProductMasterToExcel
+} from "../utils/excelExport";
+import {
   savePendingEvent,
   submitPendingEvent
 } from "../offlineEvents";
@@ -79,6 +82,43 @@ function ProductManagement({ storeId, onProductsChanged }) {
     );
   });
 
+  const translatedText = (key, fallback) => {
+    const translated = t(key);
+
+    return translated && translated !== key
+      ? translated
+      : fallback;
+  };
+
+  const exportVisibleProductMaster = () => {
+    if (filteredProducts.length === 0) return;
+
+    exportProductMasterToExcel({
+      products: filteredProducts,
+      storeId,
+      labels: {
+        productId: translatedText("product_id", "Product ID"),
+        product: translatedText("product", "Product"),
+        location: translatedText("location", "Location"),
+        stock: translatedText("stock", "Stock"),
+        lowStock: translatedText("low_stock_short", "Low Stock"),
+        cost: translatedText("cost", "Cost"),
+        price: translatedText("price", "Price"),
+        tracksStock: translatedText("tracks_stock", "Tracks Stock"),
+        status: translatedText("status", "Status"),
+        createdAt: translatedText("created_at", "Created At"),
+        yes: translatedText("yes", "Yes"),
+        no: translatedText("no", "No"),
+        active: translatedText("active", "Active"),
+        archived: translatedText("archived", "Archived"),
+        productMasterSheet: translatedText(
+          "product_master",
+          "Product Master"
+        )
+      }
+    });
+  };
+
   return (
     <div style={{ padding: 16, minHeight: 0 }}>
       <h2 style={{ marginBottom: 12 }}>{t("product_management")}</h2>
@@ -110,13 +150,50 @@ function ProductManagement({ storeId, onProductsChanged }) {
         {requiresProduct ? t("select_product") : t("select_tool")}
       </div>
 
-      <input
-        type="text"
-        value={search}
-        onChange={event => setSearch(event.target.value)}
-        placeholder={t("search_products")}
-        style={{ ...input, width: "100%", maxWidth: 440, marginBottom: 12 }}
-      />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 12
+        }}
+      >
+        <input
+          type="text"
+          value={search}
+          onChange={event => setSearch(event.target.value)}
+          placeholder={t("search_products")}
+          style={{
+            ...input,
+            width: "100%",
+            maxWidth: 440
+          }}
+        />
+
+        <button
+          type="button"
+          onClick={exportVisibleProductMaster}
+          disabled={filteredProducts.length === 0}
+          title={translatedText(
+            "export_excel",
+            "Export the visible product list to Excel"
+          )}
+          style={{
+            ...btnSecondary,
+            opacity:
+              filteredProducts.length === 0
+                ? 0.55
+                : 1,
+            cursor:
+              filteredProducts.length === 0
+                ? "not-allowed"
+                : "pointer"
+          }}
+        >
+          ↓ Excel (.xlsx)
+        </button>
+      </div>
 
       {error && <div style={{ color: COLORS.danger, marginBottom: 10 }}>{error}</div>}
 
