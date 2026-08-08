@@ -9518,7 +9518,9 @@ async def import_products(
         # NORMALIZE COLUMN NAMES
         # ---------------------------------------------
         df.columns = [
-            str(column).strip().lower()
+            str(column)
+            .strip()
+            .lower()
             for column in df.columns
         ]
 
@@ -9603,13 +9605,36 @@ async def import_products(
         rejected = []
 
         # ---------------------------------------------
+        # ACCEPTED TRACKS-STOCK VALUES
+        # ---------------------------------------------
+        tracks_stock_true_values = {
+            "true",
+            "1",
+            "1.0",
+            "yes",
+            "y",
+            "si",
+            "sí"
+        }
+
+        tracks_stock_false_values = {
+            "false",
+            "0",
+            "0.0",
+            "no",
+            "n"
+        }
+
+        # ---------------------------------------------
         # PROCESS ROWS
         # ---------------------------------------------
         for index, row in df.iterrows():
-            spreadsheet_row = int(index) + 2
+            spreadsheet_row = (
+                int(index) + 2
+            )
 
-            # A savepoint prevents one failed row from
-            # aborting the entire PostgreSQL transaction.
+            # A savepoint prevents one rejected row
+            # from aborting the entire import.
             cursor.execute(
                 "SAVEPOINT import_product_row"
             )
@@ -9637,10 +9662,29 @@ async def import_products(
                 # -------------------------------------
                 # INITIAL STOCK
                 # -------------------------------------
-                try:
-                    initial_stock = int(
-                        row["initial_stock"]
+                initial_stock_raw = row[
+                    "initial_stock"
+                ]
+
+                if pd.isna(
+                    initial_stock_raw
+                ):
+                    raise ValueError(
+                        "initial_stock is required"
                     )
+
+                try:
+                    initial_stock_float = float(
+                        initial_stock_raw
+                    )
+
+                    if not initial_stock_float.is_integer():
+                        raise ValueError
+
+                    initial_stock = int(
+                        initial_stock_float
+                    )
+
                 except (
                     TypeError,
                     ValueError
@@ -9657,11 +9701,23 @@ async def import_products(
                 # -------------------------------------
                 # COST
                 # -------------------------------------
+                cost_raw = row[
+                    "cost"
+                ]
+
+                if pd.isna(
+                    cost_raw
+                ):
+                    raise ValueError(
+                        "Cost is required"
+                    )
+
                 try:
                     cost = round(
-                        float(row["cost"]),
+                        float(cost_raw),
                         2
                     )
+
                 except (
                     TypeError,
                     ValueError
@@ -9678,11 +9734,23 @@ async def import_products(
                 # -------------------------------------
                 # PRICE
                 # -------------------------------------
+                price_raw = row[
+                    "price"
+                ]
+
+                if pd.isna(
+                    price_raw
+                ):
+                    raise ValueError(
+                        "Price is required"
+                    )
+
                 try:
                     price = round(
-                        float(row["price"]),
+                        float(price_raw),
                         2
                     )
+
                 except (
                     TypeError,
                     ValueError
@@ -9699,26 +9767,46 @@ async def import_products(
                 # -------------------------------------
                 # TRACKS STOCK
                 # -------------------------------------
-                tracks_stock_raw = str(
-                    row["tracks_stock"]
-                ).strip().lower()
+                tracks_stock_raw = row[
+                    "tracks_stock"
+                ]
 
-                if tracks_stock_raw not in (
-                    "true",
-                    "false"
+                if pd.isna(
+                    tracks_stock_raw
                 ):
                     raise ValueError(
+                        "tracks_stock is required"
+                    )
+
+                tracks_stock_normalized = str(
+                    tracks_stock_raw
+                ).strip().lower()
+
+                if (
+                    tracks_stock_normalized
+                    in tracks_stock_true_values
+                ):
+                    tracks_stock_bool = True
+
+                elif (
+                    tracks_stock_normalized
+                    in tracks_stock_false_values
+                ):
+                    tracks_stock_bool = False
+
+                else:
+                    raise ValueError(
                         "tracks_stock must be "
-                        "TRUE or FALSE"
+                        "TRUE, FALSE, 1, or 0"
                     )
 
                 # events.tracks_stock is BOOLEAN.
-                tracks_stock_bool = (
-                    tracks_stock_raw == "true"
+                tracks_stock_event_value = (
+                    tracks_stock_bool
                 )
 
                 # products.tracks_stock is INTEGER.
-                tracks_stock_value = (
+                tracks_stock_product_value = (
                     1
                     if tracks_stock_bool
                     else 0
@@ -9732,14 +9820,24 @@ async def import_products(
                     0
                 )
 
-                if pd.isna(threshold_raw):
+                if pd.isna(
+                    threshold_raw
+                ):
                     low_stock_threshold = 0
 
                 else:
                     try:
-                        low_stock_threshold = int(
+                        threshold_float = float(
                             threshold_raw
                         )
+
+                        if not threshold_float.is_integer():
+                            raise ValueError
+
+                        low_stock_threshold = int(
+                            threshold_float
+                        )
+
                     except (
                         TypeError,
                         ValueError
@@ -9761,9 +9859,9 @@ async def import_products(
                 # -------------------------------------
                 # PREVENT DUPLICATE NAMES
                 #
-                # Because products are inserted during
-                # the loop, this also catches duplicate
-                # names within the import file itself.
+                # Products inserted earlier in this
+                # transaction are visible here, so this
+                # also catches duplicates in the file.
                 # -------------------------------------
                 cursor.execute(
                     """
@@ -9786,7 +9884,9 @@ async def import_products(
                         "Duplicate product name"
                     )
 
-                product_id = next_product_id
+                product_id = (
+                    next_product_id
+                )
 
                 event_datetime = datetime.now(
                     timezone.utc
@@ -9794,6 +9894,8 @@ async def import_products(
 
                 # -------------------------------------
                 # INSERT CREATE EVENT
+                #
+                # events.tracks_stock is BOOLEAN.
                 # -------------------------------------
                 cursor.execute(
                     """
@@ -9829,7 +9931,7 @@ async def import_products(
                         initial_stock,
                         cost,
                         price,
-                        tracks_stock_bool,
+                        tracks_stock_event_value,
                         low_stock_threshold,
                         event_datetime
                     )
@@ -9837,6 +9939,8 @@ async def import_products(
 
                 # -------------------------------------
                 # INSERT PRODUCT PROJECTION
+                #
+                # products.tracks_stock is INTEGER.
                 # -------------------------------------
                 cursor.execute(
                     """
@@ -9874,7 +9978,7 @@ async def import_products(
                         initial_stock,
                         cost,
                         price,
-                        tracks_stock_value,
+                        tracks_stock_product_value,
                         low_stock_threshold,
                         lst_reviewed,
                         1
@@ -9902,8 +10006,11 @@ async def import_products(
 
                 rejected.append(
                     {
-                        "row": spreadsheet_row,
-                        "error": str(row_error)
+                        "row":
+                            spreadsheet_row,
+
+                        "error":
+                            str(row_error)
                     }
                 )
 
@@ -9913,11 +10020,17 @@ async def import_products(
         conn.commit()
 
         return {
-            "created": created,
-            "rejected_count": len(
+            "status":
+                "accepted",
+
+            "created":
+                created,
+
+            "rejected_count":
+                len(rejected),
+
+            "rejected":
                 rejected
-            ),
-            "rejected": rejected
         }
 
     except HTTPException:
@@ -9946,7 +10059,6 @@ async def import_products(
 
         if conn:
             conn.close()
-
 @app.get("/ticket-details")
 def ticket_details(
     store_id: int,
