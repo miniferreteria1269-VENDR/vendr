@@ -491,45 +491,247 @@ const performanceErrorStyle = { padding: 10, marginBottom: 12, borderRadius: 8, 
 const performanceTableHeaderStyle = { padding: "8px 10px", textAlign: "left", whiteSpace: "nowrap", position: "sticky", top: 0, background: COLORS.panelAlt, borderBottom: `1px solid ${COLORS.border}` };
 const performanceTableCellStyle = { padding: "8px 10px", whiteSpace: "nowrap", borderBottom: `1px solid ${COLORS.border}` };
 
-function ProductMasterTable({ products, loading, selectable, onSelect, t }) {
-  if (loading) return <div style={card}>{t("loading")}</div>;
+function ProductMasterTable({
+  products,
+  loading,
+  selectable,
+  onSelect,
+  t
+}) {
+  if (loading) {
+    return (
+      <div style={card}>
+        {t("loading")}
+      </div>
+    );
+  }
+
+  const columns = [
+    "product",
+    "location",
+    "stock",
+    "low_stock_short",
+    "cost",
+    "price",
+    "tracks_stock",
+    "status"
+  ];
 
   return (
-    <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 8, overflow: "auto", maxHeight: "calc(100dvh - 245px)", minHeight: 220 }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <div
+      style={{
+        border:
+          `1px solid ${COLORS.border}`,
+        borderRadius: 8,
+        overflow: "auto",
+        maxHeight:
+          "calc(100dvh - 245px)",
+        minHeight: 220
+      }}
+    >
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse"
+        }}
+      >
         <thead>
           <tr>
-            {["product", "location", "stock", "cost", "price", "tracks_stock", "status"].map(key => (
-              <th key={key} style={masterHeaderStyle}>{t(key)}</th>
-            ))}
+            {columns.map(key => {
+              const isCompactNumber =
+                key === "stock" ||
+                key ===
+                  "low_stock_short";
+
+              return (
+                <th
+                  key={key}
+                  style={{
+                    ...masterHeaderStyle,
+
+                    width:
+                      isCompactNumber
+                        ? 78
+                        : undefined,
+
+                    textAlign:
+                      isCompactNumber
+                        ? "center"
+                        : "left"
+                  }}
+                >
+                  {t(key)}
+                </th>
+              );
+            })}
           </tr>
         </thead>
+
         <tbody>
           {products.length === 0 ? (
-            <tr><td colSpan={7} style={{ padding: 18, textAlign: "center", color: COLORS.textDim }}>{t("no_products_found")}</td></tr>
-          ) : products.map(product => (
-            <tr
-              key={product.product_id}
-              onClick={() => selectable && onSelect(product)}
-              style={{ cursor: selectable ? "pointer" : "default", opacity: product.is_active ? 1 : 0.58 }}
-            >
-              <td style={masterCellStyle}><strong>{product.name}</strong><div style={{ fontSize: 11, color: COLORS.textDim }}>#{product.product_id}</div></td>
-              <td style={masterCellStyle}>{product.location_code || "—"}</td>
-              <td style={masterCellStyle}>{product.tracks_stock ? Number(product.stock || 0) : "—"}</td>
-              <td style={masterCellStyle}>${Number(product.cost || 0).toFixed(2)}</td>
-              <td style={masterCellStyle}>${Number(product.price || 0).toFixed(2)}</td>
-              <td style={masterCellStyle}>{product.tracks_stock ? t("yes") : t("no")}</td>
-              <td style={{ ...masterCellStyle, color: product.is_active ? "#3ddc84" : COLORS.danger, fontWeight: 600 }}>
-                {product.is_active ? t("active") : t("archived")}
+            <tr>
+              <td
+                colSpan={8}
+                style={{
+                  padding: 18,
+                  textAlign: "center",
+                  color:
+                    COLORS.textDim
+                }}
+              >
+                {t(
+                  "no_products_found"
+                )}
               </td>
             </tr>
-          ))}
+          ) : (
+            products.map(product => {
+              const tracksStock =
+                Boolean(
+                  Number(
+                    product.tracks_stock
+                  )
+                );
+
+              return (
+                <tr
+                  key={
+                    product.product_id
+                  }
+                  onClick={() =>
+                    selectable &&
+                    onSelect(product)
+                  }
+                  style={{
+                    cursor:
+                      selectable
+                        ? "pointer"
+                        : "default",
+
+                    opacity:
+                      product.is_active
+                        ? 1
+                        : 0.58
+                  }}
+                >
+                  <td
+                    style={
+                      masterCellStyle
+                    }
+                  >
+                    <strong>
+                      {product.name}
+                    </strong>
+
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color:
+                          COLORS.textDim
+                      }}
+                    >
+                      #
+                      {
+                        product.product_id
+                      }
+                    </div>
+                  </td>
+
+                  <td
+                    style={
+                      masterCellStyle
+                    }
+                  >
+                    {product.location_code ||
+                      "—"}
+                  </td>
+
+                  <td
+                    style={{
+                      ...masterCellStyle,
+                      textAlign: "center"
+                    }}
+                  >
+                    {tracksStock
+                      ? Number(
+                          product.stock ||
+                            0
+                        )
+                      : "—"}
+                  </td>
+
+                  <td
+                    style={{
+                      ...masterCellStyle,
+                      textAlign: "center"
+                    }}
+                  >
+                    {tracksStock
+                      ? Number(
+                          product
+                            .low_stock_threshold ||
+                            0
+                        )
+                      : "—"}
+                  </td>
+
+                  <td
+                    style={
+                      masterCellStyle
+                    }
+                  >
+                    $
+                    {Number(
+                      product.cost || 0
+                    ).toFixed(2)}
+                  </td>
+
+                  <td
+                    style={
+                      masterCellStyle
+                    }
+                  >
+                    $
+                    {Number(
+                      product.price || 0
+                    ).toFixed(2)}
+                  </td>
+
+                  <td
+                    style={
+                      masterCellStyle
+                    }
+                  >
+                    {tracksStock
+                      ? t("yes")
+                      : t("no")}
+                  </td>
+
+                  <td
+                    style={{
+                      ...masterCellStyle,
+
+                      color:
+                        product.is_active
+                          ? "#3ddc84"
+                          : COLORS.danger,
+
+                      fontWeight: 600
+                    }}
+                  >
+                    {product.is_active
+                      ? t("active")
+                      : t("archived")}
+                  </td>
+                </tr>
+              );
+            })
+          )}
         </tbody>
       </table>
     </div>
   );
 }
-
 function ToolModal({ children, onClose, wide = false }) {
   return (
     <div role="presentation" onMouseDown={onClose} style={toolBackdropStyle}>
