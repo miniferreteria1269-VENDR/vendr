@@ -3633,7 +3633,9 @@ def sale_ticket(
         if ticket.client_event_id:
             cursor.execute(
                 """
-                SELECT ticket_id
+                SELECT
+                    ticket_id,
+                    store_ticket_number
                 FROM events
                 WHERE store_id = %s
                   AND client_event_id = %s
@@ -3656,8 +3658,13 @@ def sale_ticket(
                     "status":
                         "already_processed",
 
+                    # Global internal identifier
                     "ticket_id":
                         existing[0],
+
+                    # Customer-facing store number
+                    "ticket_number":
+                        existing[1],
 
                     "client_event_id":
                         ticket.client_event_id
@@ -3730,18 +3737,10 @@ def sale_ticket(
                 require_active=True
             )
 
-            # verify_client tuple:
-            # (
-            #   client_id,
-            #   store_id,
-            #   client_name,
-            #   is_active
-            # )
-
             client_name_at_time = client[2]
 
         # -------------------------------------------------
-        # SERIALIZE TICKET NUMBER GENERATION
+        # GENERATE GLOBAL INTERNAL TICKET ID
         # -------------------------------------------------
         cursor.execute(
             """
@@ -3760,8 +3759,54 @@ def sale_ticket(
             """
         )
 
-        ticket_id = (
-            cursor.fetchone()[0] + 1
+        ticket_id = int(
+            cursor.fetchone()[0]
+        ) + 1
+
+        # -------------------------------------------------
+        # GENERATE STORE-LOCAL SALE TICKET NUMBER
+        #
+        # This insert/update is atomic. Concurrent sales
+        # from the same store cannot receive the same
+        # store ticket number.
+        # -------------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO store_ticket_counters (
+                store_id,
+                ticket_type,
+                current_number,
+                updated_at
+            )
+            VALUES (
+                %s,
+                'sale',
+                1,
+                NOW()
+            )
+
+            ON CONFLICT (
+                store_id,
+                ticket_type
+            )
+            DO UPDATE
+            SET
+                current_number =
+                    store_ticket_counters.current_number
+                    + 1,
+
+                updated_at =
+                    NOW()
+
+            RETURNING current_number
+            """,
+            (
+                ticket.store_id,
+            )
+        )
+
+        store_ticket_number = int(
+            cursor.fetchone()[0]
         )
 
         now = datetime.now(
@@ -3812,11 +3857,13 @@ def sale_ticket(
                 2
             )
 
+            # Sale unit prices support three decimals.
             price = round(
                 float(item.price),
                 3
             )
 
+            # Final monetary totals remain two decimals.
             line_total = round(
                 price * quantity,
                 2
@@ -3834,6 +3881,7 @@ def sale_ticket(
                     price_at_time,
                     event_datetime,
                     ticket_id,
+                    store_ticket_number,
                     client_id,
                     client_name_at_time,
                     client_event_id,
@@ -3844,7 +3892,7 @@ def sale_ticket(
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s
+                    %s, %s, %s
                 )
                 """,
                 (
@@ -3857,6 +3905,7 @@ def sale_ticket(
                     price,
                     now,
                     ticket_id,
+                    store_ticket_number,
                     ticket.client_id,
                     client_name_at_time,
                     ticket.client_event_id,
@@ -3892,6 +3941,9 @@ def sale_ticket(
 
         # -------------------------------------------------
         # CREATE FIADO TICKET
+        #
+        # credit_tickets continues using the global
+        # internal ticket_id.
         # -------------------------------------------------
         if ticket.is_credit:
             if total_revenue <= 0:
@@ -3947,7 +3999,9 @@ def sale_ticket(
             FROM stores
             WHERE store_id = %s
             """,
-            (ticket.store_id,)
+            (
+                ticket.store_id,
+            )
         )
 
         store = cursor.fetchone()
@@ -3962,6 +4016,9 @@ def sale_ticket(
 
         # -------------------------------------------------
         # RECORD CASH EVENT FOR PAID SALES ONLY
+        #
+        # reference_id remains the global internal
+        # ticket_id.
         # -------------------------------------------------
         if not ticket.is_credit:
             cursor.execute(
@@ -4007,8 +4064,13 @@ def sale_ticket(
             "status":
                 "accepted",
 
+            # Global internal identifier
             "ticket_id":
                 ticket_id,
+
+            # Store-local customer-facing number
+            "ticket_number":
+                store_ticket_number,
 
             "client_id":
                 ticket.client_id,
@@ -4024,15 +4086,17 @@ def sale_ticket(
         if conn:
             conn.rollback()
 
-        # A concurrent retry may have inserted the
-        # same client event after the first check.
+        # A concurrent retry may have inserted the same
+        # client event after the initial idempotency check.
         if (
             cursor
             and ticket.client_event_id
         ):
             cursor.execute(
                 """
-                SELECT ticket_id
+                SELECT
+                    ticket_id,
+                    store_ticket_number
                 FROM events
                 WHERE store_id = %s
                   AND client_event_id = %s
@@ -4057,6 +4121,9 @@ def sale_ticket(
 
                     "ticket_id":
                         existing[0],
+
+                    "ticket_number":
+                        existing[1],
 
                     "client_event_id":
                         ticket.client_event_id
