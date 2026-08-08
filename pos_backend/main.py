@@ -3814,7 +3814,7 @@ def sale_ticket(
 
             price = round(
                 float(item.price),
-                2
+                3
             )
 
             line_total = round(
