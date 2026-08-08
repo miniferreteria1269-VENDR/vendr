@@ -1,4 +1,7 @@
-import { useLang } from "../LanguageContext";
+import {
+  useLang
+} from "../LanguageContext";
+
 import TicketRow from "./TicketRow";
 
 const COLORS = {
@@ -11,8 +14,9 @@ const COLORS = {
   danger: "#ff5c5c"
 };
 
+const TICKET_ROW_WIDTH = 620;
+
 function TicketPanel({
-  // Compact sale client and fiado controls are supplied by App.
   tickets,
   activeTicket,
   setActiveTicket,
@@ -25,16 +29,19 @@ function TicketPanel({
   finalizingIntake,
   cancelTicket,
   renameTicket,
+
   intakePaid,
   setIntakePaid,
   intakeSuppliers,
   intakeSupplierId,
   setIntakeSupplierId,
+
   saleClients,
   saleClientId,
   saleIsCredit,
   saleDueDate,
   updateSaleCreditField,
+
   discountValue,
   setDiscountValue,
   discountType,
@@ -42,20 +49,42 @@ function TicketPanel({
 }) {
   const { t } = useLang();
 
+  const ticketItems =
+    Array.isArray(
+      currentTicket?.items
+    )
+      ? currentTicket.items
+      : [];
+
   const subtotal =
-    currentTicket?.items.reduce(
+    ticketItems.reduce(
       (sum, item) =>
         sum +
         Number(item.price || 0) *
           Number(item.quantity || 0),
       0
-    ) || 0;
+    );
 
   const discountAmount =
     discountType === "percent"
       ? subtotal *
-        (Number(discountValue || 0) / 100)
-      : Number(discountValue || 0);
+        (
+          Number(
+            discountValue || 0
+          ) / 100
+        )
+      : Number(
+          discountValue || 0
+        );
+
+  const intakeTotal =
+    ticketItems.reduce(
+      (sum, item) =>
+        sum +
+        Number(item.cost || 0) *
+          Number(item.quantity || 0),
+      0
+    );
 
   const total =
     currentTicket?.type === "sale"
@@ -63,31 +92,26 @@ function TicketPanel({
           subtotal - discountAmount,
           0
         )
-      : currentTicket?.items.reduce(
-          (sum, item) =>
-            sum +
-            Number(item.cost || 0) *
-              Number(item.quantity || 0),
-          0
-        ) || 0;
+      : intakeTotal;
 
   const totalCost =
-    currentTicket?.items.reduce(
+    ticketItems.reduce(
       (sum, item) =>
         sum +
         Number(item.cost || 0) *
           Number(item.quantity || 0),
       0
-    ) || 0;
+    );
 
-  const profit = total - totalCost;
+  const profit =
+    total - totalCost;
 
   const intakeIsFinalizing =
     currentTicket?.type === "intake" &&
     finalizingIntake;
 
   const selectedSaleClient =
-    saleClients?.find(
+    (saleClients || []).find(
       client =>
         Number(client.client_id) ===
         Number(saleClientId)
@@ -96,7 +120,10 @@ function TicketPanel({
   const toggleFiado = () => {
     if (!saleIsCredit) {
       if (!selectedSaleClient) {
-        alert(t("fiado_client_required"));
+        alert(
+          t("fiado_client_required")
+        );
+
         return;
       }
 
@@ -104,10 +131,15 @@ function TicketPanel({
         t("confirm_enable_fiado")
           .replaceAll(
             "{client}",
-            selectedSaleClient.client_name
+            selectedSaleClient
+              .client_name
           );
 
-      if (!window.confirm(confirmationMessage)) {
+      if (
+        !window.confirm(
+          confirmationMessage
+        )
+      ) {
         return;
       }
 
@@ -174,8 +206,12 @@ function TicketPanel({
           disabled={finalizingIntake}
           style={{
             ...btnPrimary,
+
             opacity:
-              finalizingIntake ? 0.6 : 1,
+              finalizingIntake
+                ? 0.6
+                : 1,
+
             cursor:
               finalizingIntake
                 ? "default"
@@ -193,8 +229,12 @@ function TicketPanel({
           disabled={finalizingIntake}
           style={{
             ...btnSecondary,
+
             opacity:
-              finalizingIntake ? 0.6 : 1,
+              finalizingIntake
+                ? 0.6
+                : 1,
+
             cursor:
               finalizingIntake
                 ? "default"
@@ -205,7 +245,7 @@ function TicketPanel({
         </button>
       </div>
 
-      {/* TABS */}
+      {/* TICKET TABS */}
       <div
         style={{
           display: "flex",
@@ -214,42 +254,60 @@ function TicketPanel({
           flexWrap: "wrap"
         }}
       >
-        {tickets.map((ticket, index) => (
-          <button
-            key={ticket.id}
-            type="button"
-            onClick={() =>
-              setActiveTicket(ticket.id)
-            }
-            onContextMenu={event => {
-              event.preventDefault();
-
-              if (!finalizingIntake) {
-                renameTicket(ticket.id);
+        {tickets.map(
+          (ticket, index) => (
+            <button
+              key={ticket.id}
+              type="button"
+              onClick={() =>
+                setActiveTicket(
+                  ticket.id
+                )
               }
-            }}
-            disabled={finalizingIntake}
-            style={{
-              ...tabStyle,
-              background:
-                ticket.id === activeTicket
-                  ? COLORS.primary
-                  : COLORS.panelAlt,
-              opacity:
-                finalizingIntake ? 0.6 : 1,
-              cursor:
+              onContextMenu={event => {
+                event.preventDefault();
+
+                if (
+                  !finalizingIntake
+                ) {
+                  renameTicket(
+                    ticket.id
+                  );
+                }
+              }}
+              disabled={
                 finalizingIntake
-                  ? "default"
-                  : "pointer"
-            }}
-          >
-            {ticket.label ||
-              `${ticket.type} ${index + 1}`}
-          </button>
-        ))}
+              }
+              style={{
+                ...tabStyle,
+
+                background:
+                  ticket.id ===
+                  activeTicket
+                    ? COLORS.primary
+                    : COLORS.panelAlt,
+
+                opacity:
+                  finalizingIntake
+                    ? 0.6
+                    : 1,
+
+                cursor:
+                  finalizingIntake
+                    ? "default"
+                    : "pointer"
+              }}
+            >
+              {ticket.label ||
+                `${ticket.type} ${
+                  index + 1
+                }`}
+            </button>
+          )
+        )}
       </div>
 
-      {/* CONTENT */}
+      {/* ACTIVE TICKET */}
       {currentTicket && (
         <div
           style={{
@@ -261,10 +319,12 @@ function TicketPanel({
             overflow: "hidden"
           }}
         >
+          {/* TICKET HEADER */}
           <div
             style={{
               display: "flex",
-              justifyContent: "flex-start",
+              justifyContent:
+                "flex-start",
               alignItems: "center",
               gap: 10,
               marginBottom: 10,
@@ -278,22 +338,35 @@ function TicketPanel({
               }}
             >
               {currentTicket.label ||
-                (currentTicket.type === "sale"
-                  ? t("sale_ticket")
-                  : t("intake_ticket"))}
+                (
+                  currentTicket.type ===
+                  "sale"
+                    ? t("sale_ticket")
+                    : t(
+                        "intake_ticket"
+                      )
+                )}
             </h3>
 
-            {currentTicket.type === "sale" && (
+            {/* SALE OPTIONS */}
+            {currentTicket.type ===
+              "sale" && (
               <>
                 <select
-                  aria-label={t("select_client")}
-                  value={saleClientId ?? ""}
+                  aria-label={
+                    t("select_client")
+                  }
+                  value={
+                    saleClientId ?? ""
+                  }
                   onChange={event => {
                     const clientId =
-                      event.target.value === ""
+                      event.target
+                        .value === ""
                         ? null
                         : Number(
-                            event.target.value
+                            event.target
+                              .value
                           );
 
                     updateSaleCreditField(
@@ -302,7 +375,8 @@ function TicketPanel({
                     );
 
                     if (
-                      clientId === null &&
+                      clientId ===
+                        null &&
                       saleIsCredit
                     ) {
                       updateSaleCreditField(
@@ -323,17 +397,26 @@ function TicketPanel({
                   }}
                 >
                   <option value="">
-                    {t("walk_in_no_client")}
+                    {t(
+                      "walk_in_no_client"
+                    )}
                   </option>
 
-                  {(saleClients || []).map(client => (
-                    <option
-                      key={client.client_id}
-                      value={client.client_id}
-                    >
-                      {client.client_name}
-                    </option>
-                  ))}
+                  {(saleClients || [])
+                    .map(client => (
+                      <option
+                        key={
+                          client.client_id
+                        }
+                        value={
+                          client.client_id
+                        }
+                      >
+                        {
+                          client.client_name
+                        }
+                      </option>
+                    ))}
                 </select>
 
                 {selectedSaleClient && (
@@ -344,83 +427,97 @@ function TicketPanel({
                           .has_overdue_balance
                           ? COLORS.danger
                           : COLORS.textDim,
+
                       fontSize: 11,
                       fontWeight: "bold",
-                      whiteSpace: "nowrap"
+                      whiteSpace:
+                        "nowrap"
                     }}
                   >
-                    {t("balance")}: ${Number(
+                    {t("balance")}: $
+                    {Number(
                       selectedSaleClient
-                        .outstanding_balance || 0
+                        .outstanding_balance ||
+                        0
                     ).toFixed(2)}
                   </span>
                 )}
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  minWidth: 0,
-                  flexWrap: "wrap",
-                  marginLeft: "auto"
-                }}
-              >
-                <select
-                  value={discountType}
-                  onChange={event =>
-                    setDiscountType(
-                      event.target.value
-                    )
-                  }
+                {/* DISCOUNT */}
+                <div
                   style={{
-                    ...inputStyle,
-                    width: 52
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    minWidth: 0,
+                    flexWrap: "wrap",
+                    marginLeft: "auto"
                   }}
                 >
-                  <option value="percent">
-                    %
-                  </option>
-
-                  <option value="amount">
-                    $
-                  </option>
-                </select>
-
-                <input
-                  type="number"
-                  min="0"
-                  value={discountValue}
-                  onChange={event =>
-                    setDiscountValue(
-                      Number(
+                  <select
+                    value={
+                      discountType
+                    }
+                    onChange={event =>
+                      setDiscountType(
                         event.target.value
                       )
-                    )
-                  }
-                  style={{
-                    ...inputStyle,
-                    width: 72
-                  }}
-                />
+                    }
+                    style={{
+                      ...inputStyle,
+                      width: 52
+                    }}
+                  >
+                    <option value="percent">
+                      %
+                    </option>
 
-                <span
-                  style={{
-                    fontSize: 12,
-                    color: COLORS.textDim,
-                    whiteSpace: "nowrap"
-                  }}
-                >
-                  {t("discount")}: -$
-                  {discountAmount.toFixed(2)}
-                </span>
-              </div>
+                    <option value="amount">
+                      $
+                    </option>
+                  </select>
+
+                  <input
+                    type="number"
+                    min="0"
+                    value={
+                      discountValue
+                    }
+                    onChange={event =>
+                      setDiscountValue(
+                        Number(
+                          event.target
+                            .value
+                        )
+                      )
+                    }
+                    style={{
+                      ...inputStyle,
+                      width: 72
+                    }}
+                  />
+
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color:
+                        COLORS.textDim,
+                      whiteSpace:
+                        "nowrap"
+                    }}
+                  >
+                    {t("discount")}: -$
+                    {discountAmount
+                      .toFixed(2)}
+                  </span>
+                </div>
               </>
             )}
           </div>
 
           {/* INTAKE OPTIONS */}
-          {currentTicket.type === "intake" && (
+          {currentTicket.type ===
+            "intake" && (
             <div
               style={{
                 display: "flex",
@@ -428,6 +525,7 @@ function TicketPanel({
                 gap: 16,
                 flexWrap: "wrap",
                 marginBottom: 10,
+
                 opacity:
                   intakeIsFinalizing
                     ? 0.6
@@ -437,38 +535,55 @@ function TicketPanel({
               <label
                 style={{
                   display: "flex",
-                  flexDirection: "column",
+                  flexDirection:
+                    "column",
                   gap: 5,
                   minWidth: 240
                 }}
               >
-                <span>Supplier</span>
+                <span>
+                  {t("supplier")}
+                </span>
 
                 <select
-                  value={intakeSupplierId ?? ""}
+                  value={
+                    intakeSupplierId ??
+                    ""
+                  }
                   onChange={event =>
                     setIntakeSupplierId(
                       event.target.value
                     )
                   }
-                  disabled={intakeIsFinalizing}
+                  disabled={
+                    intakeIsFinalizing
+                  }
                   style={{
                     ...inputStyle,
                     width: "100%"
                   }}
                 >
                   <option value="">
-                    Unassigned / No supplier
+                    {t(
+                      "unassigned_supplier"
+                    )}
                   </option>
 
-                  {intakeSuppliers.map(supplier => (
-                    <option
-                      key={supplier.supplier_id}
-                      value={supplier.supplier_id}
-                    >
-                      {supplier.supplier_name}
-                    </option>
-                  ))}
+                  {(intakeSuppliers || [])
+                    .map(supplier => (
+                      <option
+                        key={
+                          supplier.supplier_id
+                        }
+                        value={
+                          supplier.supplier_id
+                        }
+                      >
+                        {
+                          supplier.supplier_name
+                        }
+                      </option>
+                    ))}
                 </select>
               </label>
 
@@ -482,14 +597,20 @@ function TicketPanel({
               >
                 <input
                   type="checkbox"
-                  checked={intakePaid}
+                  checked={
+                    intakePaid
+                  }
                   onChange={event =>
                     setIntakePaid(
-                      event.target.checked
+                      event.target
+                        .checked
                     )
                   }
-                  disabled={intakeIsFinalizing}
+                  disabled={
+                    intakeIsFinalizing
+                  }
                 />
+
                 {t("paid")}
               </label>
             </div>
@@ -508,8 +629,11 @@ function TicketPanel({
               WebkitOverflowScrolling:
                 "touch",
 
-              touchAction: "pan-x pan-y",
-              overscrollBehavior: "contain",
+              touchAction:
+                "pan-x pan-y",
+
+              overscrollBehavior:
+                "contain",
 
               paddingBottom: 8
             }}
@@ -520,21 +644,123 @@ function TicketPanel({
                 minWidth: "100%"
               }}
             >
-              {currentTicket.items.map(
+              {/* COLUMN HEADERS */}
+              {ticketItems.length > 0 && (
+                <div
+                  style={{
+                    display: "grid",
+
+                    gridTemplateColumns:
+                      "minmax(145px, 1fr) " +
+                      "170px " +
+                      "86px " +
+                      "110px " +
+                      "42px",
+
+                    gap: 7,
+                    alignItems: "end",
+
+                    width:
+                      TICKET_ROW_WIDTH,
+
+                    minWidth:
+                      TICKET_ROW_WIDTH,
+
+                    boxSizing:
+                      "border-box",
+
+                    padding:
+                      "0 6px 5px",
+
+                    marginBottom: 2,
+
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 2,
+
+                    background:
+                      COLORS.panel,
+
+                    color:
+                      COLORS.textDim,
+
+                    fontSize: 11,
+                    fontWeight: 600
+                  }}
+                >
+                  <div>
+                    {t("product")}
+                  </div>
+
+                  <div
+                    style={{
+                      textAlign:
+                        "center"
+                    }}
+                  >
+                    {t("quantity")}
+                  </div>
+
+                  <div
+                    style={{
+                      textAlign:
+                        "center"
+                    }}
+                  >
+                    {currentTicket.type ===
+                    "intake"
+                      ? t("unit_cost")
+                      : t(
+                          "sales_price_per_unit"
+                        )}
+                  </div>
+
+                  <div
+                    style={{
+                      textAlign:
+                        "center"
+                    }}
+                  >
+                    {currentTicket.type ===
+                    "intake"
+                      ? t(
+                          "sales_price_per_unit"
+                        )
+                      : t(
+                          "line_total"
+                        )}
+                  </div>
+
+                  <div />
+                </div>
+              )}
+
+              {/* ITEM ROWS */}
+              {ticketItems.map(
                 (item, index) => (
                   <div
-                    key={`${item.product_id}-${index}`}
+                    key={
+                      `${item.product_id}-${index}`
+                    }
                     style={{
                       ...rowWrapper,
-                      width: 620,
-                      minWidth: 620,
-                      boxSizing: "border-box"
+
+                      width:
+                        TICKET_ROW_WIDTH,
+
+                      minWidth:
+                        TICKET_ROW_WIDTH,
+
+                      boxSizing:
+                        "border-box"
                     }}
                   >
                     <TicketRow
                       item={item}
                       index={index}
-                      removeItem={removeItem}
+                      removeItem={
+                        removeItem
+                      }
                       updateItemField={
                         updateItemField
                       }
@@ -551,12 +777,14 @@ function TicketPanel({
             </div>
           </div>
 
-          {/* WARNING */}
-          {currentTicket.type === "sale" &&
+          {/* SALE LOSS WARNING */}
+          {currentTicket.type ===
+            "sale" &&
             profit < 0 && (
               <div
                 style={{
-                  color: COLORS.danger,
+                  color:
+                    COLORS.danger,
                   marginTop: 6,
                   flexShrink: 0
                 }}
@@ -565,13 +793,14 @@ function TicketPanel({
               </div>
             )}
 
-          {/* FOOTER: ACTIONS + TOTAL */}
+          {/* FOOTER */}
           <div
             style={{
               marginTop: 12,
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
+              justifyContent:
+                "space-between",
               gap: 12,
               flexWrap: "wrap",
               flexShrink: 0
@@ -584,44 +813,71 @@ function TicketPanel({
                 flexWrap: "wrap"
               }}
             >
-              {currentTicket.type === "sale" && (
+              {/* SALE ACTIONS */}
+              {currentTicket.type ===
+                "sale" && (
                 <>
                   <button
                     type="button"
-                    onClick={finalizeSale}
-                    style={btnPrimary}
+                    onClick={
+                      finalizeSale
+                    }
+                    style={
+                      btnPrimary
+                    }
                   >
-                    {t("finalize_sale")}
+                    {t(
+                      "finalize_sale"
+                    )}
                   </button>
 
                   <button
                     type="button"
-                    onClick={toggleFiado}
-                    aria-pressed={saleIsCredit}
+                    onClick={
+                      toggleFiado
+                    }
+                    aria-pressed={
+                      saleIsCredit
+                    }
                     style={{
                       ...btnSecondary,
-                      background: saleIsCredit
-                        ? "#b7791f"
-                        : btnSecondary.background,
-                      fontWeight: saleIsCredit
-                        ? "bold"
-                        : "normal"
+
+                      background:
+                        saleIsCredit
+                          ? "#b7791f"
+                          : btnSecondary
+                              .background,
+
+                      fontWeight:
+                        saleIsCredit
+                          ? "bold"
+                          : "normal"
                     }}
                   >
                     {t("fiado")}
-                    {saleIsCredit ? " ✓" : ""}
+                    {saleIsCredit
+                      ? " ✓"
+                      : ""}
                   </button>
 
                   {saleIsCredit && (
                     <input
                       type="date"
-                      aria-label={t("due_date")}
-                      title={t("due_date")}
-                      value={saleDueDate || ""}
+                      aria-label={
+                        t("due_date")
+                      }
+                      title={
+                        t("due_date")
+                      }
+                      value={
+                        saleDueDate ||
+                        ""
+                      }
                       onChange={event =>
                         updateSaleCreditField(
                           "due_date",
-                          event.target.value
+                          event.target
+                            .value
                         )
                       }
                       style={{
@@ -633,17 +889,25 @@ function TicketPanel({
                 </>
               )}
 
-              {currentTicket.type === "intake" && (
+              {/* INTAKE ACTION */}
+              {currentTicket.type ===
+                "intake" && (
                 <button
                   type="button"
-                  onClick={finalizeIntake}
-                  disabled={finalizingIntake}
+                  onClick={
+                    finalizeIntake
+                  }
+                  disabled={
+                    finalizingIntake
+                  }
                   style={{
                     ...btnPrimary,
+
                     opacity:
                       finalizingIntake
                         ? 0.6
                         : 1,
+
                     cursor:
                       finalizingIntake
                         ? "default"
@@ -652,20 +916,28 @@ function TicketPanel({
                 >
                   {finalizingIntake
                     ? t("loading")
-                    : t("finalize_intake")}
+                    : t(
+                        "finalize_intake"
+                      )}
                 </button>
               )}
 
               <button
                 type="button"
-                onClick={cancelTicket}
-                disabled={intakeIsFinalizing}
+                onClick={
+                  cancelTicket
+                }
+                disabled={
+                  intakeIsFinalizing
+                }
                 style={{
                   ...btnDanger,
+
                   opacity:
                     intakeIsFinalizing
                       ? 0.6
                       : 1,
+
                   cursor:
                     intakeIsFinalizing
                       ? "default"
@@ -676,16 +948,24 @@ function TicketPanel({
               </button>
             </div>
 
+            {/* TICKET TOTAL */}
             <div
               style={{
                 minWidth: 180,
                 padding: "10px 16px",
-                boxSizing: "border-box",
+                boxSizing:
+                  "border-box",
                 borderRadius: 10,
                 background: "#0b1220",
+
                 border:
-                  `1px solid ${COLORS.primary}`,
-                color: COLORS.primary,
+                  `1px solid ${
+                    COLORS.primary
+                  }`,
+
+                color:
+                  COLORS.primary,
+
                 fontSize: 22,
                 fontWeight: "bold",
                 textAlign: "right",
@@ -695,7 +975,7 @@ function TicketPanel({
               ${total.toFixed(2)}
             </div>
           </div>
-          </div>
+        </div>
       )}
     </div>
   );
