@@ -1,7 +1,10 @@
-import { useLang } from "../LanguageContext";
+import {
+  useLang
+} from "../LanguageContext";
 
 const COLORS = {
-  overlay: "rgba(0, 0, 0, 0.72)",
+  overlay:
+    "rgba(0, 0, 0, 0.72)",
   panel: "#1a1d24",
   panelAlt: "#222733",
   border: "#2f3542",
@@ -10,34 +13,86 @@ const COLORS = {
   primary: "#3aa0ff"
 };
 
+/*
+ * Currency totals always display
+ * exactly two decimal places.
+ */
 const formatMoney = value =>
-  Number(value || 0).toFixed(2);
+  Number(
+    value || 0
+  ).toFixed(2);
 
-const getShortReference = eventId => {
-  const compact = String(eventId || "")
-    .replaceAll("-", "")
-    .toUpperCase();
+/*
+ * Unit prices display a third decimal
+ * only when it is actually needed.
+ *
+ * 0.33  -> 0.33
+ * 0.333 -> 0.333
+ * 1.5   -> 1.50
+ */
+const formatUnitPrice = value => {
+  const numericValue =
+    Number(value || 0);
 
-  const short = compact.slice(-8);
+  const threeDecimals =
+    numericValue.toFixed(3);
 
-  return short.length === 8
-    ? `${short.slice(0, 4)}-${short.slice(4)}`
-    : short || "—";
+  if (
+    threeDecimals.endsWith("0")
+  ) {
+    return numericValue.toFixed(2);
+  }
+
+  return threeDecimals;
 };
 
-function ReceiptModal({ receipt, onClose }) {
+const getShortReference =
+  eventId => {
+    const compact = String(
+      eventId || ""
+    )
+      .replaceAll("-", "")
+      .toUpperCase();
+
+    const short =
+      compact.slice(-8);
+
+    return short.length === 8
+      ? `${
+          short.slice(0, 4)
+        }-${
+          short.slice(4)
+        }`
+      : short || "—";
+  };
+
+function ReceiptModal({
+  receipt,
+  onClose
+}) {
   const { t } = useLang();
 
-  if (!receipt) return null;
+  if (!receipt) {
+    return null;
+  }
 
-  const createdAt = new Date(receipt.createdAt);
-  const formattedDate = Number.isNaN(createdAt.getTime())
-    ? receipt.createdAt
-    : createdAt.toLocaleString();
+  const createdAt =
+    new Date(
+      receipt.createdAt
+    );
 
-  const reference = getShortReference(
-    receipt.clientEventId
-  );
+  const formattedDate =
+    Number.isNaN(
+      createdAt.getTime()
+    )
+      ? receipt.createdAt
+      : createdAt
+          .toLocaleString();
+
+  const reference =
+    getShortReference(
+      receipt.clientEventId
+    );
 
   const printReceipt = () => {
     window.print();
@@ -47,7 +102,9 @@ function ReceiptModal({ receipt, onClose }) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={t("receipt_preview")}
+      aria-label={
+        t("receipt_preview")
+      }
       style={overlayStyle}
     >
       <style>{`
@@ -58,185 +115,400 @@ function ReceiptModal({ receipt, onClose }) {
           }
 
           body * {
-            visibility: hidden !important;
+            visibility:
+              hidden !important;
           }
 
           #vendr-print-receipt,
           #vendr-print-receipt * {
-            visibility: visible !important;
+            visibility:
+              visible !important;
           }
 
           #vendr-print-receipt {
-            position: absolute !important;
+            position:
+              absolute !important;
+
             top: 0 !important;
             left: 0 !important;
-            width: 48mm !important;
+
+            width:
+              48mm !important;
+
             margin: 0 !important;
-            padding: 2mm 0 3mm 0 !important;
-            border: 0 !important;
-            box-shadow: none !important;
-            background: white !important;
-            color: black !important;
-            opacity: 1 !important;
-            font-family: Arial, Helvetica, sans-serif !important;
-            font-size: 11px !important;
-            font-weight: 700 !important;
-            line-height: 1.3 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            -webkit-text-stroke: 0.12px black;
-            text-rendering: geometricPrecision;
+
+            padding:
+              2mm 0 3mm 0 !important;
+
+            border:
+              0 !important;
+
+            box-shadow:
+              none !important;
+
+            background:
+              white !important;
+
+            color:
+              black !important;
+
+            opacity:
+              1 !important;
+
+            font-family:
+              Arial,
+              Helvetica,
+              sans-serif !important;
+
+            font-size:
+              11px !important;
+
+            font-weight:
+              700 !important;
+
+            line-height:
+              1.3 !important;
+
+            -webkit-print-color-adjust:
+              exact !important;
+
+            print-color-adjust:
+              exact !important;
+
+            -webkit-text-stroke:
+              0.12px black;
+
+            text-rendering:
+              geometricPrecision;
           }
 
           #vendr-print-receipt * {
-            color: black !important;
-            opacity: 1 !important;
+            color:
+              black !important;
+
+            opacity:
+              1 !important;
           }
         }
       `}</style>
 
       <div style={modalStyle}>
-        <div style={modalHeaderStyle}>
-          <h3 style={{ margin: 0 }}>
-            {t("receipt_preview")}
+        <div
+          style={
+            modalHeaderStyle
+          }
+        >
+          <h3
+            style={{
+              margin: 0
+            }}
+          >
+            {t(
+              "receipt_preview"
+            )}
           </h3>
 
           <button
             type="button"
             onClick={onClose}
-            aria-label={t("close")}
-            style={closeButtonStyle}
+            aria-label={
+              t("close")
+            }
+            style={
+              closeButtonStyle
+            }
           >
             ×
           </button>
         </div>
 
-        <div style={previewAreaStyle}>
+        <div
+          style={
+            previewAreaStyle
+          }
+        >
           <div
-            id="vendr-print-receipt"
+            id={
+              "vendr-print-receipt"
+            }
             style={receiptStyle}
           >
-            <div style={centerBoldStyle}>
-              {String(receipt.storeName || "VENDR")
-                .toUpperCase()}
+            <div
+              style={
+                centerBoldStyle
+              }
+            >
+              {String(
+                receipt.storeName ||
+                  "VENDR"
+              ).toUpperCase()}
             </div>
 
-            <div style={centerStyle}>
+            <div
+              style={
+                centerStyle
+              }
+            >
               {formattedDate}
             </div>
 
-            <div style={separatorStyle} />
+            <div
+              style={
+                separatorStyle
+              }
+            />
 
-            {receipt.ticketId != null ? (
+            {receipt.ticketId !=
+            null ? (
               <div>
-                {t("ticket")}: #{receipt.ticketId}
+                {t("ticket")}: #
+                {receipt.ticketId}
               </div>
             ) : (
               <>
                 <div>
-                  {t("receipt_reference")}: {reference}
+                  {t(
+                    "receipt_reference"
+                  )}
+                  : {reference}
                 </div>
 
-                <div style={pendingStyle}>
-                  {t("pending_synchronization")}
+                <div
+                  style={
+                    pendingStyle
+                  }
+                >
+                  {t(
+                    "pending_synchronization"
+                  )}
                 </div>
               </>
             )}
 
             {receipt.clientName && (
               <div>
-                {t("client")}: {receipt.clientName}
+                {t("client")}:{" "}
+                {
+                  receipt.clientName
+                }
               </div>
             )}
 
-            <div style={separatorStyle} />
+            <div
+              style={
+                separatorStyle
+              }
+            />
 
-            {receipt.items.map((item, index) => (
-              <div
-                key={`${item.product_id}-${index}`}
-                style={{ marginBottom: "2mm" }}
-              >
-                <div style={{ fontWeight: 700 }}>
-                  {item.name}
-                </div>
+            {(receipt.items || [])
+              .map(
+                (item, index) => {
+                  const quantity =
+                    Number(
+                      item.quantity ||
+                        0
+                    );
 
-                <div style={lineStyle}>
-                  <span>
-                    {Number(item.quantity)} × ${formatMoney(
-                      item.price
-                    )}
-                  </span>
+                  const unitPrice =
+                    Number(
+                      item.price ||
+                        0
+                    );
 
-                  <span>
-                    ${formatMoney(
-                      Number(item.quantity) *
-                        Number(item.price)
-                    )}
-                  </span>
-                </div>
-              </div>
-            ))}
+                  const lineTotal =
+                    quantity *
+                    unitPrice;
 
-            <div style={separatorStyle} />
+                  return (
+                    <div
+                      key={
+                        `${item.product_id}-${index}`
+                      }
+                      style={{
+                        marginBottom:
+                          "2mm"
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight:
+                            700
+                        }}
+                      >
+                        {item.name}
+                      </div>
 
-            <div style={lineStyle}>
-              <span>{t("subtotal")}</span>
-              <span>${formatMoney(receipt.subtotal)}</span>
+                      <div
+                        style={
+                          lineStyle
+                        }
+                      >
+                        <span>
+                          {quantity} × $
+                          {formatUnitPrice(
+                            unitPrice
+                          )}
+                        </span>
+
+                        <span>
+                          $
+                          {formatMoney(
+                            lineTotal
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+
+            <div
+              style={
+                separatorStyle
+              }
+            />
+
+            <div
+              style={
+                lineStyle
+              }
+            >
+              <span>
+                {t("subtotal")}
+              </span>
+
+              <span>
+                $
+                {formatMoney(
+                  receipt.subtotal
+                )}
+              </span>
             </div>
 
-            {Number(receipt.discountAmount) > 0 && (
-              <div style={lineStyle}>
-                <span>{t("discount")}</span>
-                <span>-${formatMoney(receipt.discountAmount)}</span>
+            {Number(
+              receipt.discountAmount
+            ) > 0 && (
+              <div
+                style={
+                  lineStyle
+                }
+              >
+                <span>
+                  {t("discount")}
+                </span>
+
+                <span>
+                  -$
+                  {formatMoney(
+                    receipt
+                      .discountAmount
+                  )}
+                </span>
               </div>
             )}
 
-            <div style={totalStyle}>
-              <span>{t("total")}</span>
-              <span>${formatMoney(receipt.total)}</span>
+            <div
+              style={
+                totalStyle
+              }
+            >
+              <span>
+                {t("total")}
+              </span>
+
+              <span>
+                $
+                {formatMoney(
+                  receipt.total
+                )}
+              </span>
             </div>
 
             {receipt.isCredit && (
               <>
-                <div style={separatorStyle} />
+                <div
+                  style={
+                    separatorStyle
+                  }
+                />
 
-                <div style={centerBoldStyle}>
+                <div
+                  style={
+                    centerBoldStyle
+                  }
+                >
                   {t("fiado")}
                 </div>
 
                 {receipt.dueDate && (
-                  <div style={centerStyle}>
-                    {t("due_date")}: {receipt.dueDate}
+                  <div
+                    style={
+                      centerStyle
+                    }
+                  >
+                    {t(
+                      "due_date"
+                    )}
+                    :{" "}
+                    {
+                      receipt.dueDate
+                    }
                   </div>
                 )}
               </>
             )}
 
-            <div style={separatorStyle} />
+            <div
+              style={
+                separatorStyle
+              }
+            />
 
-            <div style={centerStyle}>
-              {t("receipt_thank_you")}
+            <div
+              style={
+                centerStyle
+              }
+            >
+              {t(
+                "receipt_thank_you"
+              )}
             </div>
 
-            <div style={centerStyle}>
-              {t("receipt_come_again")}
+            <div
+              style={
+                centerStyle
+              }
+            >
+              {t(
+                "receipt_come_again"
+              )}
             </div>
           </div>
         </div>
 
-        <div style={actionStyle}>
+        <div
+          style={actionStyle}
+        >
           <button
             type="button"
-            onClick={printReceipt}
-            style={printButtonStyle}
+            onClick={
+              printReceipt
+            }
+            style={
+              printButtonStyle
+            }
           >
-            {t("print_receipt")}
+            {t(
+              "print_receipt"
+            )}
           </button>
 
           <button
             type="button"
             onClick={onClose}
-            style={secondaryButtonStyle}
+            style={
+              secondaryButtonStyle
+            }
           >
             {t("close")}
           </button>
@@ -259,10 +531,16 @@ const overlayStyle = {
 };
 
 const modalStyle = {
-  width: "min(420px, 100%)",
+  width:
+    "min(420px, 100%)",
   maxHeight: "92vh",
   background: COLORS.panel,
-  border: `1px solid ${COLORS.border}`,
+
+  border:
+    `1px solid ${
+      COLORS.border
+    }`,
+
   borderRadius: 12,
   color: COLORS.text,
   display: "flex",
@@ -273,15 +551,21 @@ const modalStyle = {
 const modalHeaderStyle = {
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
+  justifyContent:
+    "space-between",
   gap: 12,
   padding: "12px 14px",
-  borderBottom: `1px solid ${COLORS.border}`
+
+  borderBottom:
+    `1px solid ${
+      COLORS.border
+    }`
 };
 
 const closeButtonStyle = {
   border: 0,
-  background: "transparent",
+  background:
+    "transparent",
   color: COLORS.text,
   fontSize: 24,
   cursor: "pointer",
@@ -302,7 +586,10 @@ const receiptStyle = {
   padding: "3mm 2mm",
   background: "white",
   color: "black",
-  fontFamily: "Arial, Helvetica, sans-serif",
+
+  fontFamily:
+    "Arial, Helvetica, sans-serif",
+
   fontSize: "11px",
   fontWeight: 700,
   lineHeight: 1.3,
@@ -319,13 +606,16 @@ const centerBoldStyle = {
 };
 
 const separatorStyle = {
-  borderTop: "2px dashed black",
+  borderTop:
+    "2px dashed black",
+
   margin: "2mm 0"
 };
 
 const lineStyle = {
   display: "flex",
-  justifyContent: "space-between",
+  justifyContent:
+    "space-between",
   gap: "2mm"
 };
 
@@ -346,7 +636,11 @@ const actionStyle = {
   display: "flex",
   gap: 8,
   padding: 12,
-  borderTop: `1px solid ${COLORS.border}`
+
+  borderTop:
+    `1px solid ${
+      COLORS.border
+    }`
 };
 
 const printButtonStyle = {
@@ -361,7 +655,11 @@ const printButtonStyle = {
 };
 
 const secondaryButtonStyle = {
-  border: `1px solid ${COLORS.border}`,
+  border:
+    `1px solid ${
+      COLORS.border
+    }`,
+
   borderRadius: 8,
   padding: "10px 12px",
   background: COLORS.panelAlt,
