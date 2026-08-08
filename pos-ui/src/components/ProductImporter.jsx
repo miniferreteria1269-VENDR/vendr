@@ -1,88 +1,200 @@
 import { useState } from "react";
-import axios from "axios";
+import apiClient from "../apiClient";
 
 function ProductImporter({ storeId }) {
+  const [file, setFile] =
+    useState(null);
 
-  const [file, setFile] = useState(null);
-  const [result, setResult] = useState(null);
+  const [result, setResult] =
+    useState(null);
+
+  const [uploading, setUploading] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
 
   const uploadFile = async () => {
-
     if (!file) {
       alert("Select a file first");
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
+    if (!storeId) {
+      setError(
+        "Unable to determine the current store."
+      );
+      return;
+    }
 
-    const res = await axios.post(
-      "https://vendr-onkr.onrender.com/import-products",
-      formData,
-      {
-        params: { store_id: storeId },
-        headers: { "Content-Type": "multipart/form-data" }
-      }
+    const formData =
+      new FormData();
+
+    formData.append(
+      "file",
+      file
     );
 
-    setResult(res.data);
+    setUploading(true);
+    setResult(null);
+    setError("");
+
+    try {
+      const response =
+        await apiClient.post(
+          "/import-products",
+          formData,
+          {
+            params: {
+              store_id: storeId
+            },
+
+            /*
+             * Large product imports may take
+             * longer than the normal API timeout.
+             */
+            timeout: 120000
+          }
+        );
+
+      setResult(
+        response.data
+      );
+    } catch (requestError) {
+      console.error(
+        "PRODUCT IMPORT ERROR:",
+        requestError
+      );
+
+      const detail =
+        requestError.response
+          ?.data?.detail ||
+        requestError.message ||
+        "Unable to import products.";
+
+      setError(
+        String(detail)
+      );
+    } finally {
+      setUploading(false);
+    }
   };
 
+  const rejectedRows =
+    result?.rejected || [];
+
   return (
+    <div
+      style={{
+        maxWidth: 500
+      }}
+    >
+      <h3>
+        Import Products
+      </h3>
 
-    <div style={{ maxWidth: 500 }}>
-
-      <h3>Import Products</h3>
-
-      <a href="/vendr_import_template.xlsx" download>
+      <a
+        href="/vendr_import_template.xlsx"
+        download
+      >
         Download Import Template
       </a>
 
-      <div style={{ marginTop: 20 }}>
+      <div
+        style={{
+          marginTop: 20
+        }}
+      >
         <input
           type="file"
           accept=".xlsx,.csv"
-          onChange={(e) => setFile(e.target.files[0])}
+          disabled={uploading}
+          onChange={event => {
+            setFile(
+              event.target.files?.[0] ||
+              null
+            );
+
+            setResult(null);
+            setError("");
+          }}
         />
       </div>
 
       <button
-        onClick={uploadFile}
-        style={{ marginTop: 10 }}
+        type="button"
+        onClick(null);
+            setError("");
+={uploadFile}
+        disabled={
+          uploading ||
+          !file
+        }
+        style={{
+          marginTop: 10,
+          opacity:
+            uploading || !file
+              ? 0.6
+              : 1,
+          cursor:
+            uploading || !file
+              ? "not-allowed"
+              : "pointer"
+        }}
       >
-        Upload File
+        {uploading
+          ? "Importing..."
+          : "Upload File"}
       </button>
 
-      {result && (
-
-        <div style={{ marginTop: 20 }}>
-
-          <div>
-            Products Created: {result.created}
-          </div>
-
-          {result.rejected.length > 0 && (
-
-            <div style={{ marginTop: 10 }}>
-
-              <b>Rejected Rows</b>
-
-              {result.rejected.map((r, i) => (
-
-                <div key={i}>
-                  Row {r.row}: {r.error}
-                </div>
-
-              ))}
-
-            </div>
-
-          )}
-
+      {error && (
+        <div
+          style={{
+            marginTop: 16,
+            color: "#ff6b6b"
+          }}
+        >
+          {error}
         </div>
-
       )}
 
+      {result && (
+        <div
+          style={{
+            marginTop: 20
+          }}
+        >
+          <div>
+            Products Created:{" "}
+            {result.created || 0}
+          </div>
+
+          {rejectedRows.length > 0 && (
+            <div
+              style={{
+                marginTop: 10
+              }}
+            >
+              <b>
+                Rejected Rows
+              </b>
+
+              {rejectedRows.map(
+                (rejected, index) => (
+                  <div
+                    key={
+                      `${rejected.row}-${index}`
+                    }
+                  >
+                    Row {rejected.row}:{" "}
+                    {rejected.error}
+                  </div>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
