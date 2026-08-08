@@ -10,7 +10,9 @@ function TicketRow({
     Number(item.quantity);
 
   const quantity =
-    Number.isFinite(parsedQuantity) &&
+    Number.isFinite(
+      parsedQuantity
+    ) &&
     parsedQuantity > 0
       ? parsedQuantity
       : 0;
@@ -21,55 +23,101 @@ function TicketRow({
   const lineTotal =
     unitPrice * quantity;
 
-  const normalizeQuantity = value => {
+  const normalizeQuantity =
+    value => {
+      const numericValue =
+        Number(value);
+
+      if (
+        !Number.isFinite(
+          numericValue
+        ) ||
+        numericValue < 1
+      ) {
+        return 1;
+      }
+
+      return Math.max(
+        Math.trunc(
+          numericValue
+        ),
+        1
+      );
+    };
+
+  const normalizeMoney = (
+    value,
+    decimalPlaces = 2
+  ) => {
     const numericValue =
       Number(value);
 
     if (
-      !Number.isFinite(numericValue) ||
-      numericValue < 1
-    ) {
-      return 1;
-    }
-
-    return Math.max(
-      Math.trunc(numericValue),
-      1
-    );
-  };
-
-  const normalizeMoney = value => {
-    const numericValue =
-      Number(value);
-
-    if (
-      !Number.isFinite(numericValue) ||
+      !Number.isFinite(
+        numericValue
+      ) ||
       numericValue < 0
     ) {
       return 0;
     }
 
-    return Math.round(
-      numericValue * 100
-    ) / 100;
+    const factor =
+      10 ** decimalPlaces;
+
+    return (
+      Math.round(
+        numericValue * factor
+      ) / factor
+    );
   };
 
-  const changeQuantity = amount => {
-    if (disabled) {
-      return;
-    }
+  const changeQuantity =
+    amount => {
+      if (disabled) {
+        return;
+      }
 
-    const currentQuantity =
-      normalizeQuantity(
-        item.quantity
+      const currentQuantity =
+        normalizeQuantity(
+          item.quantity
+        );
+
+      updateItemField(
+        index,
+        "quantity",
+        Math.max(
+          currentQuantity +
+            amount,
+          1
+        )
       );
+    };
 
+  const updateMoneyField = (
+    field,
+    value
+  ) => {
+    /*
+     * Preserve an empty string while
+     * the cashier is typing.
+     */
     updateItemField(
       index,
-      "quantity",
-      Math.max(
-        currentQuantity + amount,
-        1
+      field,
+      value
+    );
+  };
+
+  const normalizeMoneyField = (
+    field,
+    decimalPlaces = 2
+  ) => {
+    updateItemField(
+      index,
+      field,
+      normalizeMoney(
+        item[field],
+        decimalPlaces
       )
     );
   };
@@ -80,7 +128,8 @@ function TicketRow({
     height: 40,
     boxSizing: "border-box",
     background: "#2a2f3a",
-    border: "1px solid #3a4250",
+    border:
+      "1px solid #3a4250",
     borderRadius: 6,
     color: "white",
     padding: "6px 8px",
@@ -112,31 +161,6 @@ function TicketRow({
       "manipulation"
   };
 
-  const updateMoneyField = (
-    field,
-    value
-  ) => {
-    /*
-     * Preserve an empty string while the cashier
-     * is editing. It will normalize on blur.
-     */
-    updateItemField(
-      index,
-      field,
-      value
-    );
-  };
-
-  const normalizeMoneyField = field => {
-    updateItemField(
-      index,
-      field,
-      normalizeMoney(
-        item[field]
-      )
-    );
-  };
-
   return (
     <div
       style={{
@@ -162,7 +186,8 @@ function TicketRow({
         style={{
           minWidth: 0,
           overflow: "hidden",
-          textOverflow: "ellipsis",
+          textOverflow:
+            "ellipsis",
           whiteSpace: "nowrap",
           fontWeight: 500
         }}
@@ -193,26 +218,22 @@ function TicketRow({
             item.quantity ?? ""
           }
           disabled={disabled}
-          onChange={event => {
-            /*
-             * Keep the raw value so an empty
-             * input remains empty while typing.
-             */
+          onChange={event =>
             updateItemField(
               index,
               "quantity",
               event.target.value
-            );
-          }}
-          onBlur={() => {
+            )
+          }
+          onBlur={() =>
             updateItemField(
               index,
               "quantity",
               normalizeQuantity(
                 item.quantity
               )
-            );
-          }}
+            )
+          }
           style={fieldStyle}
         />
 
@@ -222,10 +243,13 @@ function TicketRow({
             changeQuantity(-1)
           }
           disabled={disabled}
-          aria-label="Decrease quantity"
+          aria-label={
+            "Decrease quantity"
+          }
           style={{
             ...quantityButtonStyle,
-            background: "#d6a400",
+            background:
+              "#d6a400",
             color: "#111"
           }}
         >
@@ -238,10 +262,13 @@ function TicketRow({
             changeQuantity(1)
           }
           disabled={disabled}
-          aria-label="Increase quantity"
+          aria-label={
+            "Increase quantity"
+          }
           style={{
             ...quantityButtonStyle,
-            background: "#2e9d50",
+            background:
+              "#2e9d50",
             color: "white"
           }}
         >
@@ -249,8 +276,9 @@ function TicketRow({
         </button>
       </div>
 
-      {/* UNIT COST OR SALE PRICE */}
-      {ticketType === "intake" ? (
+      {/* UNIT COST OR SALES PRICE */}
+      {ticketType ===
+      "intake" ? (
         <input
           type="number"
           min="0"
@@ -269,7 +297,8 @@ function TicketRow({
           }
           onBlur={() =>
             normalizeMoneyField(
-              "cost"
+              "cost",
+              2
             )
           }
           style={fieldStyle}
@@ -278,13 +307,15 @@ function TicketRow({
         <input
           type="number"
           min="0"
-          step="0.01"
+          step="0.001"
           inputMode="decimal"
           value={
             item.price ?? ""
           }
           disabled={disabled}
-          aria-label="Sales price per unit"
+          aria-label={
+            "Sales price per unit"
+          }
           onChange={event =>
             updateMoneyField(
               "price",
@@ -293,15 +324,17 @@ function TicketRow({
           }
           onBlur={() =>
             normalizeMoneyField(
-              "price"
+              "price",
+              3
             )
           }
           style={fieldStyle}
         />
       )}
 
-      {/* INTAKE UNIT SALE PRICE OR SALE TOTAL */}
-      {ticketType === "intake" ? (
+      {/* INTAKE SALE PRICE OR SALE TOTAL */}
+      {ticketType ===
+      "intake" ? (
         <input
           type="number"
           min="0"
@@ -311,7 +344,9 @@ function TicketRow({
             item.price ?? ""
           }
           disabled={disabled}
-          aria-label="Sales price per unit"
+          aria-label={
+            "Sales price per unit"
+          }
           onChange={event =>
             updateMoneyField(
               "price",
@@ -320,7 +355,8 @@ function TicketRow({
           }
           onBlur={() =>
             normalizeMoneyField(
-              "price"
+              "price",
+              2
             )
           }
           style={fieldStyle}
