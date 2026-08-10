@@ -161,7 +161,7 @@ function ReceiptModal({
               sans-serif !important;
 
             font-size:
-              11px !important;
+              13px !important;
 
             font-weight:
               700 !important;
