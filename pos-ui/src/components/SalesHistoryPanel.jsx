@@ -5,6 +5,7 @@ import {
 
 import { useLang } from "../LanguageContext";
 import apiClient from "../apiClient";
+import ReceiptModal from "./ReceiptModal";
 
 import {
   COLORS,
@@ -62,7 +63,8 @@ const formatSaleDateTime = value => {
 };
 
 function SalesHistoryPanel({
-  storeId
+  storeId,
+  storeName
 }) {
   const { t } = useLang();
 
@@ -87,6 +89,26 @@ function SalesHistoryPanel({
     ticketDetails,
     setTicketDetails
   ] = useState([]);
+
+  const [
+    selectedSale,
+    setSelectedSale
+  ] = useState(null);
+
+  const [
+    ticketMetadata,
+    setTicketMetadata
+  ] = useState({});
+
+  const [
+    receiptPreview,
+    setReceiptPreview
+  ] = useState(null);
+
+  const [
+    detailsLoading,
+    setDetailsLoading
+  ] = useState(false);
 
   const [loading, setLoading] =
     useState(false);
@@ -141,7 +163,13 @@ function SalesHistoryPanel({
     }
   }, [storeId]);
 
-  const openTicket = async ticketId => {
+  const openTicket = async sale => {
+    if (detailsLoading) {
+      return;
+    }
+
+    setDetailsLoading(true);
+
     try {
       const response =
         await apiClient.get(
@@ -149,7 +177,8 @@ function SalesHistoryPanel({
           {
             params: {
               store_id: storeId,
-              ticket_id: ticketId
+              ticket_id:
+                sale.ticket_id
             }
           }
         );
@@ -159,19 +188,187 @@ function SalesHistoryPanel({
       );
 
       setSelectedTicket(
-        ticketId
+        sale.ticket_id
+      );
+
+      setSelectedSale(sale);
+
+      setTicketMetadata(
+        response.data || {}
       );
     } catch (error) {
       console.error(
         "TICKET DETAILS LOAD ERROR:",
         error
       );
+    } finally {
+      setDetailsLoading(false);
     }
   };
 
   const closeTicket = () => {
     setSelectedTicket(null);
     setTicketDetails([]);
+    setSelectedSale(null);
+    setTicketMetadata({});
+  };
+
+  const getTicketNumber = sale =>
+    sale?.store_ticket_number ??
+    sale?.ticket_number ??
+    sale?.ticket_id ??
+    "—";
+
+  const getFiniteNumber = (
+    values,
+    fallback = 0
+  ) => {
+    for (const value of values) {
+      if (
+        value !== null &&
+        value !== undefined &&
+        value !== "" &&
+        Number.isFinite(Number(value))
+      ) {
+        return Number(value);
+      }
+    }
+
+    return fallback;
+  };
+
+  const openReceiptPreview = () => {
+    if (!selectedSale) {
+      return;
+    }
+
+    const receiptItems = ticketDetails.map(
+      (item, index) => {
+        const quantity = getFiniteNumber(
+          [item.quantity],
+          0
+        );
+
+        const lineTotal = getFiniteNumber(
+          [
+            item.line_total,
+            item.total
+          ],
+          0
+        );
+
+        const price = getFiniteNumber(
+          [
+            item.price,
+            item.unit_price,
+            item.price_at_time
+          ],
+          quantity > 0
+            ? lineTotal / quantity
+            : 0
+        );
+
+        return {
+          product_id:
+            item.product_id ?? index,
+
+          name:
+            item.name ||
+            item.product_name ||
+            "—",
+
+          quantity,
+          price
+        };
+      }
+    );
+
+    const calculatedSubtotal =
+      receiptItems.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.quantity) *
+            Number(item.price),
+        0
+      );
+
+    const total = getFiniteNumber(
+      [
+        ticketMetadata.total,
+        ticketMetadata.revenue,
+        selectedSale.revenue
+      ],
+      calculatedSubtotal
+    );
+
+    const subtotal = getFiniteNumber(
+      [
+        ticketMetadata.subtotal,
+        selectedSale.subtotal
+      ],
+      calculatedSubtotal || total
+    );
+
+    const discountAmount =
+      getFiniteNumber(
+        [
+          ticketMetadata.discount_amount,
+          ticketMetadata.discount,
+          selectedSale.discount_amount
+        ],
+        Math.max(
+          subtotal - total,
+          0
+        )
+      );
+
+    setReceiptPreview({
+      storeName:
+        ticketMetadata.store_name ||
+        selectedSale.store_name ||
+        storeName ||
+        `Store ${storeId}`,
+
+      createdAt:
+        ticketMetadata.datetime ||
+        selectedSale.datetime,
+
+      ticketId:
+        selectedSale.ticket_id,
+
+      ticketNumber:
+        ticketMetadata.store_ticket_number ??
+        ticketMetadata.ticket_number ??
+        getTicketNumber(selectedSale),
+
+      clientName:
+        ticketMetadata.client_name ||
+        ticketMetadata.client_name_at_time ||
+        selectedSale.client_name ||
+        selectedSale.client_name_at_time ||
+        null,
+
+      isCredit:
+        Boolean(
+          ticketMetadata.is_credit ??
+          selectedSale.is_credit
+        ),
+
+      dueDate:
+        ticketMetadata.due_date ||
+        selectedSale.due_date ||
+        null,
+
+      clientEventId:
+        ticketMetadata.client_event_id ||
+        selectedSale.client_event_id ||
+        null,
+
+      items: receiptItems,
+      subtotal,
+      discountAmount,
+      total
+    });
   };
 
   return (
@@ -276,8 +473,10 @@ function SalesHistoryPanel({
         {/* SALES LIST */}
         <div
           style={{
-            flex: 1,
+            height:
+              "clamp(240px, calc(100dvh - 300px), 560px)",
             overflowY: "auto",
+            overflowX: "hidden",
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
@@ -307,8 +506,9 @@ function SalesHistoryPanel({
                     }}
                   >
                     {t("ticket")} #
-                    {sale.ticket_id ??
-                      "—"}
+                    {getTicketNumber(
+                      sale
+                    )}
                   </div>
 
                   <div
@@ -347,10 +547,9 @@ function SalesHistoryPanel({
                   <button
                     type="button"
                     onClick={() =>
-                      openTicket(
-                        sale.ticket_id
-                      )
+                      openTicket(sale)
                     }
+                    disabled={detailsLoading}
                     style={{
                       background:
                         COLORS.primary,
@@ -359,7 +558,11 @@ function SalesHistoryPanel({
                       padding: "4px 8px",
                       color: "white",
                       cursor: "pointer",
-                      fontSize: 12
+                      fontSize: 12,
+                      opacity:
+                        detailsLoading
+                          ? 0.6
+                          : 1
                     }}
                   >
                     {t("details") ||
@@ -422,7 +625,9 @@ function SalesHistoryPanel({
               }}
             >
               {t("ticket")} #
-              {selectedTicket}
+              {getTicketNumber(
+                selectedSale
+              )}
             </h3>
 
             <div
@@ -461,26 +666,62 @@ function SalesHistoryPanel({
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={closeTicket}
+            <div
               style={{
-                background:
-                  COLORS.primary,
-                border: "none",
-                borderRadius: 8,
-                padding: "8px 12px",
-                color: "white",
-                cursor: "pointer",
-                width: "100%",
-                fontWeight: 600
+                display: "flex",
+                gap: 8
               }}
             >
-              {t("back") ||
-                "Back"}
-            </button>
+              <button
+                type="button"
+                onClick={openReceiptPreview}
+                style={{
+                  background:
+                    COLORS.primary,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  color: "white",
+                  cursor: "pointer",
+                  flex: 1,
+                  fontWeight: 600
+                }}
+              >
+                {t("print_receipt") ||
+                  "Print Receipt"}
+              </button>
+
+              <button
+                type="button"
+                onClick={closeTicket}
+                style={{
+                  background:
+                    COLORS.panelAlt,
+                  border:
+                    `1px solid ${COLORS.border}`,
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  color: "white",
+                  cursor: "pointer",
+                  flex: 1,
+                  fontWeight: 600
+                }}
+              >
+                {t("back") ||
+                  "Back"}
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {receiptPreview && (
+        <ReceiptModal
+          receipt={receiptPreview}
+          onClose={() =>
+            setReceiptPreview(null)
+          }
+        />
       )}
     </div>
   );
