@@ -624,7 +624,7 @@ const lineStyle = {
 const totalStyle = {
   ...lineStyle,
   fontWeight: 700,
-  fontSize: "14px",
+  fontSize: "17px",
   marginTop: "1mm"
 };
 
