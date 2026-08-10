@@ -1898,6 +1898,7 @@ const finalizeIntake = async () => {
       {view === "sales" && (
         <HistoryPanel
           storeId={storeId}
+          storeName={user?.store_name}
         />
       )}
 
