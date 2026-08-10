@@ -258,11 +258,13 @@ function ReceiptModal({
               }
             />
 
-            {receipt.ticketId !=
+            {(receipt.ticketNumber ??
+              receipt.ticketId) !=
             null ? (
               <div>
                 {t("ticket")}: #
-                {receipt.ticketId}
+                {receipt.ticketNumber ??
+                  receipt.ticketId}
               </div>
             ) : (
               <>
