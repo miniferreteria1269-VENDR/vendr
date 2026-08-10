@@ -4,7 +4,7 @@ import { COLORS } from "../uiStyles";
 import SalesHistoryPanel from "./SalesHistoryPanel";
 import IntakeHistoryPanel from "./IntakeHistoryPanel";
 
-function HistoryPanel({ storeId }) {
+function HistoryPanel({ storeId, storeName }) {
   const { t } = useLang();
   const [historyView, setHistoryView] = useState("sales");
 
@@ -46,7 +46,10 @@ function HistoryPanel({ storeId }) {
       </div>
 
       {historyView === "sales" && (
-        <SalesHistoryPanel storeId={storeId} />
+        <SalesHistoryPanel
+          storeId={storeId}
+          storeName={storeName}
+        />
       )}
 
       {historyView === "intakes" && (
