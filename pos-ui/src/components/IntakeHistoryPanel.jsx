@@ -227,7 +227,8 @@ function IntakeHistoryPanel({
   }, [storeId]);
 
   const tableContainer = {
-    maxHeight: "65vh",
+    height:
+      "clamp(240px, calc(100dvh - 315px), 560px)",
     overflowY: "auto",
     overflowX: "auto",
     border:
@@ -421,7 +422,9 @@ function IntakeHistoryPanel({
                   }}
                 >
                   #
-                  {intake.ticket_id}
+                  {intake.store_ticket_number ??
+                    intake.ticket_number ??
+                    intake.ticket_id}
                 </td>
 
                 <td
@@ -531,9 +534,9 @@ function IntakeHistoryPanel({
                 {t("intake_ticket") ||
                   "Intake Ticket"}{" "}
                 #
-                {
-                  selectedTicket.ticket_id
-                }
+                {selectedTicket.store_ticket_number ??
+                  selectedTicket.ticket_number ??
+                  selectedTicket.ticket_id}
               </h3>
 
               <div
