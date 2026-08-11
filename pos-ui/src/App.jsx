@@ -1932,8 +1932,12 @@ const finalizeIntake = async () => {
       {view === "clients" && (
         <ClientManagement
           storeId={storeId}
-          storeName={user?.store_name}
+          storeName={
+            user?.store_name ||
+            `Store ${storeId}`
+          }
         />
+      )}
 
       {/* ANALYSIS */}
       {view === "analysis" && (
