@@ -1930,8 +1930,10 @@ const finalizeIntake = async () => {
 
       {/* CLIENTS */}
       {view === "clients" && (
-        <ClientManagement />
-      )}
+        <ClientManagement
+          storeId={storeId}
+          storeName={user?.store_name}
+        />
 
       {/* ANALYSIS */}
       {view === "analysis" && (
