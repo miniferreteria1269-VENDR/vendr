@@ -6,6 +6,7 @@ import {
 
 import { useLang } from "../LanguageContext";
 import apiClient from "../apiClient";
+import ReceiptModal from "./ReceiptModal";
 
 import {
   COLORS,
@@ -30,7 +31,10 @@ const emptyClientForm = {
 
 
 // Client directory, credit account, and ticket-specific payments.
-function ClientManagement() {
+function ClientManagement({
+  storeId,
+  storeName
+}) {
   const { t } = useLang();
 
   const [clients, setClients] =
@@ -89,6 +93,24 @@ function ClientManagement() {
 
   const [paymentSubmitting, setPaymentSubmitting] =
     useState(false);
+
+  const [detailTicket, setDetailTicket] =
+    useState(null);
+
+  const [ticketDetails, setTicketDetails] =
+    useState([]);
+
+  const [ticketMetadata, setTicketMetadata] =
+    useState({});
+
+  const [ticketDetailsLoading, setTicketDetailsLoading] =
+    useState(false);
+
+  const [ticketDetailsError, setTicketDetailsError] =
+    useState("");
+
+  const [receiptPreview, setReceiptPreview] =
+    useState(null);
 
 
   const label = (key, fallback) => {
@@ -486,7 +508,10 @@ function ClientManagement() {
 
 
   const closeAccountModal = () => {
-    if (paymentSubmitting) {
+    if (
+      paymentSubmitting ||
+      ticketDetailsLoading
+    ) {
       return;
     }
 
@@ -496,6 +521,239 @@ function ClientManagement() {
     setPaymentAmount("");
     setPaymentNote("");
     setAccountError("");
+    setDetailTicket(null);
+    setTicketDetails([]);
+    setTicketMetadata({});
+    setTicketDetailsError("");
+    setReceiptPreview(null);
+  };
+
+
+  const getTicketNumber = ticket =>
+    ticket?.store_ticket_number ??
+    ticket?.ticket_number ??
+    ticket?.ticket_id ??
+    "—";
+
+
+  const getFiniteNumber = (
+    values,
+    fallback = 0
+  ) => {
+    for (const value of values) {
+      if (
+        value !== null &&
+        value !== undefined &&
+        value !== "" &&
+        Number.isFinite(Number(value))
+      ) {
+        return Number(value);
+      }
+    }
+
+    return fallback;
+  };
+
+
+  const openTicketDetails = async creditTicket => {
+    if (ticketDetailsLoading) {
+      return;
+    }
+
+    if (!storeId) {
+      setAccountError(
+        label(
+          "store_not_available",
+          "Store information is unavailable."
+        )
+      );
+
+      return;
+    }
+
+    setDetailTicket(creditTicket);
+    setTicketDetails([]);
+    setTicketMetadata({});
+    setTicketDetailsError("");
+    setTicketDetailsLoading(true);
+
+    try {
+      const response = await apiClient.get(
+        "/ticket-details",
+        {
+          params: {
+            store_id: storeId,
+            ticket_id:
+              creditTicket.ticket_id
+          }
+        }
+      );
+
+      setTicketDetails(
+        response.data.items || []
+      );
+
+      setTicketMetadata(
+        response.data || {}
+      );
+    } catch (error) {
+      console.error(
+        "CLIENT CREDIT TICKET DETAILS ERROR:",
+        error
+      );
+
+      const detail =
+        error.response?.data?.detail;
+
+      setTicketDetailsError(
+        typeof detail === "object"
+          ? detail?.message
+          : detail ||
+            label(
+              "ticket_details_load_failed",
+              "Unable to load ticket details."
+            )
+      );
+    } finally {
+      setTicketDetailsLoading(false);
+    }
+  };
+
+
+  const closeTicketDetails = () => {
+    if (ticketDetailsLoading) {
+      return;
+    }
+
+    setDetailTicket(null);
+    setTicketDetails([]);
+    setTicketMetadata({});
+    setTicketDetailsError("");
+  };
+
+
+  const openTicketReceipt = () => {
+    if (!detailTicket || !accountClient) {
+      return;
+    }
+
+    const receiptItems = ticketDetails.map(
+      (item, index) => {
+        const quantity = getFiniteNumber(
+          [item.quantity],
+          0
+        );
+
+        const lineTotal = getFiniteNumber(
+          [
+            item.line_total,
+            item.total
+          ],
+          0
+        );
+
+        const price = getFiniteNumber(
+          [
+            item.price,
+            item.unit_price,
+            item.price_at_time
+          ],
+          quantity > 0
+            ? lineTotal / quantity
+            : 0
+        );
+
+        return {
+          product_id:
+            item.product_id ?? index,
+
+          name:
+            item.name ||
+            item.product_name ||
+            "—",
+
+          quantity,
+          price
+        };
+      }
+    );
+
+    const calculatedSubtotal =
+      receiptItems.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.quantity) *
+            Number(item.price),
+        0
+      );
+
+    const total = getFiniteNumber(
+      [
+        ticketMetadata.total,
+        ticketMetadata.revenue,
+        detailTicket.original_amount
+      ],
+      calculatedSubtotal
+    );
+
+    const subtotal = getFiniteNumber(
+      [
+        ticketMetadata.subtotal,
+        detailTicket.subtotal
+      ],
+      calculatedSubtotal || total
+    );
+
+    const discountAmount = getFiniteNumber(
+      [
+        ticketMetadata.discount_amount,
+        ticketMetadata.discount,
+        detailTicket.discount_amount
+      ],
+      Math.max(subtotal - total, 0)
+    );
+
+    setReceiptPreview({
+      storeName:
+        ticketMetadata.store_name ||
+        storeName ||
+        `Store ${storeId}`,
+
+      createdAt:
+        ticketMetadata.datetime ||
+        ticketMetadata.created_at ||
+        detailTicket.created_at,
+
+      ticketId:
+        detailTicket.ticket_id,
+
+      ticketNumber:
+        ticketMetadata.store_ticket_number ??
+        ticketMetadata.ticket_number ??
+        getTicketNumber(detailTicket),
+
+      clientName:
+        ticketMetadata.client_name ||
+        ticketMetadata.client_name_at_time ||
+        accountClient.client_name,
+
+      isCredit: true,
+
+      dueDate:
+        ticketMetadata.due_date ||
+        detailTicket.due_date ||
+        null,
+
+      clientEventId:
+        ticketMetadata.client_event_id ||
+        detailTicket.client_event_id ||
+        null,
+
+      items: receiptItems,
+      subtotal,
+      discountAmount,
+      total
+    });
   };
 
 
@@ -644,6 +902,27 @@ function ClientManagement() {
     }
 
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  };
+
+
+  const formatDateTime = value => {
+    if (!value) {
+      return "—";
+    }
+
+    const parsedDate = new Date(value);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return String(value);
+    }
+
+    return parsedDate.toLocaleString(
+      "es-SV",
+      {
+        dateStyle: "short",
+        timeStyle: "short"
+      }
+    );
   };
 
 
@@ -1437,7 +1716,46 @@ function ClientManagement() {
                           }}
                         >
                           <TableCell>
-                            #{creditTicket.ticket_id}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openTicketDetails(
+                                  creditTicket
+                                )
+                              }
+                              disabled={
+                                ticketDetailsLoading
+                              }
+                              title={label(
+                                "view_ticket_details",
+                                "View ticket details"
+                              )}
+                              style={{
+                                padding: 0,
+                                border: "none",
+                                background:
+                                  "transparent",
+                                color:
+                                  COLORS.primary,
+                                font: "inherit",
+                                fontWeight: "bold",
+                                textDecoration:
+                                  "underline",
+                                textUnderlineOffset: 2,
+                                cursor:
+                                  ticketDetailsLoading
+                                    ? "default"
+                                    : "pointer",
+                                opacity:
+                                  ticketDetailsLoading
+                                    ? 0.6
+                                    : 1
+                              }}
+                            >
+                              #{getTicketNumber(
+                                creditTicket
+                              )}
+                            </button>
                           </TableCell>
 
                           <TableCell>
@@ -1540,7 +1858,9 @@ function ClientManagement() {
                   {label(
                     "record_payment",
                     "Record Payment"
-                  )} — #{paymentTicket.ticket_id}
+                  )} — #{getTicketNumber(
+                    paymentTicket
+                  )}
                 </h4>
 
                 <div
@@ -1684,6 +2004,389 @@ function ClientManagement() {
           </div>
         </div>
       )}
+
+      {detailTicket && (
+        <div
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) {
+              closeTicketDetails();
+            }
+          }}
+          style={{
+            ...modalBackdropStyle,
+            zIndex: 2000
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="credit-ticket-details-title"
+            style={{
+              ...modalStyle,
+              width: "min(820px, 100%)"
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                marginBottom: 12
+              }}
+            >
+              <div>
+                <h3
+                  id="credit-ticket-details-title"
+                  style={{ margin: 0 }}
+                >
+                  {label(
+                    "ticket_details",
+                    "Ticket Details"
+                  )} #{getTicketNumber(
+                    detailTicket
+                  )}
+                </h3>
+
+                <div
+                  style={{
+                    marginTop: 4,
+                    color: COLORS.textDim
+                  }}
+                >
+                  {accountClient?.client_name || "—"}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                aria-label={label("close", "Close")}
+                onClick={closeTicketDetails}
+                disabled={ticketDetailsLoading}
+                style={closeButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(140px, 1fr))",
+                gap: 8,
+                marginBottom: 12
+              }}
+            >
+              <ReadOnlyDetail
+                label={label("date", "Date")}
+                value={formatDateTime(
+                  ticketMetadata.datetime ||
+                  ticketMetadata.created_at ||
+                  detailTicket.created_at
+                )}
+              />
+
+              <ReadOnlyDetail
+                label={label("due_date", "Due Date")}
+                value={formatDate(
+                  ticketMetadata.due_date ||
+                  detailTicket.due_date
+                )}
+              />
+
+              <ReadOnlyDetail
+                label={label(
+                  "original_amount",
+                  "Original"
+                )}
+                value={formatBalance(
+                  detailTicket.original_amount
+                )}
+              />
+
+              <ReadOnlyDetail
+                label={label(
+                  "amount_paid",
+                  "Paid"
+                )}
+                value={formatBalance(
+                  detailTicket.amount_paid
+                )}
+              />
+
+              <ReadOnlyDetail
+                label={label(
+                  "remaining_balance",
+                  "Balance"
+                )}
+                value={formatBalance(
+                  detailTicket.remaining_balance
+                )}
+                valueColor={
+                  detailTicket.status === "overdue"
+                    ? COLORS.danger
+                    : COLORS.text
+                }
+              />
+
+              <ReadOnlyDetail
+                label={label("status", "Status")}
+                value={creditStatusLabel(
+                  detailTicket.status
+                )}
+              />
+            </div>
+
+            {ticketDetailsError && (
+              <div
+                style={{
+                  background: COLORS.panelAlt,
+                  color: COLORS.danger,
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: 12
+                }}
+              >
+                {ticketDetailsError}
+              </div>
+            )}
+
+            {ticketDetailsLoading ? (
+              <div style={{ color: COLORS.textDim }}>
+                {label(
+                  "loading_ticket_details",
+                  "Loading ticket details..."
+                )}
+              </div>
+            ) : !ticketDetailsError && (
+              <div
+                style={{
+                  maxHeight: "42vh",
+                  overflow: "auto",
+                  border:
+                    `1px solid ${COLORS.border}`,
+                  borderRadius: 8
+                }}
+              >
+                <table
+                  style={{
+                    width: "100%",
+                    minWidth: 560,
+                    borderCollapse: "collapse"
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <TableHeader>
+                        {label("product", "Product")}
+                      </TableHeader>
+
+                      <TableHeader>
+                        {label("quantity", "Quantity")}
+                      </TableHeader>
+
+                      <TableHeader>
+                        {label(
+                          "unit_price",
+                          "Unit Price"
+                        )}
+                      </TableHeader>
+
+                      <TableHeader>
+                        {label(
+                          "line_total",
+                          "Line Total"
+                        )}
+                      </TableHeader>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {ticketDetails.map((item, index) => {
+                      const quantity = getFiniteNumber(
+                        [item.quantity],
+                        0
+                      );
+
+                      const providedLineTotal =
+                        getFiniteNumber(
+                          [
+                            item.line_total,
+                            item.total
+                          ],
+                          0
+                        );
+
+                      const unitPrice = getFiniteNumber(
+                        [
+                          item.price,
+                          item.unit_price,
+                          item.price_at_time
+                        ],
+                        quantity > 0
+                          ? providedLineTotal / quantity
+                          : 0
+                      );
+
+                      const lineTotal =
+                        providedLineTotal ||
+                        quantity * unitPrice;
+
+                      return (
+                        <tr
+                          key={
+                            item.event_id ??
+                            item.product_id ??
+                            index
+                          }
+                          style={{
+                            borderBottom:
+                              `1px solid ${COLORS.border}`
+                          }}
+                        >
+                          <TableCell>
+                            {item.name ||
+                              item.product_name ||
+                              "—"}
+                          </TableCell>
+
+                          <TableCell>
+                            {quantity}
+                          </TableCell>
+
+                          <TableCell>
+                            {formatBalance(unitPrice)}
+                          </TableCell>
+
+                          <TableCell>
+                            {formatBalance(lineTotal)}
+                          </TableCell>
+                        </tr>
+                      );
+                    })}
+
+                    {ticketDetails.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          style={{
+                            padding: 14,
+                            textAlign: "center",
+                            color: COLORS.textDim
+                          }}
+                        >
+                          {label(
+                            "no_ticket_items",
+                            "No ticket items found."
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+                marginTop: 14,
+                flexWrap: "wrap"
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeTicketDetails}
+                disabled={ticketDetailsLoading}
+                style={btnSecondary}
+              >
+                {label("close", "Close")}
+              </button>
+
+              <button
+                type="button"
+                onClick={openTicketReceipt}
+                disabled={
+                  ticketDetailsLoading ||
+                  Boolean(ticketDetailsError) ||
+                  ticketDetails.length === 0
+                }
+                style={{
+                  ...btnPrimary,
+                  opacity:
+                    ticketDetailsLoading ||
+                    ticketDetailsError ||
+                    ticketDetails.length === 0
+                      ? 0.6
+                      : 1,
+                  cursor:
+                    ticketDetailsLoading ||
+                    ticketDetailsError ||
+                    ticketDetails.length === 0
+                      ? "default"
+                      : "pointer"
+                }}
+              >
+                {label(
+                  "print_receipt",
+                  "Print Receipt"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {receiptPreview && (
+        <ReceiptModal
+          receipt={receiptPreview}
+          onClose={() =>
+            setReceiptPreview(null)
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+
+function ReadOnlyDetail({
+  label,
+  value,
+  valueColor = COLORS.text
+}) {
+  return (
+    <div
+      style={{
+        padding: 9,
+        borderRadius: 8,
+        background: COLORS.panelAlt,
+        minWidth: 0
+      }}
+    >
+      <div
+        style={{
+          color: COLORS.textDim,
+          fontSize: 12,
+          marginBottom: 3
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          color: valueColor,
+          fontWeight: "bold",
+          overflowWrap: "anywhere"
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
