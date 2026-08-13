@@ -166,6 +166,8 @@ organization_report_load_failed:
     incoming: "Incoming",
     sent: "Sent",
     new_transfer: "New Transfer",
+    transfer_attention:
+      "Transfer awaiting confirmation",
     transfer_status_created: "Created",
     transfer_status_dispatched:
       "Awaiting receipt",
@@ -884,6 +886,8 @@ organization_report_load_failed:
     incoming: "Entrantes",
     sent: "Enviadas",
     new_transfer: "Nueva transferencia",
+    transfer_attention:
+      "Transferencia pendiente de confirmación",
     transfer_status_created: "Creada",
     transfer_status_dispatched:
       "Pendiente de recepción",
