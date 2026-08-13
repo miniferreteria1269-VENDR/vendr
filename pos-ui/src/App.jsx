@@ -17,6 +17,7 @@ import CashPanel from "./components/CashPanel";
 import SupplierManagement from "./components/SupplierManagement";
 import AgendaPanel from "./components/AgendaPanel";
 import OrganizationPanel from "./components/OrganizationPanel";
+import TransferPanel from "./components/TransferPanel";
 // Client management navigation and view
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
@@ -1737,6 +1738,7 @@ const finalizeIntake = async () => {
             "agenda",
             "sales",
             "inventory",
+            "transfers",
             "suppliers",
             "clients",
             "products",
@@ -1812,6 +1814,8 @@ const finalizeIntake = async () => {
                 {t(
                   navView === "sales"
                     ? "history"
+                    : navView === "transfers"
+                      ? "transfer"
                     : navView
                 ).toUpperCase()}
               </span>
@@ -1906,6 +1910,15 @@ const finalizeIntake = async () => {
       {view === "inventory" && (
         <InventoryReport
           storeId={storeId}
+        />
+      )}
+
+      {/* STORE TRANSFERS */}
+      {view === "transfers" && (
+        <TransferPanel
+          storeId={storeId}
+          storeName={user?.store_name}
+          onProductsChanged={loadProducts}
         />
       )}
 
