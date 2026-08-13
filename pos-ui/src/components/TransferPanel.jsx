@@ -23,6 +23,26 @@ import {
   btnDanger,
   input
 } from "../uiStyles";
+import { useLang } from "../LanguageContext";
+
+const translateTemplate = (
+  t,
+  key,
+  values = {}
+) => {
+  let text = t(key);
+
+  Object.entries(values).forEach(
+    ([name, value]) => {
+      text = text.replace(
+        `{${name}}`,
+        String(value)
+      );
+    }
+  );
+
+  return text;
+};
 
 const createClientEventId = prefix =>
   crypto.randomUUID?.() ||
@@ -83,13 +103,15 @@ const formatDateTime = value => {
   return parsed.toLocaleString();
 };
 
-const statusLabels = {
-  created: "Created",
-  dispatched: "Awaiting receipt",
-  received: "Received",
+const statusTranslationKeys = {
+  created: "transfer_status_created",
+  dispatched:
+    "transfer_status_dispatched",
+  received: "transfer_status_received",
   received_with_discrepancy:
-    "Received with discrepancy",
-  cancelled: "Cancelled"
+    "transfer_status_discrepancy",
+  cancelled:
+    "transfer_status_cancelled"
 };
 
 const statusColors = {
@@ -134,6 +156,8 @@ function TransferPanel({
   storeName,
   onProductsChanged
 }) {
+  const { t } = useLang();
+
   const [view, setView] = useState(
     "incoming"
   );
@@ -217,7 +241,9 @@ function TransferPanel({
       if (!navigator.onLine) {
         setTickets([]);
         setError(
-          "Transfer history requires an internet connection."
+          t(
+            "transfer_history_requires_connection"
+          )
         );
         return;
       }
@@ -246,20 +272,21 @@ function TransferPanel({
 
         setTickets([]);
         setError(
-          loadError.response?.data?.detail ||
-          "Unable to load transfer tickets."
+          t("transfer_tickets_load_failed")
         );
       } finally {
         setLoading(false);
       }
     },
-    [storeId]
+    [storeId, t]
   );
 
   const openTicket = async transferId => {
     if (!navigator.onLine) {
       setError(
-        "Transfer details require an internet connection."
+        t(
+          "transfer_details_requires_connection"
+        )
       );
       return;
     }
@@ -286,8 +313,7 @@ function TransferPanel({
       );
 
       setError(
-        loadError.response?.data?.detail ||
-        "Unable to load transfer details."
+        t("transfer_details_load_failed")
       );
     } finally {
       setLoading(false);
@@ -338,7 +364,7 @@ function TransferPanel({
       >
         <div>
           <h2 style={{ margin: 0 }}>
-            Stock Transfers
+            {t("stock_transfers")}
           </h2>
 
           <div
@@ -360,9 +386,9 @@ function TransferPanel({
           }}
         >
           {[
-            ["incoming", "Incoming"],
-            ["sent", "Sent"],
-            ["create", "New Transfer"]
+            ["incoming", t("incoming")],
+            ["sent", t("sent")],
+            ["create", t("new_transfer")]
           ].map(([key, label]) => (
             <button
               key={key}
@@ -440,8 +466,8 @@ function TransferPanel({
             loading={loading}
             emptyLabel={
               view === "incoming"
-                ? "No incoming transfers."
-                : "No sent transfers."
+                ? t("no_incoming_transfers")
+                : t("no_sent_transfers")
             }
             onOpen={openTicket}
           />
@@ -456,6 +482,8 @@ function CreateTransferTicket({
   stores,
   onCompleted
 }) {
+  const { t } = useLang();
+
   const [destinationStoreId, setDestinationStoreId] =
     useState("");
 
@@ -514,7 +542,7 @@ function CreateTransferTicket({
       )
     ) {
       setError(
-        "That product is already on the transfer."
+        t("transfer_product_already_added")
       );
       return;
     }
@@ -525,7 +553,7 @@ function CreateTransferTicket({
 
     if (stock <= 0) {
       setError(
-        "This product has no stock available to transfer."
+        t("transfer_product_no_stock")
       );
       return;
     }
@@ -587,14 +615,14 @@ function CreateTransferTicket({
 
     if (!destinationStoreId) {
       setError(
-        "Select the destination store."
+        t("select_destination_store")
       );
       return;
     }
 
     if (items.length === 0) {
       setError(
-        "Add at least one product."
+        t("transfer_add_one_product")
       );
       return;
     }
@@ -615,7 +643,14 @@ function CreateTransferTicket({
 
     if (invalidItem) {
       setError(
-        `Check the transfer quantity for ${invalidItem.name}. It must be a whole number between 1 and ${invalidItem.stock}.`
+        translateTemplate(
+          t,
+          "transfer_quantity_invalid",
+          {
+            product: invalidItem.name,
+            stock: invalidItem.stock
+          }
+        )
       );
       return;
     }
@@ -733,12 +768,8 @@ function CreateTransferTicket({
 
       alert(
         synchronized
-          ? "Transfer dispatched."
-          : (
-              "Transfer saved. It will be "
-              + "dispatched when synchronization "
-              + "is available."
-            )
+          ? t("transfer_dispatched")
+          : t("transfer_saved_pending")
       );
 
       if (onCompleted) {
@@ -753,7 +784,7 @@ function CreateTransferTicket({
       );
 
       setError(
-        "Unable to save the transfer."
+        t("transfer_save_failed")
       );
     } finally {
       setSubmitting(false);
@@ -774,7 +805,7 @@ function CreateTransferTicket({
         >
           <label>
             <span style={labelStyle}>
-              Destination store
+              {t("destination_store")}
             </span>
 
             <select
@@ -791,7 +822,7 @@ function CreateTransferTicket({
               }}
             >
               <option value="">
-                Select destination…
+                {t("select_destination")}
               </option>
 
               {stores.map(store => (
@@ -807,7 +838,7 @@ function CreateTransferTicket({
 
           <label>
             <span style={labelStyle}>
-              General note
+              {t("general_note")}
             </span>
 
             <input
@@ -817,7 +848,7 @@ function CreateTransferTicket({
                   event.target.value
                 )
               }
-              placeholder="Optional"
+              placeholder={t("optional")}
               disabled={submitting}
               style={{
                 ...input,
@@ -829,7 +860,7 @@ function CreateTransferTicket({
 
         <label>
           <span style={labelStyle}>
-            Add products
+            {t("add_products")}
           </span>
 
           <input
@@ -839,7 +870,9 @@ function CreateTransferTicket({
                 event.target.value
               )
             }
-            placeholder="Search local products"
+            placeholder={t(
+              "search_local_products"
+            )}
             disabled={submitting}
             style={{
               ...input,
@@ -884,7 +917,7 @@ function CreateTransferTicket({
                     marginTop: 3
                   }}
                 >
-                  Stock: {Number(
+                  {t("stock")}: {Number(
                     product.stock || 0
                   )}
                 </div>
@@ -900,7 +933,7 @@ function CreateTransferTicket({
             fontWeight: 700
           }}
         >
-          Transfer items
+          {t("transfer_items")}
         </div>
 
         {items.length === 0 ? (
@@ -910,7 +943,7 @@ function CreateTransferTicket({
               padding: "18px 0"
             }}
           >
-            No products added.
+            {t("no_products_added")}
           </div>
         ) : (
           <div
@@ -943,13 +976,14 @@ function CreateTransferTicket({
                       marginTop: 3
                     }}
                   >
-                    Available: {item.stock}
+                    {t("available")}:{" "}
+                    {item.stock}
                   </div>
                 </div>
 
                 <label>
                   <span style={labelStyle}>
-                    Quantity
+                    {t("quantity")}
                   </span>
 
                   <input
@@ -982,7 +1016,7 @@ function CreateTransferTicket({
                   disabled={submitting}
                   style={btnDanger}
                 >
-                  Remove
+                  {t("remove")}
                 </button>
               </div>
             ))}
@@ -1019,7 +1053,7 @@ function CreateTransferTicket({
           disabled={submitting}
           style={btnSecondary}
         >
-          Clear
+          {t("clear")}
         </button>
 
         <button
@@ -1033,8 +1067,8 @@ function CreateTransferTicket({
           }}
         >
           {submitting
-            ? "Saving…"
-            : "Dispatch Transfer"}
+            ? t("saving")
+            : t("dispatch_transfer")}
         </button>
       </div>
     </div>
@@ -1047,10 +1081,12 @@ function TransferTicketList({
   emptyLabel,
   onOpen
 }) {
+  const { t } = useLang();
+
   if (loading) {
     return (
       <div style={panelStyle}>
-        Loading transfers…
+        {t("loading_transfers")}
       </div>
     );
   }
@@ -1134,8 +1170,10 @@ function TransferTicketList({
                     color: COLORS.textDim
                   }}
                 >
-                  {ticket.item_count} items ·{" "}
-                  {ticket.units_sent} units
+                  {ticket.item_count}{" "}
+                  {t("items")} ·{" "}
+                  {ticket.units_sent}{" "}
+                  {t("units")}
                 </div>
 
                 <strong
@@ -1148,10 +1186,16 @@ function TransferTicketList({
                       COLORS.text
                   }}
                 >
-                  {statusLabels[
+                  {statusTranslationKeys[
                     ticket.transfer_status
-                  ] ||
-                    ticket.transfer_status}
+                  ]
+                    ? t(
+                        statusTranslationKeys[
+                          ticket
+                            .transfer_status
+                        ]
+                      )
+                    : ticket.transfer_status}
                 </strong>
               </button>
             ))}
@@ -1168,6 +1212,8 @@ function TransferDetail({
   onBack,
   onReceived
 }) {
+  const { t } = useLang();
+
   const canReceive =
     transfer.can_receive &&
     Number(storeId) ===
@@ -1305,7 +1351,9 @@ function TransferDetail({
 
     if (!navigator.onLine) {
       setError(
-        "Receiving confirmation requires an internet connection."
+        t(
+          "transfer_receipt_requires_connection"
+        )
       );
       return;
     }
@@ -1325,7 +1373,9 @@ function TransferDetail({
       )
     ) {
       setError(
-        "Select a local product for every line."
+        t(
+          "select_local_product_every_line"
+        )
       );
       return;
     }
@@ -1335,7 +1385,9 @@ function TransferDetail({
       selectedProductIds.length
     ) {
       setError(
-        "Each line must use a different local product."
+        t(
+          "transfer_unique_local_products"
+        )
       );
       return;
     }
@@ -1358,7 +1410,9 @@ function TransferDetail({
 
     if (invalidItem) {
       setError(
-        "Received quantities must be whole numbers between zero and the quantity sent."
+        t(
+          "received_quantity_invalid"
+        )
       );
       return;
     }
@@ -1423,11 +1477,10 @@ function TransferDetail({
       alert(
         response.data.transfer_status ===
           "received_with_discrepancy"
-          ? (
-              "Transfer received with a "
-              + "quantity discrepancy."
+          ? t(
+              "transfer_received_discrepancy"
             )
-          : "Transfer received."
+          : t("transfer_received")
       );
 
       if (onReceived) {
@@ -1440,8 +1493,7 @@ function TransferDetail({
       );
 
       setError(
-        submitError.response?.data?.detail ||
-        "Unable to confirm receipt."
+        t("transfer_receipt_failed")
       );
     } finally {
       setSubmitting(false);
@@ -1471,7 +1523,7 @@ function TransferDetail({
               marginBottom: 10
             }}
           >
-            Back
+            {t("back")}
           </button>
 
           <h3 style={{ margin: 0 }}>
@@ -1506,10 +1558,15 @@ function TransferDetail({
               ] || COLORS.text
           }}
         >
-          {statusLabels[
+          {statusTranslationKeys[
             transfer.transfer_status
-          ] ||
-            transfer.transfer_status}
+          ]
+            ? t(
+                statusTranslationKeys[
+                  transfer.transfer_status
+                ]
+              )
+            : transfer.transfer_status}
         </strong>
       </div>
 
@@ -1530,7 +1587,7 @@ function TransferDetail({
         >
           <div style={rowStyle}>
             <span style={labelStyle}>
-              Dispatched
+              {t("dispatched")}
             </span>
             {formatDateTime(
               transfer.dispatched_at
@@ -1539,7 +1596,7 @@ function TransferDetail({
 
           <div style={rowStyle}>
             <span style={labelStyle}>
-              Items / units
+              {t("items_units")}
             </span>
             {transfer.items.length} /{" "}
             {totals.sent}
@@ -1548,7 +1605,7 @@ function TransferDetail({
           {transfer.received_at && (
             <div style={rowStyle}>
               <span style={labelStyle}>
-                Received
+                {t("received")}
               </span>
               {formatDateTime(
                 transfer.received_at
@@ -1559,7 +1616,7 @@ function TransferDetail({
           {transfer.received_at && (
             <div style={rowStyle}>
               <span style={labelStyle}>
-                Units received
+                {t("units_received")}
               </span>
               {totals.received}
             </div>
@@ -1574,7 +1631,7 @@ function TransferDetail({
             }}
           >
             <span style={labelStyle}>
-              Transfer note
+              {t("transfer_note")}
             </span>
             {transfer.note}
           </div>
@@ -1613,7 +1670,7 @@ function TransferDetail({
                 >
                   <div>
                     <span style={labelStyle}>
-                      Sent product
+                      {t("sent_product")}
                     </span>
 
                     <strong>
@@ -1626,7 +1683,7 @@ function TransferDetail({
 
                   <div>
                     <span style={labelStyle}>
-                      Sent
+                      {t("sent")}
                     </span>
                     {item.quantity_sent}
                   </div>
@@ -1645,7 +1702,9 @@ function TransferDetail({
                     >
                       <div>
                         <span style={labelStyle}>
-                          Destination product
+                          {t(
+                            "destination_product"
+                          )}
                         </span>
 
                         {selectedProduct && (
@@ -1680,7 +1739,9 @@ function TransferDetail({
                                     fontSize: 12
                                   }}
                                 >
-                                  Previous match
+                                  {t(
+                                    "previous_match"
+                                  )}
                                 </span>
                               )}
                           </div>
@@ -1706,8 +1767,12 @@ function TransferDetail({
                           }
                           placeholder={
                             selectedProduct
-                              ? "Search to change"
-                              : "Search local products"
+                              ? t(
+                                  "search_to_change"
+                                )
+                              : t(
+                                  "search_local_products"
+                                )
                           }
                           disabled={submitting}
                           style={{
@@ -1719,7 +1784,7 @@ function TransferDetail({
 
                       <label>
                         <span style={labelStyle}>
-                          Received
+                          {t("received")}
                         </span>
 
                         <input
@@ -1802,17 +1867,19 @@ function TransferDetail({
                   >
                     <div>
                       <span style={labelStyle}>
-                        Destination product
+                        {t(
+                          "destination_product"
+                        )}
                       </span>
                       {item
                         .destination_product
                         ?.product_name ||
-                        "Awaiting mapping"}
+                        t("awaiting_mapping")}
                     </div>
 
                     <div>
                       <span style={labelStyle}>
-                        Received
+                        {t("received")}
                       </span>
                       {item.quantity_received ??
                         "—"}
@@ -1832,7 +1899,7 @@ function TransferDetail({
             }}
           >
             <span style={labelStyle}>
-              Receiving note
+              {t("receiving_note")}
             </span>
 
             <input
@@ -1842,7 +1909,7 @@ function TransferDetail({
                   event.target.value
                 )
               }
-              placeholder="Optional"
+              placeholder={t("optional")}
               disabled={submitting}
               style={{
                 ...input,
@@ -1888,8 +1955,8 @@ function TransferDetail({
             }}
           >
             {submitting
-              ? "Confirming…"
-              : "Confirm Receipt"}
+              ? t("confirming")
+              : t("confirm_receipt")}
           </button>
         </div>
       )}
