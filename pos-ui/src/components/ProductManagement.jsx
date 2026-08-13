@@ -130,7 +130,6 @@ function ProductManagement({ storeId, onProductsChanged }) {
           ["edit", "edit"],
           ["suppliers", "suppliers"],
           ["loss", "loss"],
-          ["transfer", "transfer"],
           ["archive", "archive"],
           ["import", "import"],
           ["performance", "performance"]
@@ -229,7 +228,6 @@ function ProductManagement({ storeId, onProductsChanged }) {
           {pmView === "price" && <PriceChange storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
           {pmView === "edit" && <EditDetails storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
           {pmView === "loss" && <LogLoss storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
-          {pmView === "transfer" && <StockTransfer storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
           {pmView === "archive" && <ArchiveProduct storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
           {pmView === "suppliers" && <ProductSupplierManagement storeId={storeId} product={selectedProduct} embedded onChanged={refreshProducts} />}
           {pmView === "performance" && (
@@ -1802,94 +1800,6 @@ const searchProducts = async term => {
           >
             {t("cancel")}
           </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function StockTransfer({ storeId, product, onCompleted, onClose }) {
-  const { t } = useLang();
-  const [search, setSearch] = useState("");
-  const [products, setProducts] = useState([]);
-  const [selected, setSelected] = useState(product || null);
-  const [quantity, setQuantity] = useState(1);
-  const [direction, setDirection] = useState("out");
-  const [note, setNote] = useState("");
-
-  const searchProducts = async (term) => {
-    const res = await apiClient.get(
-      "/products/search",
-      {
-        params: {
-          store_id: storeId,
-          name: term
-        }
-      }
-    );
-    setProducts(res.data.products || []);
-  };
-
-  const submit = async () => {
-    await apiClient.post(
-      "/stock-transfer",
-      {
-        store_id: storeId,
-        product_id: selected.product_id,
-        quantity,
-        direction,
-        note
-      }
-    );
-
-    if (onCompleted) await onCompleted();
-    alert(t("stock_transfer_recorded"));
-    if (onClose) onClose();
-    else setSelected(null);
-    setQuantity(1);
-    setDirection("out");
-    setNote("");
-  };
-
-  return (
-    <div style={card}>
-      <h3>{t("stock_transfer")}</h3>
-
-      {!selected && (
-        <>
-          <input
-            placeholder={t("search")}
-            value={search}
-            onChange={e => {
-              setSearch(e.target.value);
-              if (e.target.value.length > 1) searchProducts(e.target.value);
-              else setProducts([]);
-            }}
-            style={input}
-          />
-
-          {products.map(p => (
-            <div key={p.product_id} onClick={() => setSelected(p)} style={resultCard()}>
-              {p.name} ({t("stock")}: {p.stock})
-            </div>
-          ))}
-        </>
-      )}
-
-      {selected && (
-        <>
-          <p><strong>{selected.name}</strong></p>
-
-          <select value={direction} onChange={e => setDirection(e.target.value)} style={input}>
-            <option value="out">{t("transfer_out")}</option>
-            <option value="in">{t("transfer_in")}</option>
-          </select>
-
-          <input type="number" value={quantity} min="1" onChange={e => setQuantity(Number(e.target.value))} style={input} />
-          <input placeholder={t("note")} value={note} onChange={e => setNote(e.target.value)} style={input} />
-
-          <button onClick={submit} style={btnPrimary}>{t("submit")}</button>
-          <button onClick={() => onClose ? onClose() : setSelected(null)} style={btnSecondary}>{t("cancel")}</button>
         </>
       )}
     </div>
