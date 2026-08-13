@@ -422,6 +422,53 @@ organization_report_load_failed:
     // CASH PANEL
     cash_balance: "Cash Balance",
     expense: "Expense",
+    adjust_register: "Adjust Register",
+    move_cash: "Move Cash",
+    adjustment_direction:
+      "Adjustment direction",
+    movement_direction:
+      "Movement direction",
+    register_increase:
+      "Increase register balance",
+    register_decrease:
+      "Decrease register balance",
+    into_register: "Into register",
+    out_of_register:
+      "Out of register",
+    cash_source: "Cash source",
+    cash_destination:
+      "Cash destination",
+    strongbox: "Strongbox",
+    bank: "Bank",
+    other_location: "Other location",
+    select_cash_location:
+      "Select the other cash location.",
+    amount_greater_than_zero:
+      "Amount must be greater than zero.",
+    adjustment_no_profit_effect:
+      "This corrects the register balance and does not count as revenue or expense.",
+    cash_transfer_no_profit_effect:
+      "This moves existing cash and does not count as revenue or expense.",
+    cash_movement_recorded:
+      "Cash movement recorded.",
+    cash_movement_saved_pending:
+      "Cash movement saved. It will synchronize when a connection is available.",
+    cash_movement_failed:
+      "Unable to save the cash movement.",
+    total_expense: "Total expense",
+    total_revenue: "Total revenue",
+    paid_from_register:
+      "Paid from register",
+    received_in_register:
+      "Received in register",
+    remaining_amount:
+      "Remaining amount",
+    paid_from: "Paid from",
+    received_at: "Received at",
+    invalid_register_amount:
+      "The register amount must be between zero and the total amount.",
+    select_external_source:
+      "Select the source for the amount outside the register.",
 
     // RETURN MODAL
     return_refund: "Return / Refund",
@@ -1112,6 +1159,54 @@ organization_report_load_failed:
     // CASH PANEL
     cash_balance: "Saldo de caja",
     expense: "Gasto",
+    adjust_register: "Ajustar caja",
+    move_cash: "Mover efectivo",
+    adjustment_direction:
+      "Dirección del ajuste",
+    movement_direction:
+      "Dirección del movimiento",
+    register_increase:
+      "Aumentar saldo de caja",
+    register_decrease:
+      "Disminuir saldo de caja",
+    into_register: "Hacia la caja",
+    out_of_register:
+      "Fuera de la caja",
+    cash_source:
+      "Origen del efectivo",
+    cash_destination:
+      "Destino del efectivo",
+    strongbox: "Caja fuerte",
+    bank: "Banco",
+    other_location: "Otro lugar",
+    select_cash_location:
+      "Seleccione el otro lugar del efectivo.",
+    amount_greater_than_zero:
+      "El monto debe ser mayor que cero.",
+    adjustment_no_profit_effect:
+      "Este movimiento corrige el saldo de caja y no cuenta como ingreso ni gasto.",
+    cash_transfer_no_profit_effect:
+      "Este movimiento traslada efectivo existente y no cuenta como ingreso ni gasto.",
+    cash_movement_recorded:
+      "Movimiento de efectivo registrado.",
+    cash_movement_saved_pending:
+      "Movimiento de efectivo guardado. Se sincronizará cuando haya conexión.",
+    cash_movement_failed:
+      "No se pudo guardar el movimiento de efectivo.",
+    total_expense: "Gasto total",
+    total_revenue: "Ingreso total",
+    paid_from_register:
+      "Pagado desde caja",
+    received_in_register:
+      "Recibido en caja",
+    remaining_amount:
+      "Monto restante",
+    paid_from: "Pagado desde",
+    received_at: "Recibido en",
+    invalid_register_amount:
+      "El monto de caja debe estar entre cero y el monto total.",
+    select_external_source:
+      "Seleccione el origen del monto fuera de caja.",
 
     // RETURN MODAL
     return_refund: "Devolución / Reembolso",
