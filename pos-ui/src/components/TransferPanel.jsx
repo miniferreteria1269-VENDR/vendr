@@ -154,7 +154,8 @@ const labelStyle = {
 function TransferPanel({
   storeId,
   storeName,
-  onProductsChanged
+  onProductsChanged,
+  onTransferStatusChanged
 }) {
   const { t } = useLang();
 
@@ -438,6 +439,12 @@ function TransferPanel({
                   await onProductsChanged();
                 }
 
+                if (
+                  onTransferStatusChanged
+                ) {
+                  await onTransferStatusChanged();
+                }
+
                 setView("sent");
               }
             }
@@ -454,6 +461,12 @@ function TransferPanel({
               async () => {
                 if (onProductsChanged) {
                   await onProductsChanged();
+                }
+
+                if (
+                  onTransferStatusChanged
+                ) {
+                  await onTransferStatusChanged();
                 }
 
                 await refreshCurrentView();
