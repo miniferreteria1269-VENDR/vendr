@@ -65,6 +65,20 @@ export const savePendingEvent = async ({
   }
 };
 
+/**
+ * Removes a queue row when the corresponding local
+ * inventory transaction could not be applied and was
+ * rolled back. Never use this after backend acceptance.
+ */
+export const discardPendingEvent =
+  async clientEventId => {
+    if (!clientEventId) return;
+
+    await offlineDb.pendingEvents.delete(
+      clientEventId
+    );
+  };
+
 const validateAcceptedStatus = (
   responseData,
   eventLabel
@@ -143,6 +157,19 @@ const submitStockAdjustmentEvent =
     );
   };
 
+const submitTransferDispatchEvent =
+  async event => {
+    const response = await apiClient.post(
+      "/transfer-tickets",
+      event.payload
+    );
+
+    return validateAcceptedStatus(
+      response.data,
+      "transfer dispatch"
+    );
+  };
+
 /**
  * Routes a local event to the correct backend endpoint.
  */
@@ -175,6 +202,13 @@ export const submitPendingEvent =
       case "stock_adjustment":
         responseData =
           await submitStockAdjustmentEvent(
+            event
+          );
+        break;
+
+      case "transfer_dispatch":
+        responseData =
+          await submitTransferDispatchEvent(
             event
           );
         break;
