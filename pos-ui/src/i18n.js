@@ -161,6 +161,94 @@ organization_report_load_failed:
     stock_transfer_recorded:
       "Stock transfer recorded.",
 
+    // TRANSFER TICKETS
+    stock_transfers: "Stock Transfers",
+    incoming: "Incoming",
+    sent: "Sent",
+    new_transfer: "New Transfer",
+    transfer_status_created: "Created",
+    transfer_status_dispatched:
+      "Awaiting receipt",
+    transfer_status_received: "Received",
+    transfer_status_discrepancy:
+      "Received with discrepancy",
+    transfer_status_cancelled: "Cancelled",
+    transfer_history_requires_connection:
+      "Transfer history requires an internet connection.",
+    transfer_details_requires_connection:
+      "Transfer details require an internet connection.",
+    transfer_tickets_load_failed:
+      "Unable to load transfer tickets.",
+    transfer_details_load_failed:
+      "Unable to load transfer details.",
+    no_incoming_transfers:
+      "No incoming transfers.",
+    no_sent_transfers:
+      "No sent transfers.",
+    destination_store: "Destination store",
+    select_destination:
+      "Select destination...",
+    general_note: "General note",
+    optional: "Optional",
+    add_products: "Add products",
+    search_local_products:
+      "Search local products",
+    transfer_product_already_added:
+      "That product is already on the transfer.",
+    transfer_product_no_stock:
+      "This product has no stock available to transfer.",
+    select_destination_store:
+      "Select the destination store.",
+    transfer_add_one_product:
+      "Add at least one product.",
+    transfer_quantity_invalid:
+      "Check the transfer quantity for {product}. It must be a whole number between 1 and {stock}.",
+    transfer_dispatched:
+      "Transfer dispatched.",
+    transfer_saved_pending:
+      "Transfer saved. It will be dispatched when synchronization is available.",
+    transfer_save_failed:
+      "Unable to save the transfer.",
+    transfer_items: "Transfer items",
+    no_products_added:
+      "No products added.",
+    available: "Available",
+    dispatch_transfer:
+      "Dispatch Transfer",
+    loading_transfers:
+      "Loading transfers...",
+    items: "items",
+    units: "units",
+    back: "Back",
+    dispatched: "Dispatched",
+    items_units: "Items / units",
+    received: "Received",
+    units_received: "Units received",
+    transfer_note: "Transfer note",
+    sent_product: "Sent product",
+    destination_product:
+      "Destination product",
+    previous_match: "Previous match",
+    search_to_change: "Search to change",
+    awaiting_mapping: "Awaiting mapping",
+    receiving_note: "Receiving note",
+    confirming: "Confirming...",
+    confirm_receipt: "Confirm Receipt",
+    transfer_receipt_requires_connection:
+      "Receiving confirmation requires an internet connection.",
+    select_local_product_every_line:
+      "Select a local product for every line.",
+    transfer_unique_local_products:
+      "Each line must use a different local product.",
+    received_quantity_invalid:
+      "Received quantities must be whole numbers between zero and the quantity sent.",
+    transfer_received_discrepancy:
+      "Transfer received with a quantity discrepancy.",
+    transfer_received:
+      "Transfer received.",
+    transfer_receipt_failed:
+      "Unable to confirm receipt.",
+
     // SALES / ANALYSIS
     sales_analysis: "Sales Analysis",
     revenue: "Revenue",
@@ -742,6 +830,101 @@ organization_report_load_failed:
       "Transferencia de inventario",
     stock_transfer_recorded:
       "Transferencia de inventario registrada.",
+
+    // TICKETS DE TRANSFERENCIA
+    stock_transfers:
+      "Transferencias de inventario",
+    incoming: "Entrantes",
+    sent: "Enviadas",
+    new_transfer: "Nueva transferencia",
+    transfer_status_created: "Creada",
+    transfer_status_dispatched:
+      "Pendiente de recepción",
+    transfer_status_received: "Recibida",
+    transfer_status_discrepancy:
+      "Recibida con diferencia",
+    transfer_status_cancelled: "Cancelada",
+    transfer_history_requires_connection:
+      "El historial de transferencias requiere conexión a internet.",
+    transfer_details_requires_connection:
+      "Los detalles de la transferencia requieren conexión a internet.",
+    transfer_tickets_load_failed:
+      "No se pudieron cargar las transferencias.",
+    transfer_details_load_failed:
+      "No se pudieron cargar los detalles de la transferencia.",
+    no_incoming_transfers:
+      "No hay transferencias entrantes.",
+    no_sent_transfers:
+      "No hay transferencias enviadas.",
+    destination_store: "Tienda de destino",
+    select_destination:
+      "Seleccionar destino...",
+    general_note: "Nota general",
+    optional: "Opcional",
+    add_products: "Agregar productos",
+    search_local_products:
+      "Buscar productos locales",
+    transfer_product_already_added:
+      "Ese producto ya está en la transferencia.",
+    transfer_product_no_stock:
+      "Este producto no tiene existencias disponibles para transferir.",
+    select_destination_store:
+      "Seleccione la tienda de destino.",
+    transfer_add_one_product:
+      "Agregue al menos un producto.",
+    transfer_quantity_invalid:
+      "Revise la cantidad de {product}. Debe ser un número entero entre 1 y {stock}.",
+    transfer_dispatched:
+      "Transferencia enviada.",
+    transfer_saved_pending:
+      "Transferencia guardada. Se enviará cuando la sincronización esté disponible.",
+    transfer_save_failed:
+      "No se pudo guardar la transferencia.",
+    transfer_items:
+      "Productos a transferir",
+    no_products_added:
+      "No se han agregado productos.",
+    available: "Disponible",
+    dispatch_transfer:
+      "Enviar transferencia",
+    loading_transfers:
+      "Cargando transferencias...",
+    items: "productos",
+    units: "unidades",
+    back: "Volver",
+    dispatched: "Enviada",
+    items_units: "Productos / unidades",
+    received: "Recibida",
+    units_received: "Unidades recibidas",
+    transfer_note:
+      "Nota de transferencia",
+    sent_product: "Producto enviado",
+    destination_product:
+      "Producto de destino",
+    previous_match:
+      "Coincidencia anterior",
+    search_to_change:
+      "Buscar para cambiar",
+    awaiting_mapping:
+      "Pendiente de asignación",
+    receiving_note: "Nota de recepción",
+    confirming: "Confirmando...",
+    confirm_receipt:
+      "Confirmar recepción",
+    transfer_receipt_requires_connection:
+      "La confirmación de recepción requiere conexión a internet.",
+    select_local_product_every_line:
+      "Seleccione un producto local para cada línea.",
+    transfer_unique_local_products:
+      "Cada línea debe usar un producto local diferente.",
+    received_quantity_invalid:
+      "Las cantidades recibidas deben ser números enteros entre cero y la cantidad enviada.",
+    transfer_received_discrepancy:
+      "Transferencia recibida con una diferencia de cantidad.",
+    transfer_received:
+      "Transferencia recibida.",
+    transfer_receipt_failed:
+      "No se pudo confirmar la recepción.",
 
     create_product: "Crear producto",
     initial_stock: "Inventario inicial",
