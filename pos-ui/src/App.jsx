@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState
+} from "react";
 import axios from "axios";
 import apiClient from "./apiClient";
 import { useLang } from "./LanguageContext";
@@ -39,6 +43,8 @@ import {
 import {
   syncPendingEvents
 } from "./syncPendingEvents";
+
+import { offlineDb } from "./offlineDb";
 
 const API =
   "https://vendr-onkr.onrender.com";
@@ -118,6 +124,8 @@ function App() {
   const [saleClients, setSaleClients] = useState([]);
   const [agendaIndicator, setAgendaIndicator] =
     useState("green");
+  const [transferAttention, setTransferAttention] =
+    useState(false);
   const [organizationAvailability, setOrganizationAvailability] =
     useState({
       available: false,
@@ -130,6 +138,122 @@ function App() {
     useState(null);
 
   const storeId = user?.store_id;
+
+  const loadTransferAttention = useCallback(
+    async () => {
+      if (!storeId) {
+        setTransferAttention(false);
+        return;
+      }
+
+      let hasPendingLocalDispatch = false;
+
+      try {
+        const localPendingCount =
+          await offlineDb.pendingEvents
+            .where("store_id")
+            .equals(storeId)
+            .filter(
+              event =>
+                event.event_type ===
+                "transfer_dispatch"
+            )
+            .count();
+
+        hasPendingLocalDispatch =
+          localPendingCount > 0;
+      } catch (error) {
+        console.warn(
+          "Unable to load local transfer status:",
+          error
+        );
+      }
+
+      if (!navigator.onLine) {
+        if (hasPendingLocalDispatch) {
+          setTransferAttention(true);
+        }
+
+        return;
+      }
+
+      try {
+        const response = await apiClient.get(
+          "/transfer-attention"
+        );
+
+        setTransferAttention(
+          Boolean(
+            response.data.has_attention ||
+            hasPendingLocalDispatch
+          )
+        );
+      } catch (error) {
+        console.warn(
+          "Unable to load transfer status:",
+          error
+        );
+
+        if (hasPendingLocalDispatch) {
+          setTransferAttention(true);
+        }
+      }
+    },
+    [storeId]
+  );
+
+  // Keep the Transfer navigation indicator current
+  // across stores, devices, offline dispatches, and
+  // receipt confirmations.
+  useEffect(() => {
+    if (!storeId) {
+      setTransferAttention(false);
+      return;
+    }
+
+    loadTransferAttention();
+
+    const refreshInterval =
+      window.setInterval(
+        loadTransferAttention,
+        30000
+      );
+
+    window.addEventListener(
+      "online",
+      loadTransferAttention
+    );
+
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
+        loadTransferAttention();
+      }
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      window.clearInterval(
+        refreshInterval
+      );
+
+      window.removeEventListener(
+        "online",
+        loadTransferAttention
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, [storeId, loadTransferAttention]);
 
   const updateAgendaIndicator = items => {
     const incompleteItems = (items || []).filter(
@@ -1811,6 +1935,25 @@ const finalizeIntake = async () => {
                   />
                 )}
 
+                {navView === "transfers" &&
+                  transferAttention && (
+                    <span
+                      aria-hidden="true"
+                      title={t(
+                        "transfer_attention"
+                      )}
+                      style={{
+                        width: 8,
+                        height: 8,
+                        flex: "0 0 auto",
+                        borderRadius: "50%",
+                        background: "#f5c542",
+                        boxShadow:
+                          "0 0 6px #f5c542"
+                      }}
+                    />
+                  )}
+
                 {t(
                   navView === "sales"
                     ? "history"
@@ -1919,6 +2062,9 @@ const finalizeIntake = async () => {
           storeId={storeId}
           storeName={user?.store_name}
           onProductsChanged={loadProducts}
+          onTransferStatusChanged={
+            loadTransferAttention
+          }
         />
       )}
 
