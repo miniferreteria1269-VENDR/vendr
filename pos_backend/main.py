@@ -82,7 +82,7 @@ def get_last_completed_week_end() -> date:
 
     # Monday = 0 and Sunday = 6.
     # This always returns the Sunday ending the
-    # most recently completed Monday–Sunday week.
+    # most recently completed Mondayâ€“Sunday week.
     return (
         today
         - timedelta(
@@ -490,6 +490,229 @@ def init_db():
         event_datetime TEXT,
         ticket_id INTEGER
     )
+    """)
+
+    # ---------------------------------------------
+    # TRANSFER TICKETS
+    # ---------------------------------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS transfer_tickets (
+        transfer_id SERIAL PRIMARY KEY,
+        transfer_uid TEXT NOT NULL UNIQUE,
+        transfer_number INTEGER NOT NULL,
+        organization_id INTEGER NOT NULL,
+        origin_store_id INTEGER NOT NULL,
+        destination_store_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        note TEXT,
+        created_by_user_id INTEGER NOT NULL,
+        received_by_user_id INTEGER,
+        client_event_id TEXT,
+        device_id TEXT,
+        client_created_at TEXT,
+        created_at TEXT NOT NULL,
+        dispatched_at TEXT,
+        received_at TEXT,
+        cancelled_at TEXT,
+        CHECK (
+            origin_store_id <>
+            destination_store_id
+        ),
+        CHECK (
+            status IN (
+                'created',
+                'dispatched',
+                'received',
+                'received_with_discrepancy',
+                'cancelled'
+            )
+        )
+    )
+    """)
+
+    cursor.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_transfer_tickets_origin_number
+    ON transfer_tickets (
+        origin_store_id,
+        transfer_number
+    )
+    """)
+
+    cursor.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_transfer_tickets_client_event
+    ON transfer_tickets (
+        origin_store_id,
+        client_event_id
+    )
+    WHERE client_event_id IS NOT NULL
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_transfer_tickets_destination_status
+    ON transfer_tickets (
+        destination_store_id,
+        status,
+        created_at
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_transfer_tickets_origin_status
+    ON transfer_tickets (
+        origin_store_id,
+        status,
+        created_at
+    )
+    """)
+
+    # ---------------------------------------------
+    # TRANSFER TICKET ITEMS
+    # ---------------------------------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS transfer_ticket_items (
+        transfer_item_id SERIAL PRIMARY KEY,
+        transfer_id INTEGER NOT NULL,
+        line_number INTEGER NOT NULL,
+        origin_product_id INTEGER NOT NULL,
+        origin_product_name_at_time TEXT NOT NULL,
+        destination_product_id INTEGER,
+        destination_product_name_at_time TEXT,
+        quantity_sent INTEGER NOT NULL,
+        quantity_received INTEGER,
+        cost_at_time REAL,
+        price_at_time REAL,
+        line_status TEXT NOT NULL DEFAULT 'pending',
+        CHECK (quantity_sent > 0),
+        CHECK (
+            quantity_received IS NULL
+            OR quantity_received >= 0
+        ),
+        CHECK (
+            line_status IN (
+                'pending',
+                'matched',
+                'received',
+                'discrepancy'
+            )
+        ),
+        UNIQUE (
+            transfer_id,
+            line_number
+        ),
+        UNIQUE (
+            transfer_id,
+            origin_product_id
+        )
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_transfer_items_transfer
+    ON transfer_ticket_items (
+        transfer_id,
+        line_number
+    )
+    """)
+
+    # ---------------------------------------------
+    # TRANSFER WORKFLOW AUDIT
+    # ---------------------------------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS transfer_ticket_events (
+        transfer_event_id SERIAL PRIMARY KEY,
+        transfer_id INTEGER NOT NULL,
+        store_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        event_datetime TEXT NOT NULL,
+        note TEXT,
+        client_event_id TEXT,
+        CHECK (
+            event_type IN (
+                'created',
+                'dispatched',
+                'received',
+                'received_with_discrepancy',
+                'cancelled'
+            )
+        )
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_transfer_ticket_events_transfer
+    ON transfer_ticket_events (
+        transfer_id,
+        event_datetime
+    )
+    """)
+
+    # ---------------------------------------------
+    # HUMAN-CONFIRMED CROSS-STORE PRODUCT LINKS
+    # ---------------------------------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS product_transfer_links (
+        product_transfer_link_id SERIAL PRIMARY KEY,
+        organization_id INTEGER NOT NULL,
+        store_a_id INTEGER NOT NULL,
+        product_a_id INTEGER NOT NULL,
+        store_b_id INTEGER NOT NULL,
+        product_b_id INTEGER NOT NULL,
+        confirmed_by_user_id INTEGER NOT NULL,
+        created_from_transfer_id INTEGER,
+        created_at TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        CHECK (store_a_id < store_b_id),
+        UNIQUE (
+            organization_id,
+            store_a_id,
+            product_a_id,
+            store_b_id,
+            product_b_id
+        )
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_product_transfer_links_a
+    ON product_transfer_links (
+        organization_id,
+        store_a_id,
+        product_a_id,
+        store_b_id,
+        is_active
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_product_transfer_links_b
+    ON product_transfer_links (
+        organization_id,
+        store_b_id,
+        product_b_id,
+        store_a_id,
+        is_active
+    )
+    """)
+
+    # Inventory events retain their normal store and
+    # product ownership while linking back to a transfer.
+    cursor.execute("""
+    ALTER TABLE events
+    ADD COLUMN IF NOT EXISTS transfer_id INTEGER
+    """)
+
+    cursor.execute("""
+    ALTER TABLE events
+    ADD COLUMN IF NOT EXISTS transfer_item_id INTEGER
     """)
 
     conn.commit()
@@ -2009,7 +2232,7 @@ def build_cash_activity_data(
 
         if (
             category in {
-                "retiro dueño",
+                "retiro dueÃ±o",
                 "retiro dueno",
                 "owner_draw"
             }
@@ -2794,7 +3017,7 @@ def startup():
 class SaleItem(BaseModel):
     product_id: int
     quantity: int
-    price: float  # 🔥 REQUIRED
+    price: float  # ðŸ”¥ REQUIRED
 
 class CreditPaymentCreate(BaseModel):
     amount: Decimal
@@ -2896,6 +3119,20 @@ class StockTransferRequest(BaseModel):
     quantity: int
     direction: str  # "in" or "out"
     note: Optional[str] = None
+
+class TransferTicketItemCreate(BaseModel):
+    product_id: int
+    quantity: int
+
+class TransferTicketCreate(BaseModel):
+    store_id: int
+    destination_store_id: int
+    items: List[TransferTicketItemCreate]
+    note: Optional[str] = None
+
+    client_event_id: Optional[str] = None
+    device_id: Optional[str] = None
+    client_created_at: Optional[str] = None
 
 class ProductSupplierAssignment(BaseModel):
     supplier_id: int
@@ -6128,6 +6365,741 @@ def stock_adjustment(
         if conn:
             conn.close()
 
+@app.post("/transfer-tickets")
+def create_transfer_ticket(
+    ticket: TransferTicketCreate,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != ticket.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    # ---------------------------------------------
+    # REQUEST VALIDATION
+    # ---------------------------------------------
+    if (
+        ticket.store_id
+        == ticket.destination_store_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Origin and destination stores "
+                "must be different"
+            )
+        )
+
+    if not ticket.items:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Transfer ticket must contain "
+                "at least one item"
+            )
+        )
+
+    product_ids = []
+
+    for item in ticket.items:
+        if item.quantity <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Item quantity must be "
+                    "greater than zero"
+                )
+            )
+
+        product_ids.append(
+            int(item.product_id)
+        )
+
+    if len(product_ids) != len(set(product_ids)):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A product may appear only once "
+                "on a transfer ticket"
+            )
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # -----------------------------------------
+        # IDEMPOTENCY CHECK
+        # -----------------------------------------
+        if ticket.client_event_id:
+            cursor.execute(
+                """
+                SELECT
+                    transfer_id,
+                    transfer_uid,
+                    transfer_number,
+                    status
+                FROM transfer_tickets
+                WHERE origin_store_id = %s
+                  AND client_event_id = %s
+                LIMIT 1
+                """,
+                (
+                    ticket.store_id,
+                    ticket.client_event_id
+                )
+            )
+
+            existing = cursor.fetchone()
+
+            if existing:
+                return {
+                    "status":
+                        "already_processed",
+
+                    "transfer_id":
+                        int(existing[0]),
+
+                    "transfer_uid":
+                        existing[1],
+
+                    "transfer_number":
+                        int(existing[2]),
+
+                    "transfer_status":
+                        existing[3],
+
+                    "client_event_id":
+                        ticket.client_event_id
+                }
+
+        # -----------------------------------------
+        # VERIFY BOTH STORES AND ORGANIZATION
+        # -----------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                store_id,
+                name,
+                organization_id
+            FROM stores
+            WHERE store_id IN (%s, %s)
+            """,
+            (
+                ticket.store_id,
+                ticket.destination_store_id
+            )
+        )
+
+        store_rows = cursor.fetchall()
+
+        stores_by_id = {
+            int(row[0]): {
+                "store_name": (
+                    str(row[1]).strip()
+                    if row[1]
+                    else f"Store {int(row[0])}"
+                ),
+                "organization_id": row[2]
+            }
+            for row in store_rows
+        }
+
+        origin_store = stores_by_id.get(
+            ticket.store_id
+        )
+
+        destination_store = stores_by_id.get(
+            ticket.destination_store_id
+        )
+
+        if not origin_store:
+            raise HTTPException(
+                status_code=404,
+                detail="Origin store not found"
+            )
+
+        if not destination_store:
+            raise HTTPException(
+                status_code=404,
+                detail="Destination store not found"
+            )
+
+        organization_id = origin_store[
+            "organization_id"
+        ]
+
+        destination_organization_id = (
+            destination_store[
+                "organization_id"
+            ]
+        )
+
+        if organization_id is None:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Store-to-store transfers "
+                    "require an organization"
+                )
+            )
+
+        if (
+            destination_organization_id is None
+            or
+            int(destination_organization_id)
+            != int(organization_id)
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Destination store does not "
+                    "belong to your organization"
+                )
+            )
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        # -----------------------------------------
+        # GENERATE ORIGIN-STORE TRANSFER NUMBER
+        # -----------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO store_ticket_counters (
+                store_id,
+                ticket_type,
+                current_number,
+                updated_at
+            )
+            VALUES (
+                %s,
+                'transfer',
+                1,
+                NOW()
+            )
+
+            ON CONFLICT (
+                store_id,
+                ticket_type
+            )
+            DO UPDATE
+            SET
+                current_number =
+                    store_ticket_counters.current_number
+                    + 1,
+
+                updated_at =
+                    NOW()
+
+            RETURNING current_number
+            """,
+            (
+                ticket.store_id,
+            )
+        )
+
+        transfer_number = int(
+            cursor.fetchone()[0]
+        )
+
+        transfer_uid = (
+            "TRF-"
+            + secrets.token_hex(12).upper()
+        )
+
+        clean_note = (
+            str(ticket.note).strip()
+            if ticket.note
+            and str(ticket.note).strip()
+            else None
+        )
+
+        # -----------------------------------------
+        # CREATE TICKET HEADER
+        # -----------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO transfer_tickets (
+                transfer_uid,
+                transfer_number,
+                organization_id,
+                origin_store_id,
+                destination_store_id,
+                status,
+                note,
+                created_by_user_id,
+                client_event_id,
+                device_id,
+                client_created_at,
+                created_at
+            )
+            VALUES (
+                %s, %s, %s, %s,
+                %s, 'created', %s, %s,
+                %s, %s, %s, %s
+            )
+            RETURNING transfer_id
+            """,
+            (
+                transfer_uid,
+                transfer_number,
+                organization_id,
+                ticket.store_id,
+                ticket.destination_store_id,
+                clean_note,
+                current_user.user_id,
+                ticket.client_event_id,
+                ticket.device_id,
+                ticket.client_created_at,
+                now
+            )
+        )
+
+        transfer_id = int(
+            cursor.fetchone()[0]
+        )
+
+        # Record workflow creation separately from
+        # product inventory movement.
+        cursor.execute(
+            """
+            INSERT INTO transfer_ticket_events (
+                transfer_id,
+                store_id,
+                user_id,
+                event_type,
+                event_datetime,
+                note,
+                client_event_id
+            )
+            VALUES (
+                %s, %s, %s,
+                'created', %s, %s, %s
+            )
+            """,
+            (
+                transfer_id,
+                ticket.store_id,
+                current_user.user_id,
+                now,
+                clean_note,
+                (
+                    f"{ticket.client_event_id}:created"
+                    if ticket.client_event_id
+                    else None
+                )
+            )
+        )
+
+        response_items = []
+
+        # -----------------------------------------
+        # PROCESS TRANSFER LINES
+        # -----------------------------------------
+        for line_number, item in enumerate(
+            ticket.items,
+            start=1
+        ):
+            # Lock each product until the complete
+            # transfer commits or rolls back.
+            cursor.execute(
+                """
+                SELECT
+                    name,
+                    stock,
+                    cost,
+                    price,
+                    tracks_stock
+                FROM products
+                WHERE product_id = %s
+                  AND store_id = %s
+                  AND is_active = 1
+                FOR UPDATE
+                """,
+                (
+                    item.product_id,
+                    ticket.store_id
+                )
+            )
+
+            product = cursor.fetchone()
+
+            if not product:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"Product {item.product_id} "
+                        "not found"
+                    )
+                )
+
+            (
+                product_name,
+                current_stock,
+                product_cost,
+                product_price,
+                tracks_stock
+            ) = product
+
+            if tracks_stock != 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{product_name} does not "
+                        "track stock"
+                    )
+                )
+
+            quantity = int(
+                item.quantity
+            )
+
+            available_stock = int(
+                current_stock or 0
+            )
+
+            if available_stock < quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Not enough stock for "
+                        f"{product_name}. "
+                        f"Available: {available_stock}; "
+                        f"requested: {quantity}"
+                    )
+                )
+
+            cost = round(
+                float(product_cost or 0),
+                2
+            )
+
+            price = round(
+                float(product_price or 0),
+                3
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO transfer_ticket_items (
+                    transfer_id,
+                    line_number,
+                    origin_product_id,
+                    origin_product_name_at_time,
+                    quantity_sent,
+                    cost_at_time,
+                    price_at_time,
+                    line_status
+                )
+                VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, 'pending'
+                )
+                RETURNING transfer_item_id
+                """,
+                (
+                    transfer_id,
+                    line_number,
+                    item.product_id,
+                    product_name,
+                    quantity,
+                    cost,
+                    price
+                )
+            )
+
+            transfer_item_id = int(
+                cursor.fetchone()[0]
+            )
+
+            event_note_parts = [
+                (
+                    f"Transfer {transfer_uid} to "
+                    f"{destination_store['store_name']}"
+                )
+            ]
+
+            if clean_note:
+                event_note_parts.append(
+                    clean_note
+                )
+
+            event_note = " | ".join(
+                event_note_parts
+            )
+
+            # The origin owns this Transfer Out event.
+            cursor.execute(
+                """
+                INSERT INTO events (
+                    store_id,
+                    event_type,
+                    product_id,
+                    product_name_at_time,
+                    quantity,
+                    cost_at_time,
+                    price_at_time,
+                    event_datetime,
+                    store_ticket_number,
+                    note,
+                    client_event_id,
+                    device_id,
+                    client_created_at,
+                    transfer_id,
+                    transfer_item_id
+                )
+                VALUES (
+                    %s, 'transfer_out', %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+                """,
+                (
+                    ticket.store_id,
+                    item.product_id,
+                    product_name,
+                    quantity,
+                    cost,
+                    price,
+                    now,
+                    transfer_number,
+                    event_note,
+                    (
+                        (
+                            f"{ticket.client_event_id}"
+                            f":transfer_out:{line_number}"
+                        )
+                        if ticket.client_event_id
+                        else None
+                    ),
+                    ticket.device_id,
+                    ticket.client_created_at,
+                    transfer_id,
+                    transfer_item_id
+                )
+            )
+
+            cursor.execute(
+                """
+                UPDATE products
+                SET stock =
+                    COALESCE(stock, 0) - %s
+                WHERE product_id = %s
+                  AND store_id = %s
+                  AND tracks_stock = 1
+                """,
+                (
+                    quantity,
+                    item.product_id,
+                    ticket.store_id
+                )
+            )
+
+            response_items.append({
+                "transfer_item_id":
+                    transfer_item_id,
+
+                "line_number":
+                    line_number,
+
+                "product_id":
+                    int(item.product_id),
+
+                "product_name":
+                    product_name,
+
+                "quantity_sent":
+                    quantity
+            })
+
+        # -----------------------------------------
+        # MARK THE COMPLETE TICKET DISPATCHED
+        # -----------------------------------------
+        cursor.execute(
+            """
+            UPDATE transfer_tickets
+            SET
+                status = 'dispatched',
+                dispatched_at = %s
+            WHERE transfer_id = %s
+            """,
+            (
+                now,
+                transfer_id
+            )
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO transfer_ticket_events (
+                transfer_id,
+                store_id,
+                user_id,
+                event_type,
+                event_datetime,
+                note,
+                client_event_id
+            )
+            VALUES (
+                %s, %s, %s,
+                'dispatched', %s, %s, %s
+            )
+            """,
+            (
+                transfer_id,
+                ticket.store_id,
+                current_user.user_id,
+                now,
+                clean_note,
+                (
+                    (
+                        f"{ticket.client_event_id}"
+                        ":dispatched"
+                    )
+                    if ticket.client_event_id
+                    else None
+                )
+            )
+        )
+
+        conn.commit()
+
+        return {
+            "status":
+                "accepted",
+
+            "transfer_id":
+                transfer_id,
+
+            "transfer_uid":
+                transfer_uid,
+
+            "transfer_number":
+                transfer_number,
+
+            "transfer_status":
+                "dispatched",
+
+            "origin_store": {
+                "store_id":
+                    ticket.store_id,
+
+                "store_name":
+                    origin_store["store_name"]
+            },
+
+            "destination_store": {
+                "store_id":
+                    ticket.destination_store_id,
+
+                "store_name":
+                    destination_store["store_name"]
+            },
+
+            "items":
+                response_items,
+
+            "client_event_id":
+                ticket.client_event_id
+        }
+
+    except psycopg2.errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        if (
+            cursor
+            and ticket.client_event_id
+        ):
+            cursor.execute(
+                """
+                SELECT
+                    transfer_id,
+                    transfer_uid,
+                    transfer_number,
+                    status
+                FROM transfer_tickets
+                WHERE origin_store_id = %s
+                  AND client_event_id = %s
+                LIMIT 1
+                """,
+                (
+                    ticket.store_id,
+                    ticket.client_event_id
+                )
+            )
+
+            existing = cursor.fetchone()
+
+            if existing:
+                return {
+                    "status":
+                        "already_processed",
+
+                    "transfer_id":
+                        int(existing[0]),
+
+                    "transfer_uid":
+                        existing[1],
+
+                    "transfer_number":
+                        int(existing[2]),
+
+                    "transfer_status":
+                        existing[3],
+
+                    "client_event_id":
+                        ticket.client_event_id
+                }
+
+        raise HTTPException(
+            status_code=409,
+            detail="Duplicate transfer ticket"
+        )
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CREATE TRANSFER TICKET ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to create transfer ticket"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+# Temporary legacy endpoint. Remove after the ticket
+# workflow and receiving confirmation are deployed.
 @app.post("/stock-transfer")
 def stock_transfer(data: StockTransferRequest):
     if data.quantity <= 0:
@@ -9450,7 +10422,7 @@ def build_weekly_briefing_snapshot(
             conn.rollback()
 
         print(
-            "🔥 WEEKLY BRIEFING DATA ERROR:",
+            "ðŸ”¥ WEEKLY BRIEFING DATA ERROR:",
             repr(error)
         )
 
@@ -9768,7 +10740,7 @@ async def import_products(
             "yes",
             "y",
             "si",
-            "sí"
+            "sÃ­"
         }
 
         tracks_stock_false_values = {
