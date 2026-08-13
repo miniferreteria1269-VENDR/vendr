@@ -1,8 +1,5 @@
 import { offlineDb } from "./offlineDb";
 
-/**
- * Saves the latest balance confirmed by the backend.
- */
 export const cacheConfirmedCashBalance = async (
   storeId,
   balance
@@ -26,9 +23,6 @@ export const cacheConfirmedCashBalance = async (
   });
 };
 
-/**
- * Returns the last balance received from the backend.
- */
 export const getCachedConfirmedCashBalance =
   async storeId => {
     if (!storeId) {
@@ -47,9 +41,6 @@ export const getCachedConfirmedCashBalance =
     );
   };
 
-/**
- * Calculates the total cost of an intake ticket.
- */
 const getIntakeTotalCost = event => {
   const items = event?.payload?.items;
 
@@ -66,25 +57,36 @@ const getIntakeTotalCost = event => {
   );
 };
 
-/**
- * Determines how a pending event affects cash.
- */
+const getRegisterAmount = event => {
+  const payload = event?.payload || {};
+
+  const value =
+    payload.register_amount ??
+    payload.amount ??
+    0;
+
+  const numericValue = Number(value);
+
+  return Number.isFinite(numericValue)
+    ? numericValue
+    : 0;
+};
+
 const getPendingCashDelta = event => {
-  const amount = Number(
-    event?.payload?.amount || 0
-  );
+  const registerAmount =
+    getRegisterAmount(event);
 
   switch (event.event_type) {
     case "revenue":
-      return Number.isFinite(amount)
-        ? amount
-        : 0;
+    case "cash_adjustment_positive":
+    case "cash_transfer_in":
+      return registerAmount;
 
     case "expense":
     case "return":
-      return Number.isFinite(amount)
-        ? -amount
-        : 0;
+    case "cash_adjustment_negative":
+    case "cash_transfer_out":
+      return -registerAmount;
 
     case "sale":
       return Array.isArray(
@@ -109,9 +111,6 @@ const getPendingCashDelta = event => {
   }
 };
 
-/**
- * Adds all still-pending cash effects for one store.
- */
 export const getPendingCashDeltaForStore =
   async storeId => {
     if (!storeId) {
@@ -131,13 +130,6 @@ export const getPendingCashDeltaForStore =
     );
   };
 
-/**
- * Returns the balance that should currently be shown.
- *
- * Displayed balance =
- * last confirmed backend balance
- * + still-pending local cash movements
- */
 export const getDisplayedCashBalance =
   async storeId => {
     const confirmedBalance =
