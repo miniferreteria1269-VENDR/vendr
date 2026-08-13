@@ -82,7 +82,7 @@ def get_last_completed_week_end() -> date:
 
     # Monday = 0 and Sunday = 6.
     # This always returns the Sunday ending the
-    # most recently completed Mondayâ€“Sunday week.
+    # most recently completed Monday–Sunday week.
     return (
         today
         - timedelta(
@@ -510,6 +510,9 @@ def init_db():
         client_event_id TEXT,
         device_id TEXT,
         client_created_at TEXT,
+        receipt_client_event_id TEXT,
+        receipt_device_id TEXT,
+        receipt_client_created_at TEXT,
         created_at TEXT NOT NULL,
         dispatched_at TEXT,
         received_at TEXT,
@@ -547,6 +550,36 @@ def init_db():
         client_event_id
     )
     WHERE client_event_id IS NOT NULL
+    """)
+
+    # Existing transfer tables created by an earlier
+    # deployment receive the confirmation metadata too.
+    cursor.execute("""
+    ALTER TABLE transfer_tickets
+    ADD COLUMN IF NOT EXISTS
+        receipt_client_event_id TEXT
+    """)
+
+    cursor.execute("""
+    ALTER TABLE transfer_tickets
+    ADD COLUMN IF NOT EXISTS
+        receipt_device_id TEXT
+    """)
+
+    cursor.execute("""
+    ALTER TABLE transfer_tickets
+    ADD COLUMN IF NOT EXISTS
+        receipt_client_created_at TEXT
+    """)
+
+    cursor.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_transfer_tickets_receipt_event
+    ON transfer_tickets (
+        destination_store_id,
+        receipt_client_event_id
+    )
+    WHERE receipt_client_event_id IS NOT NULL
     """)
 
     cursor.execute("""
@@ -701,6 +734,32 @@ def init_db():
         store_a_id,
         is_active
     )
+    """)
+
+    # Only one active mapping is allowed for either
+    # product across the same pair of stores.
+    cursor.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_product_transfer_links_active_a
+    ON product_transfer_links (
+        organization_id,
+        store_a_id,
+        product_a_id,
+        store_b_id
+    )
+    WHERE is_active = TRUE
+    """)
+
+    cursor.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_product_transfer_links_active_b
+    ON product_transfer_links (
+        organization_id,
+        store_b_id,
+        product_b_id,
+        store_a_id
+    )
+    WHERE is_active = TRUE
     """)
 
     # Inventory events retain their normal store and
@@ -2232,7 +2291,7 @@ def build_cash_activity_data(
 
         if (
             category in {
-                "retiro dueÃ±o",
+                "retiro dueño",
                 "retiro dueno",
                 "owner_draw"
             }
@@ -3017,7 +3076,7 @@ def startup():
 class SaleItem(BaseModel):
     product_id: int
     quantity: int
-    price: float  # ðŸ”¥ REQUIRED
+    price: float  # 🔥 REQUIRED
 
 class CreditPaymentCreate(BaseModel):
     amount: Decimal
@@ -3128,6 +3187,20 @@ class TransferTicketCreate(BaseModel):
     store_id: int
     destination_store_id: int
     items: List[TransferTicketItemCreate]
+    note: Optional[str] = None
+
+    client_event_id: Optional[str] = None
+    device_id: Optional[str] = None
+    client_created_at: Optional[str] = None
+
+class TransferReceiptItem(BaseModel):
+    transfer_item_id: int
+    destination_product_id: int
+    quantity_received: int
+
+class TransferTicketReceipt(BaseModel):
+    store_id: int
+    items: List[TransferReceiptItem]
     note: Optional[str] = None
 
     client_event_id: Optional[str] = None
@@ -6365,6 +6438,105 @@ def stock_adjustment(
         if conn:
             conn.close()
 
+@app.get("/transfer-stores")
+def get_transfer_stores(
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT organization_id
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (
+                current_user.store_id,
+            )
+        )
+
+        origin = cursor.fetchone()
+
+        if not origin:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        organization_id = origin[0]
+
+        if organization_id is None:
+            return {
+                "status": "accepted",
+                "stores": []
+            }
+
+        cursor.execute(
+            """
+            SELECT
+                store_id,
+                name
+            FROM stores
+            WHERE organization_id = %s
+              AND store_id <> %s
+            ORDER BY
+                LOWER(COALESCE(name, '')),
+                store_id
+            """,
+            (
+                organization_id,
+                current_user.store_id
+            )
+        )
+
+        stores = []
+
+        for row in cursor.fetchall():
+            stores.append({
+                "store_id":
+                    int(row[0]),
+
+                "store_name":
+                    (
+                        str(row[1]).strip()
+                        if row[1]
+                        else f"Store {int(row[0])}"
+                    )
+            })
+
+        return {
+            "status": "accepted",
+            "stores": stores
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET TRANSFER STORES ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load transfer stores"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.post("/transfer-tickets")
 def create_transfer_ticket(
     ticket: TransferTicketCreate,
@@ -7089,6 +7261,1496 @@ def create_transfer_ticket(
             detail=(
                 "Unable to create transfer ticket"
             )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.get("/transfer-tickets")
+def get_transfer_tickets(
+    scope: str = "all",
+    transfer_status: Optional[str] = None,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if scope not in (
+        "all",
+        "incoming",
+        "sent"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "scope must be 'all', "
+                "'incoming', or 'sent'"
+            )
+        )
+
+    valid_statuses = {
+        "created",
+        "dispatched",
+        "received",
+        "received_with_discrepancy",
+        "cancelled"
+    }
+
+    if (
+        transfer_status is not None
+        and transfer_status not in valid_statuses
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid transfer status"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                t.transfer_id,
+                t.transfer_uid,
+                t.transfer_number,
+                t.origin_store_id,
+                origin.name,
+                t.destination_store_id,
+                destination.name,
+                t.status,
+                t.note,
+                t.created_at,
+                t.dispatched_at,
+                t.received_at,
+                COUNT(i.transfer_item_id),
+                COALESCE(
+                    SUM(i.quantity_sent),
+                    0
+                ),
+                COALESCE(
+                    SUM(i.quantity_received),
+                    0
+                )
+            FROM transfer_tickets t
+
+            INNER JOIN stores origin
+                ON origin.store_id =
+                   t.origin_store_id
+
+            INNER JOIN stores destination
+                ON destination.store_id =
+                   t.destination_store_id
+
+            LEFT JOIN transfer_ticket_items i
+                ON i.transfer_id =
+                   t.transfer_id
+
+            WHERE (
+                (
+                    %s = 'all'
+                    AND (
+                        t.origin_store_id = %s
+                        OR
+                        t.destination_store_id = %s
+                    )
+                )
+                OR
+                (
+                    %s = 'incoming'
+                    AND
+                    t.destination_store_id = %s
+                )
+                OR
+                (
+                    %s = 'sent'
+                    AND
+                    t.origin_store_id = %s
+                )
+            )
+              AND (
+                    %s IS NULL
+                    OR
+                    t.status = %s
+              )
+
+            GROUP BY
+                t.transfer_id,
+                t.transfer_uid,
+                t.transfer_number,
+                t.origin_store_id,
+                origin.name,
+                t.destination_store_id,
+                destination.name,
+                t.status,
+                t.note,
+                t.created_at,
+                t.dispatched_at,
+                t.received_at
+
+            ORDER BY
+                COALESCE(
+                    t.dispatched_at,
+                    t.created_at
+                ) DESC,
+                t.transfer_id DESC
+            """,
+            (
+                scope,
+                current_user.store_id,
+                current_user.store_id,
+                scope,
+                current_user.store_id,
+                scope,
+                current_user.store_id,
+                transfer_status,
+                transfer_status
+            )
+        )
+
+        tickets = []
+
+        for row in cursor.fetchall():
+            origin_store_id = int(
+                row[3]
+            )
+
+            destination_store_id = int(
+                row[5]
+            )
+
+            tickets.append({
+                "transfer_id":
+                    int(row[0]),
+
+                "transfer_uid":
+                    row[1],
+
+                "transfer_number":
+                    int(row[2]),
+
+                "origin_store": {
+                    "store_id":
+                        origin_store_id,
+
+                    "store_name":
+                        (
+                            str(row[4]).strip()
+                            if row[4]
+                            else (
+                                f"Store "
+                                f"{origin_store_id}"
+                            )
+                        )
+                },
+
+                "destination_store": {
+                    "store_id":
+                        destination_store_id,
+
+                    "store_name":
+                        (
+                            str(row[6]).strip()
+                            if row[6]
+                            else (
+                                f"Store "
+                                f"{destination_store_id}"
+                            )
+                        )
+                },
+
+                "transfer_status":
+                    row[7],
+
+                "note":
+                    row[8],
+
+                "created_at":
+                    row[9],
+
+                "dispatched_at":
+                    row[10],
+
+                "received_at":
+                    row[11],
+
+                "item_count":
+                    int(row[12] or 0),
+
+                "units_sent":
+                    int(row[13] or 0),
+
+                "units_received":
+                    int(row[14] or 0),
+
+                "direction": (
+                    "sent"
+                    if origin_store_id
+                    == current_user.store_id
+                    else "incoming"
+                )
+            })
+
+        return {
+            "status": "accepted",
+            "scope": scope,
+            "tickets": tickets
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET TRANSFER TICKETS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load transfer tickets"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.get("/transfer-tickets/{transfer_id}")
+def get_transfer_ticket_details(
+    transfer_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                t.transfer_id,
+                t.transfer_uid,
+                t.transfer_number,
+                t.organization_id,
+                t.origin_store_id,
+                origin.name,
+                t.destination_store_id,
+                destination.name,
+                t.status,
+                t.note,
+                t.created_at,
+                t.dispatched_at,
+                t.received_at,
+                t.created_by_user_id,
+                t.received_by_user_id
+            FROM transfer_tickets t
+
+            INNER JOIN stores origin
+                ON origin.store_id =
+                   t.origin_store_id
+
+            INNER JOIN stores destination
+                ON destination.store_id =
+                   t.destination_store_id
+
+            WHERE t.transfer_id = %s
+            """,
+            (
+                transfer_id,
+            )
+        )
+
+        ticket = cursor.fetchone()
+
+        if not ticket:
+            raise HTTPException(
+                status_code=404,
+                detail="Transfer ticket not found"
+            )
+
+        organization_id = int(
+            ticket[3]
+        )
+
+        origin_store_id = int(
+            ticket[4]
+        )
+
+        destination_store_id = int(
+            ticket[6]
+        )
+
+        if current_user.store_id not in (
+            origin_store_id,
+            destination_store_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Transfer access denied"
+            )
+
+        cursor.execute(
+            """
+            SELECT
+                transfer_item_id,
+                line_number,
+                origin_product_id,
+                origin_product_name_at_time,
+                destination_product_id,
+                destination_product_name_at_time,
+                quantity_sent,
+                quantity_received,
+                cost_at_time,
+                price_at_time,
+                line_status
+            FROM transfer_ticket_items
+            WHERE transfer_id = %s
+            ORDER BY line_number
+            """,
+            (
+                transfer_id,
+            )
+        )
+
+        item_rows = cursor.fetchall()
+        items = []
+
+        for row in item_rows:
+            origin_product_id = int(
+                row[2]
+            )
+
+            suggested_product = None
+
+            # Completed lines retain their confirmed
+            # destination snapshot.
+            if row[4] is not None:
+                suggested_product = {
+                    "product_id":
+                        int(row[4]),
+
+                    "product_name":
+                        row[5],
+
+                    "source":
+                        "confirmed"
+                }
+
+            # Pending lines may use only a relationship
+            # that a user confirmed on an earlier
+            # transfer. Names are never guessed here.
+            elif origin_store_id < destination_store_id:
+                cursor.execute(
+                    """
+                    SELECT
+                        p.product_id,
+                        p.name,
+                        p.stock
+                    FROM product_transfer_links link
+
+                    INNER JOIN products p
+                        ON p.store_id =
+                           link.store_b_id
+                       AND p.product_id =
+                           link.product_b_id
+
+                    WHERE
+                        link.organization_id = %s
+                    AND link.store_a_id = %s
+                    AND link.product_a_id = %s
+                    AND link.store_b_id = %s
+                    AND link.is_active = TRUE
+                    AND p.is_active = 1
+                    AND p.tracks_stock = 1
+                    LIMIT 1
+                    """,
+                    (
+                        organization_id,
+                        origin_store_id,
+                        origin_product_id,
+                        destination_store_id
+                    )
+                )
+
+                mapping = cursor.fetchone()
+
+                if mapping:
+                    suggested_product = {
+                        "product_id":
+                            int(mapping[0]),
+
+                        "product_name":
+                            mapping[1],
+
+                        "stock":
+                            int(mapping[2] or 0),
+
+                        "source":
+                            "confirmed_mapping"
+                    }
+
+            else:
+                cursor.execute(
+                    """
+                    SELECT
+                        p.product_id,
+                        p.name,
+                        p.stock
+                    FROM product_transfer_links link
+
+                    INNER JOIN products p
+                        ON p.store_id =
+                           link.store_a_id
+                       AND p.product_id =
+                           link.product_a_id
+
+                    WHERE
+                        link.organization_id = %s
+                    AND link.store_b_id = %s
+                    AND link.product_b_id = %s
+                    AND link.store_a_id = %s
+                    AND link.is_active = TRUE
+                    AND p.is_active = 1
+                    AND p.tracks_stock = 1
+                    LIMIT 1
+                    """,
+                    (
+                        organization_id,
+                        origin_store_id,
+                        origin_product_id,
+                        destination_store_id
+                    )
+                )
+
+                mapping = cursor.fetchone()
+
+                if mapping:
+                    suggested_product = {
+                        "product_id":
+                            int(mapping[0]),
+
+                        "product_name":
+                            mapping[1],
+
+                        "stock":
+                            int(mapping[2] or 0),
+
+                        "source":
+                            "confirmed_mapping"
+                    }
+
+            items.append({
+                "transfer_item_id":
+                    int(row[0]),
+
+                "line_number":
+                    int(row[1]),
+
+                "origin_product": {
+                    "product_id":
+                        origin_product_id,
+
+                    "product_name":
+                        row[3]
+                },
+
+                "destination_product": (
+                    {
+                        "product_id":
+                            int(row[4]),
+
+                        "product_name":
+                            row[5]
+                    }
+                    if row[4] is not None
+                    else None
+                ),
+
+                "suggested_destination_product":
+                    suggested_product,
+
+                "quantity_sent":
+                    int(row[6]),
+
+                "quantity_received": (
+                    int(row[7])
+                    if row[7] is not None
+                    else None
+                ),
+
+                "cost_at_time":
+                    round_money(row[8]),
+
+                "price_at_time":
+                    round(
+                        float(row[9] or 0),
+                        3
+                    ),
+
+                "line_status":
+                    row[10]
+            })
+
+        return {
+            "status": "accepted",
+
+            "transfer": {
+                "transfer_id":
+                    int(ticket[0]),
+
+                "transfer_uid":
+                    ticket[1],
+
+                "transfer_number":
+                    int(ticket[2]),
+
+                "transfer_status":
+                    ticket[8],
+
+                "origin_store": {
+                    "store_id":
+                        origin_store_id,
+
+                    "store_name":
+                        (
+                            str(ticket[5]).strip()
+                            if ticket[5]
+                            else (
+                                f"Store "
+                                f"{origin_store_id}"
+                            )
+                        )
+                },
+
+                "destination_store": {
+                    "store_id":
+                        destination_store_id,
+
+                    "store_name":
+                        (
+                            str(ticket[7]).strip()
+                            if ticket[7]
+                            else (
+                                f"Store "
+                                f"{destination_store_id}"
+                            )
+                        )
+                },
+
+                "note":
+                    ticket[9],
+
+                "created_at":
+                    ticket[10],
+
+                "dispatched_at":
+                    ticket[11],
+
+                "received_at":
+                    ticket[12],
+
+                "created_by_user_id":
+                    int(ticket[13]),
+
+                "received_by_user_id": (
+                    int(ticket[14])
+                    if ticket[14] is not None
+                    else None
+                ),
+
+                "direction": (
+                    "sent"
+                    if current_user.store_id
+                    == origin_store_id
+                    else "incoming"
+                ),
+
+                "can_receive": (
+                    current_user.store_id
+                    == destination_store_id
+                    and ticket[8]
+                    == "dispatched"
+                ),
+
+                "items":
+                    items
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GET TRANSFER DETAILS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load transfer details"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+@app.post(
+    "/transfer-tickets/{transfer_id}/receive"
+)
+def receive_transfer_ticket(
+    transfer_id: int,
+    receipt: TransferTicketReceipt,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    # ---------------------------------------------
+    # AUTHORIZATION
+    # ---------------------------------------------
+    if current_user.store_id != receipt.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    if not receipt.items:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Receipt must contain every "
+                "transfer item"
+            )
+        )
+
+    receipt_item_ids = [
+        int(item.transfer_item_id)
+        for item in receipt.items
+    ]
+
+    if (
+        len(receipt_item_ids)
+        != len(set(receipt_item_ids))
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A transfer item may appear "
+                "only once"
+            )
+        )
+
+    destination_product_ids = [
+        int(item.destination_product_id)
+        for item in receipt.items
+    ]
+
+    if (
+        len(destination_product_ids)
+        != len(set(destination_product_ids))
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Each transfer line must map "
+                "to a different local product"
+            )
+        )
+
+    for item in receipt.items:
+        if item.quantity_received < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Received quantity cannot "
+                    "be negative"
+                )
+            )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        # Lock the ticket so two receiving requests
+        # cannot finalize it simultaneously.
+        cursor.execute(
+            """
+            SELECT
+                t.transfer_uid,
+                t.transfer_number,
+                t.organization_id,
+                t.origin_store_id,
+                origin.name,
+                t.destination_store_id,
+                destination.name,
+                t.status,
+                t.receipt_client_event_id
+            FROM transfer_tickets t
+
+            INNER JOIN stores origin
+                ON origin.store_id =
+                   t.origin_store_id
+
+            INNER JOIN stores destination
+                ON destination.store_id =
+                   t.destination_store_id
+
+            WHERE t.transfer_id = %s
+            FOR UPDATE OF t
+            """,
+            (
+                transfer_id,
+            )
+        )
+
+        ticket = cursor.fetchone()
+
+        if not ticket:
+            raise HTTPException(
+                status_code=404,
+                detail="Transfer ticket not found"
+            )
+
+        (
+            transfer_uid,
+            transfer_number,
+            organization_id,
+            origin_store_id,
+            origin_store_name,
+            destination_store_id,
+            destination_store_name,
+            transfer_status,
+            existing_receipt_event_id
+        ) = ticket
+
+        origin_store_id = int(
+            origin_store_id
+        )
+
+        destination_store_id = int(
+            destination_store_id
+        )
+
+        if (
+            current_user.store_id
+            != destination_store_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Only the destination store "
+                    "can receive this transfer"
+                )
+            )
+
+        if transfer_status in (
+            "received",
+            "received_with_discrepancy"
+        ):
+            return {
+                "status":
+                    "already_processed",
+
+                "transfer_id":
+                    transfer_id,
+
+                "transfer_uid":
+                    transfer_uid,
+
+                "transfer_number":
+                    int(transfer_number),
+
+                "transfer_status":
+                    transfer_status,
+
+                "client_event_id":
+                    (
+                        existing_receipt_event_id
+                        or receipt.client_event_id
+                    )
+            }
+
+        if transfer_status != "dispatched":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Only a dispatched transfer "
+                    "can be received"
+                )
+            )
+
+        # A receipt retry using a client event already
+        # attached to another transfer is rejected.
+        if receipt.client_event_id:
+            cursor.execute(
+                """
+                SELECT transfer_id
+                FROM transfer_tickets
+                WHERE destination_store_id = %s
+                  AND receipt_client_event_id = %s
+                  AND transfer_id <> %s
+                LIMIT 1
+                """,
+                (
+                    destination_store_id,
+                    receipt.client_event_id,
+                    transfer_id
+                )
+            )
+
+            if cursor.fetchone():
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Receipt event ID is already "
+                        "used by another transfer"
+                    )
+                )
+
+        cursor.execute(
+            """
+            SELECT
+                transfer_item_id,
+                origin_product_id,
+                origin_product_name_at_time,
+                quantity_sent
+            FROM transfer_ticket_items
+            WHERE transfer_id = %s
+            ORDER BY line_number
+            FOR UPDATE
+            """,
+            (
+                transfer_id,
+            )
+        )
+
+        transfer_item_rows = (
+            cursor.fetchall()
+        )
+
+        transfer_items_by_id = {
+            int(row[0]): {
+                "origin_product_id":
+                    int(row[1]),
+
+                "origin_product_name":
+                    row[2],
+
+                "quantity_sent":
+                    int(row[3])
+            }
+            for row in transfer_item_rows
+        }
+
+        expected_item_ids = set(
+            transfer_items_by_id.keys()
+        )
+
+        supplied_item_ids = set(
+            receipt_item_ids
+        )
+
+        if supplied_item_ids != expected_item_ids:
+            missing = sorted(
+                expected_item_ids
+                - supplied_item_ids
+            )
+
+            unexpected = sorted(
+                supplied_item_ids
+                - expected_item_ids
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": (
+                        "Receipt must contain every "
+                        "transfer item exactly once"
+                    ),
+                    "missing_transfer_item_ids":
+                        missing,
+                    "unexpected_transfer_item_ids":
+                        unexpected
+                }
+            )
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        clean_note = (
+            str(receipt.note).strip()
+            if receipt.note
+            and str(receipt.note).strip()
+            else None
+        )
+
+        discrepancy_found = False
+        response_items = []
+
+        for receipt_item in receipt.items:
+            transfer_item_id = int(
+                receipt_item.transfer_item_id
+            )
+
+            transfer_item = (
+                transfer_items_by_id[
+                    transfer_item_id
+                ]
+            )
+
+            quantity_sent = int(
+                transfer_item["quantity_sent"]
+            )
+
+            quantity_received = int(
+                receipt_item.quantity_received
+            )
+
+            if quantity_received > quantity_sent:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Received quantity cannot "
+                        "exceed sent quantity for "
+                        f"transfer item "
+                        f"{transfer_item_id}"
+                    )
+                )
+
+            cursor.execute(
+                """
+                SELECT
+                    name,
+                    stock,
+                    cost,
+                    price,
+                    tracks_stock
+                FROM products
+                WHERE product_id = %s
+                  AND store_id = %s
+                  AND is_active = 1
+                FOR UPDATE
+                """,
+                (
+                    receipt_item.destination_product_id,
+                    destination_store_id
+                )
+            )
+
+            destination_product = (
+                cursor.fetchone()
+            )
+
+            if not destination_product:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        "Destination product "
+                        f"{receipt_item.destination_product_id} "
+                        "not found"
+                    )
+                )
+
+            (
+                destination_product_name,
+                destination_stock,
+                destination_cost,
+                destination_price,
+                destination_tracks_stock
+            ) = destination_product
+
+            if destination_tracks_stock != 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{destination_product_name} "
+                        "does not track stock"
+                    )
+                )
+
+            line_has_discrepancy = (
+                quantity_received
+                != quantity_sent
+            )
+
+            if line_has_discrepancy:
+                discrepancy_found = True
+
+            line_status = (
+                "discrepancy"
+                if line_has_discrepancy
+                else "received"
+            )
+
+            cursor.execute(
+                """
+                UPDATE transfer_ticket_items
+                SET
+                    destination_product_id = %s,
+                    destination_product_name_at_time =
+                        %s,
+                    quantity_received = %s,
+                    line_status = %s
+                WHERE transfer_item_id = %s
+                  AND transfer_id = %s
+                """,
+                (
+                    receipt_item.destination_product_id,
+                    destination_product_name,
+                    quantity_received,
+                    line_status,
+                    transfer_item_id,
+                    transfer_id
+                )
+            )
+
+            # No zero-quantity inventory event is
+            # created, but the discrepancy remains on
+            # the transfer line and workflow history.
+            if quantity_received > 0:
+                event_note_parts = [
+                    (
+                        f"Transfer {transfer_uid} "
+                        f"from "
+                        f"{origin_store_name or origin_store_id}"
+                    )
+                ]
+
+                if clean_note:
+                    event_note_parts.append(
+                        clean_note
+                    )
+
+                event_note = " | ".join(
+                    event_note_parts
+                )
+
+                cursor.execute(
+                    """
+                    INSERT INTO events (
+                        store_id,
+                        event_type,
+                        product_id,
+                        product_name_at_time,
+                        quantity,
+                        cost_at_time,
+                        price_at_time,
+                        event_datetime,
+                        store_ticket_number,
+                        note,
+                        client_event_id,
+                        device_id,
+                        client_created_at,
+                        transfer_id,
+                        transfer_item_id
+                    )
+                    VALUES (
+                        %s, 'transfer_in', %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s
+                    )
+                    """,
+                    (
+                        destination_store_id,
+                        receipt_item.destination_product_id,
+                        destination_product_name,
+                        quantity_received,
+                        round(
+                            float(
+                                destination_cost or 0
+                            ),
+                            2
+                        ),
+                        round(
+                            float(
+                                destination_price or 0
+                            ),
+                            3
+                        ),
+                        now,
+                        int(transfer_number),
+                        event_note,
+                        (
+                            (
+                                f"{receipt.client_event_id}"
+                                f":transfer_in:"
+                                f"{transfer_item_id}"
+                            )
+                            if receipt.client_event_id
+                            else None
+                        ),
+                        receipt.device_id,
+                        receipt.client_created_at,
+                        transfer_id,
+                        transfer_item_id
+                    )
+                )
+
+                cursor.execute(
+                    """
+                    UPDATE products
+                    SET stock =
+                        COALESCE(stock, 0) + %s
+                    WHERE product_id = %s
+                      AND store_id = %s
+                      AND tracks_stock = 1
+                    """,
+                    (
+                        quantity_received,
+                        receipt_item.destination_product_id,
+                        destination_store_id
+                    )
+                )
+
+            # -------------------------------------
+            # REMEMBER THE HUMAN-CONFIRMED MAPPING
+            # -------------------------------------
+            if origin_store_id < destination_store_id:
+                store_a_id = origin_store_id
+                product_a_id = transfer_item[
+                    "origin_product_id"
+                ]
+                store_b_id = destination_store_id
+                product_b_id = int(
+                    receipt_item.destination_product_id
+                )
+            else:
+                store_a_id = destination_store_id
+                product_a_id = int(
+                    receipt_item.destination_product_id
+                )
+                store_b_id = origin_store_id
+                product_b_id = transfer_item[
+                    "origin_product_id"
+                ]
+
+            # Correcting a mapping deactivates any
+            # conflicting relationship for either
+            # product across this pair of stores.
+            cursor.execute(
+                """
+                UPDATE product_transfer_links
+                SET is_active = FALSE
+                WHERE organization_id = %s
+                  AND store_a_id = %s
+                  AND store_b_id = %s
+                  AND is_active = TRUE
+                  AND (
+                        product_a_id = %s
+                        OR
+                        product_b_id = %s
+                  )
+                  AND NOT (
+                        product_a_id = %s
+                        AND
+                        product_b_id = %s
+                  )
+                """,
+                (
+                    organization_id,
+                    store_a_id,
+                    store_b_id,
+                    product_a_id,
+                    product_b_id,
+                    product_a_id,
+                    product_b_id
+                )
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO product_transfer_links (
+                    organization_id,
+                    store_a_id,
+                    product_a_id,
+                    store_b_id,
+                    product_b_id,
+                    confirmed_by_user_id,
+                    created_from_transfer_id,
+                    created_at,
+                    is_active
+                )
+                VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, TRUE
+                )
+
+                ON CONFLICT (
+                    organization_id,
+                    store_a_id,
+                    product_a_id,
+                    store_b_id,
+                    product_b_id
+                )
+                DO UPDATE
+                SET
+                    confirmed_by_user_id =
+                        EXCLUDED.confirmed_by_user_id,
+                    created_from_transfer_id =
+                        EXCLUDED.created_from_transfer_id,
+                    created_at =
+                        EXCLUDED.created_at,
+                    is_active = TRUE
+                """,
+                (
+                    organization_id,
+                    store_a_id,
+                    product_a_id,
+                    store_b_id,
+                    product_b_id,
+                    current_user.user_id,
+                    transfer_id,
+                    now
+                )
+            )
+
+            response_items.append({
+                "transfer_item_id":
+                    transfer_item_id,
+
+                "origin_product_id":
+                    transfer_item[
+                        "origin_product_id"
+                    ],
+
+                "origin_product_name":
+                    transfer_item[
+                        "origin_product_name"
+                    ],
+
+                "destination_product_id":
+                    int(
+                        receipt_item
+                        .destination_product_id
+                    ),
+
+                "destination_product_name":
+                    destination_product_name,
+
+                "quantity_sent":
+                    quantity_sent,
+
+                "quantity_received":
+                    quantity_received,
+
+                "line_status":
+                    line_status,
+
+                "destination_stock_after":
+                    (
+                        int(destination_stock or 0)
+                        + quantity_received
+                    )
+            })
+
+        final_status = (
+            "received_with_discrepancy"
+            if discrepancy_found
+            else "received"
+        )
+
+        cursor.execute(
+            """
+            UPDATE transfer_tickets
+            SET
+                status = %s,
+                received_by_user_id = %s,
+                receipt_client_event_id = %s,
+                receipt_device_id = %s,
+                receipt_client_created_at = %s,
+                received_at = %s
+            WHERE transfer_id = %s
+            """,
+            (
+                final_status,
+                current_user.user_id,
+                receipt.client_event_id,
+                receipt.device_id,
+                receipt.client_created_at,
+                now,
+                transfer_id
+            )
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO transfer_ticket_events (
+                transfer_id,
+                store_id,
+                user_id,
+                event_type,
+                event_datetime,
+                note,
+                client_event_id
+            )
+            VALUES (
+                %s, %s, %s,
+                %s, %s, %s, %s
+            )
+            """,
+            (
+                transfer_id,
+                destination_store_id,
+                current_user.user_id,
+                final_status,
+                now,
+                clean_note,
+                (
+                    (
+                        f"{receipt.client_event_id}"
+                        f":{final_status}"
+                    )
+                    if receipt.client_event_id
+                    else None
+                )
+            )
+        )
+
+        conn.commit()
+
+        return {
+            "status":
+                "accepted",
+
+            "transfer_id":
+                transfer_id,
+
+            "transfer_uid":
+                transfer_uid,
+
+            "transfer_number":
+                int(transfer_number),
+
+            "transfer_status":
+                final_status,
+
+            "origin_store": {
+                "store_id":
+                    origin_store_id,
+
+                "store_name":
+                    (
+                        origin_store_name
+                        or f"Store {origin_store_id}"
+                    )
+            },
+
+            "destination_store": {
+                "store_id":
+                    destination_store_id,
+
+                "store_name":
+                    (
+                        destination_store_name
+                        or (
+                            f"Store "
+                            f"{destination_store_id}"
+                        )
+                    )
+            },
+
+            "items":
+                response_items,
+
+            "client_event_id":
+                receipt.client_event_id
+        }
+
+    except psycopg2.errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        if cursor:
+            cursor.execute(
+                """
+                SELECT
+                    transfer_uid,
+                    transfer_number,
+                    status,
+                    receipt_client_event_id
+                FROM transfer_tickets
+                WHERE transfer_id = %s
+                """,
+                (
+                    transfer_id,
+                )
+            )
+
+            existing = cursor.fetchone()
+
+            if (
+                existing
+                and existing[2] in (
+                    "received",
+                    "received_with_discrepancy"
+                )
+            ):
+                return {
+                    "status":
+                        "already_processed",
+
+                    "transfer_id":
+                        transfer_id,
+
+                    "transfer_uid":
+                        existing[0],
+
+                    "transfer_number":
+                        int(existing[1]),
+
+                    "transfer_status":
+                        existing[2],
+
+                    "client_event_id":
+                        existing[3]
+                }
+
+        raise HTTPException(
+            status_code=409,
+            detail="Duplicate transfer receipt"
+        )
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "RECEIVE TRANSFER TICKET ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to receive transfer ticket"
         )
 
     finally:
@@ -10422,7 +12084,7 @@ def build_weekly_briefing_snapshot(
             conn.rollback()
 
         print(
-            "ðŸ”¥ WEEKLY BRIEFING DATA ERROR:",
+            "🔥 WEEKLY BRIEFING DATA ERROR:",
             repr(error)
         )
 
@@ -10740,7 +12402,7 @@ async def import_products(
             "yes",
             "y",
             "si",
-            "sÃ­"
+            "sí"
         }
 
         tracks_stock_false_values = {
