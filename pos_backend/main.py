@@ -7366,6 +7366,100 @@ def create_transfer_ticket(
         if conn:
             conn.close()
 
+@app.get("/transfer-attention")
+def get_transfer_attention(
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN destination_store_id = %s
+                            THEN 1
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ),
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN origin_store_id = %s
+                            THEN 1
+                            ELSE 0
+                        END
+                    ),
+                    0
+                )
+            FROM transfer_tickets
+            WHERE status = 'dispatched'
+              AND (
+                    destination_store_id = %s
+                    OR
+                    origin_store_id = %s
+              )
+            """,
+            (
+                current_user.store_id,
+                current_user.store_id,
+                current_user.store_id,
+                current_user.store_id
+            )
+        )
+
+        row = cursor.fetchone()
+
+        incoming_pending_count = int(
+            row[0] or 0
+        )
+
+        sent_pending_count = int(
+            row[1] or 0
+        )
+
+        return {
+            "status": "accepted",
+            "has_attention": bool(
+                incoming_pending_count
+                or sent_pending_count
+            ),
+            "incoming_pending_count":
+                incoming_pending_count,
+            "sent_pending_count":
+                sent_pending_count
+        }
+
+    except Exception as error:
+        print(
+            "GET TRANSFER ATTENTION ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load transfer status"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 @app.get("/transfer-tickets")
 def get_transfer_tickets(
     scope: str = "all",
