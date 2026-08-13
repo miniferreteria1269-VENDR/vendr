@@ -12,6 +12,7 @@ import {
 import ReturnModal from "./ReturnModal";
 import RevenueModal from "./RevenueModal";
 import ExpenseModal from "./ExpenseModal";
+import CashMovementModal from "./CashMovementModal";
 import MovementSummary from "./MovementSummary";
 
 import {
@@ -54,6 +55,11 @@ function CashPanel({
   ] = useState(false);
 
   const [
+    cashMovementMode,
+    setCashMovementMode
+  ] = useState(null);
+
+  const [
     showSummary,
     setShowSummary
   ] = useState(false);
@@ -84,10 +90,6 @@ function CashPanel({
         confirmedBalance
       );
 
-      /*
-       * Always include any local events that may still
-       * be pending, even while the server is reachable.
-       */
       const displayedBalance =
         await getDisplayedCashBalance(
           storeId
@@ -105,11 +107,6 @@ function CashPanel({
       );
 
       try {
-        /*
-         * Offline balance =
-         * last confirmed backend balance
-         * + all unsynchronized local cash effects.
-         */
         const displayedBalance =
           await getDisplayedCashBalance(
             storeId
@@ -147,7 +144,6 @@ function CashPanel({
         minHeight: 0
       }}
     >
-      {/* BALANCE CARD */}
       <div
         style={{
           ...card,
@@ -178,7 +174,6 @@ function CashPanel({
         </div>
       </div>
 
-      {/* ACTIONS */}
       <div
         style={{
           display: "flex",
@@ -220,6 +215,30 @@ function CashPanel({
         <button
           type="button"
           onClick={() =>
+            setCashMovementMode(
+              "adjustment"
+            )
+          }
+          style={btnSecondary}
+        >
+          {t("adjust_register")}
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setCashMovementMode(
+              "transfer"
+            )
+          }
+          style={btnSecondary}
+        >
+          {t("move_cash")}
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
             setShowSummary(
               previous => !previous
             )
@@ -230,7 +249,6 @@ function CashPanel({
         </button>
       </div>
 
-      {/* MOVEMENT SUMMARY */}
       {showSummary && (
         <div
           style={{
@@ -246,7 +264,6 @@ function CashPanel({
         </div>
       )}
 
-      {/* MODALS */}
       {showRevenue && (
         <RevenueModal
           storeId={storeId}
@@ -273,6 +290,17 @@ function CashPanel({
           storeId={storeId}
           onClose={() =>
             setShowExpense(false)
+          }
+          onSuccess={loadBalance}
+        />
+      )}
+
+      {cashMovementMode && (
+        <CashMovementModal
+          storeId={storeId}
+          mode={cashMovementMode}
+          onClose={() =>
+            setCashMovementMode(null)
           }
           onSuccess={loadBalance}
         />
