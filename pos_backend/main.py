@@ -774,6 +774,35 @@ def init_db():
     ADD COLUMN IF NOT EXISTS transfer_item_id INTEGER
     """)
 
+    # ---------------------------------------------
+    # CASH EVENT REGISTER IMPACT
+    #
+    # amount remains the full business transaction.
+    # register_amount is only the portion that moved
+    # through this store's daily register.
+    # ---------------------------------------------
+    cursor.execute("""
+    DO $$
+    BEGIN
+        IF to_regclass(
+            'public.cash_events'
+        ) IS NOT NULL THEN
+            ALTER TABLE cash_events
+            ADD COLUMN IF NOT EXISTS
+                register_amount NUMERIC(12, 2);
+
+            ALTER TABLE cash_events
+            ADD COLUMN IF NOT EXISTS
+                external_source TEXT;
+
+            ALTER TABLE cash_events
+            ADD COLUMN IF NOT EXISTS
+                external_amount NUMERIC(12, 2);
+        END IF;
+    END
+    $$
+    """)
+
     conn.commit()
 
     cursor.close()
@@ -2043,7 +2072,10 @@ def build_cash_activity_data(
                 SUM(
                     CASE
                         WHEN direction = 1
-                        THEN amount
+                        THEN COALESCE(
+                            register_amount,
+                            amount
+                        )
                         ELSE 0
                     END
                 ),
@@ -2053,7 +2085,10 @@ def build_cash_activity_data(
                 SUM(
                     CASE
                         WHEN direction = -1
-                        THEN amount
+                        THEN COALESCE(
+                            register_amount,
+                            amount
+                        )
                         ELSE 0
                     END
                 ),
@@ -2061,7 +2096,10 @@ def build_cash_activity_data(
             ),
             COALESCE(
                 SUM(
-                    amount * direction
+                    COALESCE(
+                        register_amount,
+                        amount
+                    ) * direction
                 ),
                 0
             )
@@ -2255,18 +2293,6 @@ def build_cash_activity_data(
             sales_inflow += total
 
         elif (
-            event_type == "revenue"
-            and direction == 1
-        ):
-            other_revenue += total
-
-        elif (
-            event_type == "expense"
-            and direction == -1
-        ):
-            expenses += total
-
-        elif (
             event_type == "intake_paid"
             and direction == -1
         ):
@@ -2281,6 +2307,68 @@ def build_cash_activity_data(
             and direction == -1
         ):
             returns_and_refunds += total
+
+    # Revenue/expense totals deliberately exclude the
+    # two legacy categories that historically represented
+    # register corrections and internal cash movement.
+    cursor.execute(
+        """
+        SELECT
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN type = 'revenue'
+                        THEN amount
+                        ELSE 0
+                    END
+                ),
+                0
+            ),
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN type = 'expense'
+                        THEN amount
+                        ELSE 0
+                    END
+                ),
+                0
+            )
+        FROM cash_events
+        WHERE store_id = %s
+          AND created_at >= %s
+          AND created_at < %s
+          AND LOWER(
+                REPLACE(
+                    REPLACE(
+                        COALESCE(category, ''),
+                        '_',
+                        ' '
+                    ),
+                    '-',
+                    ' '
+                )
+              ) NOT IN (
+                  'cash adjustment',
+                  'internal transfer'
+              )
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    business_totals = cursor.fetchone()
+
+    other_revenue = round_money(
+        business_totals[0]
+    )
+
+    expenses = round_money(
+        business_totals[1]
+    )
 
     for movement in by_category:
         category = (
@@ -3260,6 +3348,12 @@ class CashEventRequest(BaseModel):
     type: str
     category: str
     note: Optional[str] = None
+
+    # Full business amount and daily-register impact
+    # may differ for mixed-source transactions.
+    register_amount: Optional[float] = None
+    external_source: Optional[str] = None
+    external_amount: Optional[float] = None
 
     client_event_id: Optional[str] = None
     device_id: Optional[str] = None
@@ -11261,7 +11355,10 @@ def cash_balance(
             """
             SELECT COALESCE(
                 SUM(
-                    amount * direction
+                    COALESCE(
+                        register_amount,
+                        amount
+                    ) * direction
                 ),
                 0
             )
@@ -13606,15 +13703,73 @@ def create_cash_event(
         # ---------------------------------------------
         # VALIDATION
         # ---------------------------------------------
-        if data.type not in (
-            "revenue",
-            "expense"
+        requested_type = str(
+            data.type or ""
+        ).strip().lower()
+
+        category = str(
+            data.category or ""
+        ).strip()
+
+        normalized_category = (
+            category.lower()
+            .replace("_", " ")
+            .replace("-", " ")
+        )
+
+        # Legacy Cash Panel requests used revenue and
+        # expense for register corrections and internal
+        # transfers. Normalize them into non-P&L types
+        # without breaking queued offline events.
+        if (
+            requested_type == "revenue"
+            and normalized_category
+            == "cash adjustment"
         ):
+            event_type = (
+                "cash_adjustment_positive"
+            )
+
+        elif (
+            requested_type == "expense"
+            and normalized_category
+            == "cash adjustment"
+        ):
+            event_type = (
+                "cash_adjustment_negative"
+            )
+
+        elif (
+            requested_type == "revenue"
+            and normalized_category
+            == "internal transfer"
+        ):
+            event_type = "cash_transfer_in"
+
+        elif (
+            requested_type == "expense"
+            and normalized_category
+            == "internal transfer"
+        ):
+            event_type = "cash_transfer_out"
+
+        else:
+            event_type = requested_type
+
+        valid_event_types = {
+            "revenue",
+            "expense",
+            "cash_adjustment_positive",
+            "cash_adjustment_negative",
+            "cash_transfer_in",
+            "cash_transfer_out"
+        }
+
+        if event_type not in valid_event_types:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Cash event type must be "
-                    "revenue or expense"
+                    "Invalid cash event type"
                 )
             )
 
@@ -13625,6 +13780,128 @@ def create_cash_event(
                     "Amount must be greater than zero"
                 )
             )
+
+        amount = round(
+            float(data.amount),
+            2
+        )
+
+        register_amount = (
+            amount
+            if data.register_amount is None
+            else round(
+                float(
+                    data.register_amount
+                ),
+                2
+            )
+        )
+
+        if register_amount < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Register amount cannot "
+                    "be negative"
+                )
+            )
+
+        if register_amount > amount:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Register amount cannot exceed "
+                    "the total amount"
+                )
+            )
+
+        external_amount = round(
+            amount - register_amount,
+            2
+        )
+
+        if data.external_amount is not None:
+            supplied_external_amount = round(
+                float(
+                    data.external_amount
+                ),
+                2
+            )
+
+            if (
+                supplied_external_amount
+                != external_amount
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Payment sources must equal "
+                        "the total amount"
+                    )
+                )
+
+        external_source = (
+            str(data.external_source).strip()
+            if data.external_source
+            and str(
+                data.external_source
+            ).strip()
+            else None
+        )
+
+        if (
+            not external_source
+            and event_type in {
+                "cash_transfer_in",
+                "cash_transfer_out"
+            }
+            and requested_type in {
+                "revenue",
+                "expense"
+            }
+        ):
+            external_source = "Other Location"
+
+        is_business_event = (
+            event_type in {
+                "revenue",
+                "expense"
+            }
+        )
+
+        if (
+            is_business_event
+            and external_amount > 0
+            and not external_source
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Select the source for the "
+                    "amount outside the register"
+                )
+            )
+
+        if (
+            event_type in {
+                "cash_transfer_in",
+                "cash_transfer_out"
+            }
+            and not external_source
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Select the other cash location"
+                )
+            )
+
+        # Corrections and cash-location movements are
+        # register-only events. Their amount is never a
+        # business revenue or expense.
+        if not is_business_event:
+            register_amount = amount
+            external_amount = 0.0
 
         conn = db()
         cursor = conn.cursor()
@@ -13680,13 +13957,12 @@ def create_cash_event(
 
         direction = (
             1
-            if data.type == "revenue"
+            if event_type in {
+                "revenue",
+                "cash_adjustment_positive",
+                "cash_transfer_in"
+            }
             else -1
-        )
-
-        amount = round(
-            float(data.amount),
-            2
         )
 
         # ---------------------------------------------
@@ -13700,6 +13976,9 @@ def create_cash_event(
                 type,
                 direction,
                 amount,
+                register_amount,
+                external_source,
+                external_amount,
                 category,
                 note,
                 client_event_id,
@@ -13708,16 +13987,20 @@ def create_cash_event(
             )
             VALUES (
                 %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s,
+                %s, %s, %s
             )
             """,
             (
                 organization_id,
                 data.store_id,
-                data.type,
+                event_type,
                 direction,
                 amount,
-                data.category,
+                register_amount,
+                external_source,
+                external_amount,
+                category,
                 data.note,
                 data.client_event_id,
                 data.device_id,
@@ -13732,7 +14015,25 @@ def create_cash_event(
                 "accepted",
 
             "client_event_id":
-                data.client_event_id
+                data.client_event_id,
+
+            "type":
+                event_type,
+
+            "direction":
+                direction,
+
+            "amount":
+                amount,
+
+            "register_amount":
+                register_amount,
+
+            "external_source":
+                external_source,
+
+            "external_amount":
+                external_amount
         }
 
     except psycopg2.errors.UniqueViolation:
@@ -14302,7 +14603,16 @@ def cash_movements(
                 direction,
                 type,
                 category,
-                note
+                note,
+                COALESCE(
+                    register_amount,
+                    amount
+                ) AS register_amount,
+                external_source,
+                COALESCE(
+                    external_amount,
+                    0
+                ) AS external_amount
 
             FROM cash_events
 
@@ -14362,7 +14672,25 @@ def cash_movements(
                     str(row[4] or ""),
 
                 "note":
-                    str(row[5] or "")
+                    str(row[5] or ""),
+
+                "register_amount":
+                    round(
+                        float(row[6] or 0),
+                        2
+                    ),
+
+                "external_source": (
+                    str(row[7])
+                    if row[7]
+                    else None
+                ),
+
+                "external_amount":
+                    round(
+                        float(row[8] or 0),
+                        2
+                    )
             })
 
         return {
