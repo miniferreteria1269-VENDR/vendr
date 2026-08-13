@@ -2350,7 +2350,9 @@ def build_cash_activity_data(
                 )
               ) NOT IN (
                   'cash adjustment',
-                  'internal transfer'
+                  'internal transfer',
+                  'ajuste caja',
+                  'transferencia interna'
               )
         """,
         (
@@ -13723,8 +13725,10 @@ def create_cash_event(
         # without breaking queued offline events.
         if (
             requested_type == "revenue"
-            and normalized_category
-            == "cash adjustment"
+            and normalized_category in {
+                "cash adjustment",
+                "ajuste caja"
+            }
         ):
             event_type = (
                 "cash_adjustment_positive"
@@ -13732,8 +13736,10 @@ def create_cash_event(
 
         elif (
             requested_type == "expense"
-            and normalized_category
-            == "cash adjustment"
+            and normalized_category in {
+                "cash adjustment",
+                "ajuste caja"
+            }
         ):
             event_type = (
                 "cash_adjustment_negative"
@@ -13741,15 +13747,19 @@ def create_cash_event(
 
         elif (
             requested_type == "revenue"
-            and normalized_category
-            == "internal transfer"
+            and normalized_category in {
+                "internal transfer",
+                "transferencia interna"
+            }
         ):
             event_type = "cash_transfer_in"
 
         elif (
             requested_type == "expense"
-            and normalized_category
-            == "internal transfer"
+            and normalized_category in {
+                "internal transfer",
+                "transferencia interna"
+            }
         ):
             event_type = "cash_transfer_out"
 
