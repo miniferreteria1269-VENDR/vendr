@@ -190,6 +190,10 @@ export const submitPendingEvent =
 
       case "revenue":
       case "expense":
+      case "cash_adjustment_positive":
+      case "cash_adjustment_negative":
+      case "cash_transfer_in":
+      case "cash_transfer_out":
         responseData =
           await submitCashEvent(event);
         break;
