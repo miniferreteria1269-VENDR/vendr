@@ -555,7 +555,21 @@ function ReturnModal({
                     <input type="number" min="0" max={item.quantity_returnable} step="1"
                       value={returnQuantities[item.sale_event_id] || ""}
                       onChange={event => setReturnQuantities(previous => ({ ...previous, [item.sale_event_id]: Math.min(Math.max(Number(event.target.value) || 0, 0), item.quantity_returnable) }))}
-                      style={{ ...input, width: 72 }} disabled={item.quantity_returnable <= 0} />
+                      placeholder="0"
+                      aria-label={t("return_quantity")}
+                      title={t("return_quantity")}
+                      style={{
+                        ...input,
+                        width: 76,
+                        minHeight: 38,
+                        border: `2px solid ${COLORS.primary}`,
+                        boxShadow: `0 0 0 2px ${COLORS.primary}22`,
+                        background: COLORS.bg,
+                        color: COLORS.text,
+                        textAlign: "center",
+                        fontWeight: 750
+                      }}
+                      disabled={item.quantity_returnable <= 0} />
                   </div>
                 ))}
                 <div style={{ ...fieldStyle, fontSize: 20, fontWeight: 700 }}>
