@@ -774,6 +774,39 @@ def init_db():
     ADD COLUMN IF NOT EXISTS transfer_item_id INTEGER
     """)
 
+    # Linked product returns retain both the original sale
+    # ticket and the precise sale line. Product IDs remain
+    # store-owned and are never merged by this relationship.
+    cursor.execute("""
+    ALTER TABLE events
+    ADD COLUMN IF NOT EXISTS original_sale_ticket_id INTEGER
+    """)
+
+    cursor.execute("""
+    ALTER TABLE events
+    ADD COLUMN IF NOT EXISTS original_sale_event_id INTEGER
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_events_original_sale_ticket
+    ON events (
+        store_id,
+        original_sale_ticket_id
+    )
+    WHERE original_sale_ticket_id IS NOT NULL
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_events_original_sale_event
+    ON events (
+        store_id,
+        original_sale_event_id
+    )
+    WHERE original_sale_event_id IS NOT NULL
+    """)
+
     # ---------------------------------------------
     # CASH EVENT REGISTER IMPACT
     #
@@ -1628,21 +1661,45 @@ def build_sales_analysis_data(
         """
         SELECT
             COALESCE(
-                SUM(quantity * price_at_time),
+                SUM(
+                    CASE
+                        WHEN event_type = 'sale'
+                            THEN quantity * price_at_time
+                        WHEN event_type = 'return'
+                            THEN -quantity * price_at_time
+                        ELSE 0
+                    END
+                ),
                 0
             ),
             COALESCE(
-                SUM(quantity * cost_at_time),
+                SUM(
+                    CASE
+                        WHEN event_type = 'sale'
+                            THEN quantity * cost_at_time
+                        WHEN event_type = 'return'
+                            THEN -quantity * cost_at_time
+                        ELSE 0
+                    END
+                ),
                 0
             ),
             COALESCE(
-                SUM(quantity),
+                SUM(
+                    CASE
+                        WHEN event_type = 'sale' THEN quantity
+                        WHEN event_type = 'return' THEN -quantity
+                        ELSE 0
+                    END
+                ),
                 0
             ),
-            COUNT(DISTINCT ticket_id)
+            COUNT(DISTINCT ticket_id) FILTER (
+                WHERE event_type = 'sale'
+            )
         FROM events
         WHERE store_id = %s
-          AND event_type = 'sale'
+          AND event_type IN ('sale', 'return')
           AND event_datetime::timestamp >= %s
           AND event_datetime::timestamp < %s
         """,
@@ -1712,30 +1769,54 @@ def build_sales_analysis_data(
             product_id,
             product_name_at_time,
             COALESCE(
-                SUM(quantity),
+                SUM(
+                    CASE
+                        WHEN event_type = 'sale' THEN quantity
+                        WHEN event_type = 'return' THEN -quantity
+                        ELSE 0
+                    END
+                ),
                 0
             ) AS units,
             COALESCE(
-                SUM(quantity * price_at_time),
+                SUM(
+                    CASE
+                        WHEN event_type = 'sale'
+                            THEN quantity * price_at_time
+                        WHEN event_type = 'return'
+                            THEN -quantity * price_at_time
+                        ELSE 0
+                    END
+                ),
                 0
             ) AS revenue,
             COALESCE(
-                SUM(quantity * cost_at_time),
+                SUM(
+                    CASE
+                        WHEN event_type = 'sale'
+                            THEN quantity * cost_at_time
+                        WHEN event_type = 'return'
+                            THEN -quantity * cost_at_time
+                        ELSE 0
+                    END
+                ),
                 0
             ) AS cost,
             COALESCE(
                 SUM(
-                    quantity *
-                    (
-                        price_at_time -
-                        cost_at_time
-                    )
+                    CASE
+                        WHEN event_type = 'sale' THEN
+                            quantity * (price_at_time - cost_at_time)
+                        WHEN event_type = 'return' THEN
+                            -quantity * (price_at_time - cost_at_time)
+                        ELSE 0
+                    END
                 ),
                 0
             ) AS profit
         FROM events
         WHERE store_id = %s
-          AND event_type = 'sale'
+          AND event_type IN ('sale', 'return')
           AND event_datetime::timestamp >= %s
           AND event_datetime::timestamp < %s
         GROUP BY
@@ -3364,8 +3445,9 @@ class CashEventRequest(BaseModel):
 class ReturnItem(BaseModel):
     product_id: int
     quantity: int
-    cost: float
-    price: float
+    cost: Optional[float] = None
+    price: Optional[float] = None
+    sale_event_id: Optional[int] = None
 
 class ReviewLSTRequest(BaseModel):
     store_id: int
@@ -3376,6 +3458,7 @@ class ReturnRequest(BaseModel):
     store_id: int
     amount: float
     items: List[ReturnItem] = Field(default_factory=list)
+    original_sale_ticket_id: Optional[int] = None
     note: Optional[str] = ""
     client_event_id: Optional[str] = None
     device_id: Optional[str] = None
@@ -9911,6 +9994,7 @@ def sales_history(
     store_id: int,
     start_date: str = None,
     end_date: str = None,
+    ticket_number: int = None,
     current_user: AuthenticatedUser = Depends(
         get_current_user
     )
@@ -9932,6 +10016,8 @@ def sales_history(
             SELECT
                 ticket_id,
 
+                MIN(store_ticket_number) AS store_ticket_number,
+
                 MIN(
                     event_datetime::timestamptz
                 ) AS event_datetime,
@@ -9952,7 +10038,16 @@ def sales_history(
                         cost_at_time
                     ),
                     0
-                ) AS cost
+                ) AS cost,
+
+                MIN(client_name_at_time) AS client_name,
+
+                EXISTS (
+                    SELECT 1
+                    FROM credit_tickets ct
+                    WHERE ct.store_id = %s
+                      AND ct.ticket_id = events.ticket_id
+                ) AS is_credit
 
             FROM events
 
@@ -9961,7 +10056,13 @@ def sales_history(
               AND ticket_id IS NOT NULL
         """
 
-        params = [store_id]
+        params = [store_id, store_id]
+
+        if ticket_number is not None:
+            query += """
+                AND store_ticket_number = %s
+            """
+            params.append(ticket_number)
 
         # Filter by the business's local calendar date,
         # rather than the UTC calendar date.
@@ -10008,26 +10109,32 @@ def sales_history(
 
         for row in rows:
             revenue = float(
-                row[3] or 0
+                row[4] or 0
             )
 
             cost = float(
-                row[4] or 0
+                row[5] or 0
             )
 
             history.append({
                 "ticket_id":
                     row[0],
 
+                "store_ticket_number":
+                    row[1],
+
+                "ticket_number":
+                    row[1],
+
                 "datetime":
                     (
-                        row[1].isoformat()
-                        if row[1]
+                        row[2].isoformat()
+                        if row[2]
                         else None
                     ),
 
                 "items":
-                    int(row[2] or 0),
+                    int(row[3] or 0),
 
                 "revenue":
                     round(
@@ -10039,7 +10146,10 @@ def sales_history(
                     round(
                         revenue - cost,
                         2
-                    )
+                    ),
+
+                "client_name_at_time": row[6],
+                "is_credit": bool(row[7])
             })
 
         return {
@@ -13064,10 +13174,31 @@ def ticket_details(
         cursor.execute(
             """
             SELECT
+                event_id,
+                product_id,
                 product_name_at_time,
                 quantity,
                 price_at_time,
-                cost_at_time
+                cost_at_time,
+                store_ticket_number,
+                client_name_at_time,
+                event_datetime,
+                COALESCE(
+                    (
+                        SELECT SUM(r.quantity)
+                        FROM events r
+                        WHERE r.store_id = events.store_id
+                          AND r.event_type = 'return'
+                          AND r.original_sale_event_id = events.event_id
+                    ),
+                    0
+                ) AS quantity_returned,
+                EXISTS (
+                    SELECT 1
+                    FROM credit_tickets ct
+                    WHERE ct.store_id = events.store_id
+                      AND ct.ticket_id = events.ticket_id
+                ) AS is_credit
             FROM events
             WHERE store_id = %s
               AND ticket_id = %s
@@ -13093,10 +13224,17 @@ def ticket_details(
         cost_total = 0.0
 
         for (
+            sale_event_id,
+            product_id,
             name,
             quantity,
             price,
-            cost
+            cost,
+            store_ticket_number,
+            client_name,
+            sale_datetime,
+            quantity_returned,
+            is_credit
         ) in rows:
             numeric_quantity = int(
                 quantity or 0
@@ -13124,6 +13262,8 @@ def ticket_details(
             )
 
             items.append({
+                "sale_event_id": sale_event_id,
+                "product_id": product_id,
                 "name":
                     name,
 
@@ -13134,7 +13274,12 @@ def ticket_details(
                     numeric_price,
 
                 "line_total":
-                    line_total
+                    line_total,
+                "quantity_returned": int(quantity_returned or 0),
+                "quantity_returnable": max(
+                    numeric_quantity - int(quantity_returned or 0),
+                    0
+                )
             })
 
         total = round(
@@ -13150,6 +13295,16 @@ def ticket_details(
         return {
             "ticket_id":
                 ticket_id,
+
+            "store_ticket_number": rows[0][6],
+            "ticket_number": rows[0][6],
+            "client_name_at_time": rows[0][7],
+            "datetime": (
+                rows[0][8].isoformat()
+                if hasattr(rows[0][8], "isoformat")
+                else rows[0][8]
+            ),
+            "is_credit": bool(rows[0][10]),
 
             "items":
                 items,
@@ -14205,6 +14360,249 @@ def process_return(
         cursor = conn.cursor()
 
         # -------------------------------------------------
+        # TICKET-LINKED RETURN
+        # -------------------------------------------------
+        if data.original_sale_ticket_id is not None:
+            if not data.items:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Select at least one item from the sale ticket."
+                )
+
+            if any(item.sale_event_id is None for item in data.items):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Every linked return item requires its sale line."
+                )
+
+            sale_event_ids = [int(item.sale_event_id) for item in data.items]
+            if len(sale_event_ids) != len(set(sale_event_ids)):
+                raise HTTPException(
+                    status_code=400,
+                    detail="A sale line may only appear once in a return."
+                )
+
+            if data.client_event_id:
+                cursor.execute(
+                    """
+                    SELECT ticket_id
+                    FROM events
+                    WHERE store_id = %s
+                      AND client_event_id = %s
+                      AND event_type = 'return'
+                    LIMIT 1
+                    """,
+                    (data.store_id, data.client_event_id)
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    conn.rollback()
+                    return {
+                        "message": "Linked return already recorded",
+                        "status": "already_processed",
+                        "type": "return",
+                        "ticket_id": existing[0],
+                        "client_event_id": data.client_event_id
+                    }
+
+            # Lock every original line so two terminals cannot
+            # return the same remaining quantity concurrently.
+            cursor.execute(
+                """
+                SELECT
+                    e.event_id,
+                    e.product_id,
+                    e.product_name_at_time,
+                    e.quantity,
+                    e.cost_at_time,
+                    e.price_at_time,
+                    COALESCE(p.tracks_stock, 0),
+                    COALESCE((
+                        SELECT SUM(r.quantity)
+                        FROM events r
+                        WHERE r.store_id = e.store_id
+                          AND r.event_type = 'return'
+                          AND r.original_sale_event_id = e.event_id
+                    ), 0)
+                FROM events e
+                LEFT JOIN products p
+                  ON p.store_id = e.store_id
+                 AND p.product_id = e.product_id
+                WHERE e.store_id = %s
+                  AND e.ticket_id = %s
+                  AND e.event_type = 'sale'
+                  AND e.event_id = ANY(%s)
+                ORDER BY e.event_id
+                FOR UPDATE OF e
+                """,
+                (
+                    data.store_id,
+                    data.original_sale_ticket_id,
+                    sale_event_ids
+                )
+            )
+            sale_rows = cursor.fetchall()
+            if len(sale_rows) != len(sale_event_ids):
+                raise HTTPException(
+                    status_code=400,
+                    detail="One or more items do not belong to that sale ticket."
+                )
+
+            requested = {
+                int(item.sale_event_id): int(item.quantity)
+                for item in data.items
+            }
+            return_total = Decimal("0.00")
+            validated_rows = []
+            for row in sale_rows:
+                requested_quantity = requested[row[0]]
+                remaining_quantity = int(row[3] or 0) - int(row[7] or 0)
+                if requested_quantity <= 0 or requested_quantity > remaining_quantity:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "return_quantity_exceeds_remaining",
+                            "message": "Returned quantity exceeds the remaining quantity.",
+                            "sale_event_id": row[0],
+                            "remaining_quantity": max(remaining_quantity, 0)
+                        }
+                    )
+                unit_price = Decimal(str(row[5] or 0))
+                return_total += unit_price * requested_quantity
+                validated_rows.append((row, requested_quantity))
+
+            return_total = return_total.quantize(Decimal("0.01"))
+            if return_total <= 0:
+                raise HTTPException(status_code=400, detail="Return value must be greater than zero.")
+
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", (1269001,))
+            cursor.execute("SELECT COALESCE(MAX(ticket_id), 0) FROM events")
+            ticket_id = int(cursor.fetchone()[0]) + 1
+            now = datetime.now(timezone.utc)
+
+            for row, returned_quantity in validated_rows:
+                cursor.execute(
+                    """
+                    INSERT INTO events (
+                        store_id, event_type, product_id,
+                        product_name_at_time, quantity,
+                        cost_at_time, price_at_time,
+                        event_datetime, ticket_id, note,
+                        client_event_id, device_id, client_created_at,
+                        original_sale_ticket_id, original_sale_event_id
+                    )
+                    VALUES (
+                        %s, 'return', %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    (
+                        data.store_id, row[1], row[2], returned_quantity,
+                        row[4], row[5], now, ticket_id, data.note,
+                        data.client_event_id, data.device_id,
+                        data.client_created_at, data.original_sale_ticket_id,
+                        row[0]
+                    )
+                )
+                if row[6] == 1 or row[6] is True:
+                    cursor.execute(
+                        """
+                        UPDATE products
+                        SET stock = COALESCE(stock, 0) + %s
+                        WHERE store_id = %s AND product_id = %s
+                          AND tracks_stock = 1
+                        """,
+                        (returned_quantity, data.store_id, row[1])
+                    )
+
+            cursor.execute(
+                """
+                SELECT ct.credit_ticket_id, ct.original_amount
+                FROM credit_tickets ct
+                WHERE ct.store_id = %s AND ct.ticket_id = %s
+                FOR UPDATE
+                """,
+                (data.store_id, data.original_sale_ticket_id)
+            )
+            credit_ticket = cursor.fetchone()
+            debt_reduction = Decimal("0.00")
+            cash_refund = return_total
+
+            if credit_ticket:
+                cursor.execute(
+                    """
+                    SELECT COALESCE(SUM(amount), 0)
+                    FROM credit_payments
+                    WHERE store_id = %s AND credit_ticket_id = %s
+                    """,
+                    (data.store_id, credit_ticket[0])
+                )
+                amount_paid = Decimal(str(cursor.fetchone()[0] or 0))
+                original_amount = Decimal(str(credit_ticket[1] or 0))
+                outstanding_before = max(
+                    original_amount - amount_paid,
+                    Decimal("0.00")
+                )
+                debt_reduction = min(return_total, outstanding_before)
+                cash_refund = return_total - debt_reduction
+
+                # original_amount is the ticket's current credit
+                # obligation. The immutable gross sale remains in
+                # sale events, while linked return events preserve
+                # the complete adjustment audit trail.
+                cursor.execute(
+                    """
+                    UPDATE credit_tickets
+                    SET original_amount = GREATEST(
+                        original_amount - %s,
+                        0
+                    )
+                    WHERE store_id = %s
+                      AND credit_ticket_id = %s
+                    """,
+                    (return_total, data.store_id, credit_ticket[0])
+                )
+
+            cursor.execute(
+                "SELECT organization_id FROM stores WHERE store_id = %s",
+                (data.store_id,)
+            )
+            store = cursor.fetchone()
+            if not store:
+                raise HTTPException(status_code=404, detail="Store not found")
+
+            if cash_refund > 0:
+                cursor.execute(
+                    """
+                    INSERT INTO cash_events (
+                        organization_id, store_id, type, direction,
+                        amount, category, note, reference_id, created_at,
+                        client_event_id, device_id, client_created_at
+                    )
+                    VALUES (%s, %s, 'return', -1, %s, 'Devolucion',
+                            %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        store[0], data.store_id, cash_refund, data.note,
+                        ticket_id, now, data.client_event_id,
+                        data.device_id, data.client_created_at
+                    )
+                )
+
+            conn.commit()
+            return {
+                "message": "Linked return recorded",
+                "status": "accepted",
+                "type": "return",
+                "ticket_id": ticket_id,
+                "original_sale_ticket_id": data.original_sale_ticket_id,
+                "amount": float(return_total),
+                "debt_reduction": float(debt_reduction),
+                "cash_refund": float(cash_refund),
+                "client_event_id": data.client_event_id
+            }
+
+        # -------------------------------------------------
         # VALIDATION
         # -------------------------------------------------
         if data.amount <= 0:
@@ -14226,10 +14624,13 @@ def process_return(
                     )
                 )
 
-            if (
-                item.cost < 0
-                or item.price < 0
-            ):
+            if item.cost is None or item.price is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unlinked returns require item cost and price."
+                )
+
+            if item.cost < 0 or item.price < 0:
                 raise HTTPException(
                     status_code=400,
                     detail=(
