@@ -1117,7 +1117,6 @@ function App() {
     });
 
     setTickets(updated);
-    setSearchTerm("");
   };
 
   // -------------------------------------------------
