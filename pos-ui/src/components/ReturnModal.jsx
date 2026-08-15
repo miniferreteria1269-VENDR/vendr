@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import apiClient from "../apiClient";
 
 import { useLang } from "../LanguageContext";
 
@@ -46,6 +47,14 @@ const createClientEventId = () =>
     .toString(36)
     .slice(2)}`;
 
+const todayValue = () => {
+  const now = new Date();
+  const local = new Date(
+    now.getTime() - now.getTimezoneOffset() * 60000
+  );
+  return local.toISOString().slice(0, 10);
+};
+
 function ReturnModal({
   storeId,
   products = [],
@@ -54,7 +63,7 @@ function ReturnModal({
 }) {
   const { t } = useLang();
 
-  const [mode, setMode] = useState("refund");
+  const [mode, setMode] = useState("linked");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
 
@@ -65,6 +74,16 @@ function ReturnModal({
 
   const [submitting, setSubmitting] =
     useState(false);
+  const [searchMode, setSearchMode] = useState("ticket");
+  const [ticketNumber, setTicketNumber] = useState("");
+  const [startDate, setStartDate] = useState(todayValue());
+  const [endDate, setEndDate] = useState(todayValue());
+  const [ticketResults, setTicketResults] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [ticketItems, setTicketItems] = useState([]);
+  const [returnQuantities, setReturnQuantities] = useState({});
+  const [searching, setSearching] = useState(false);
+  const [linkedEventId, setLinkedEventId] = useState(null);
 
   const filteredProducts = useMemo(() => {
     const normalizedSearch =
@@ -126,7 +145,107 @@ function ReturnModal({
     }
   };
 
+  const searchTickets = async () => {
+    if (searchMode === "ticket" && !ticketNumber.trim()) {
+      alert(t("enter_ticket_number"));
+      return;
+    }
+    if (searchMode === "date" && startDate > endDate) {
+      alert(t("invalid_date_range"));
+      return;
+    }
+    setSearching(true);
+    try {
+      const params = { store_id: storeId };
+      if (searchMode === "ticket") {
+        params.ticket_number = Number(ticketNumber);
+      } else {
+        params.start_date = startDate;
+        params.end_date = endDate;
+      }
+      const response = await apiClient.get("/sales-history", { params });
+      setTicketResults(response.data.sales || []);
+    } catch (error) {
+      console.error("RETURN TICKET SEARCH ERROR:", error);
+      alert(t("ticket_search_failed"));
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const openTicket = async ticket => {
+    setSearching(true);
+    try {
+      const response = await apiClient.get("/ticket-details", {
+        params: { store_id: storeId, ticket_id: ticket.ticket_id }
+      });
+      const details = response.data;
+      setSelectedTicket({ ...ticket, ...details });
+      setTicketItems(details.items || []);
+      setReturnQuantities({});
+      setLinkedEventId(null);
+    } catch (error) {
+      console.error("RETURN TICKET DETAILS ERROR:", error);
+      alert(t("ticket_details_failed"));
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const linkedAmount = ticketItems.reduce(
+    (total, item) =>
+      total + Number(returnQuantities[item.sale_event_id] || 0) * Number(item.price || 0),
+    0
+  );
+
+  const submitLinkedReturn = async () => {
+    const items = ticketItems
+      .map(item => ({
+        product_id: item.product_id,
+        sale_event_id: item.sale_event_id,
+        quantity: Number(returnQuantities[item.sale_event_id] || 0)
+      }))
+      .filter(item => item.quantity > 0);
+    if (!items.length) {
+      alert(t("select_return_quantity"));
+      return;
+    }
+    const clientEventId = linkedEventId || createClientEventId();
+    setLinkedEventId(clientEventId);
+    setSubmitting(true);
+    try {
+      const response = await apiClient.post("/returns", {
+        store_id: storeId,
+        original_sale_ticket_id: selectedTicket.ticket_id,
+        amount: Number(linkedAmount.toFixed(2)),
+        items,
+        note: note.trim(),
+        client_event_id: clientEventId,
+        device_id: getDeviceId(),
+        client_created_at: new Date().toISOString()
+      });
+      await onSuccess?.({ type: "return", synced: true, local: false });
+      const cashRefund = Number(response.data.cash_refund || 0);
+      const debtReduction = Number(response.data.debt_reduction || 0);
+      alert(
+        debtReduction > 0
+          ? `${t("return_completed")}\n${t("debt_reduced")}: $${debtReduction.toFixed(2)}\n${t("cash_refund")}: $${cashRefund.toFixed(2)}`
+          : t("return_completed")
+      );
+      onClose();
+    } catch (error) {
+      console.error("LINKED RETURN ERROR:", error);
+      alert(error?.response?.data?.detail?.message || error?.response?.data?.detail || t("linked_return_failed"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const submit = async () => {
+    if (mode === "linked") {
+      await submitLinkedReturn();
+      return;
+    }
     const numericAmount = Number(amount);
     const numericQuantity = Number(quantity);
 
@@ -143,6 +262,11 @@ function ReturnModal({
       !selectedProduct
     ) {
       alert(t("select_product"));
+      return;
+    }
+
+    if (!note.trim()) {
+      alert(t("unlinked_return_note_required"));
       return;
     }
 
@@ -323,9 +447,9 @@ function ReturnModal({
             </div>
 
             <div style={subtitleStyle}>
-              {mode === "return"
-                ? t("return")
-                : t("refund")}
+              {mode === "linked"
+                ? t("linked_return")
+                : mode === "return" ? t("unlinked_return") : t("refund")}
             </div>
           </div>
 
@@ -340,20 +464,13 @@ function ReturnModal({
         </div>
 
         {/* MODE SWITCH */}
-        <div style={modeSwitchStyle}>
+        <div style={{ ...modeSwitchStyle, gridTemplateColumns: "1fr 1fr 1fr" }}>
           <button
             type="button"
-            onClick={() =>
-              changeMode("refund")
-            }
-            style={{
-              ...modeButtonStyle,
-              ...(mode === "refund"
-                ? activeModeButtonStyle
-                : {})
-            }}
+            onClick={() => changeMode("linked")}
+            style={{ ...modeButtonStyle, ...(mode === "linked" ? activeModeButtonStyle : {}) }}
           >
-            {t("refund")}
+            {t("find_sale_ticket")}
           </button>
 
           <button
@@ -368,9 +485,86 @@ function ReturnModal({
                 : {})
             }}
           >
-            {t("return")}
+            {t("continue_without_ticket")}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => changeMode("refund")}
+            style={{ ...modeButtonStyle, ...(mode === "refund" ? activeModeButtonStyle : {}) }}
+          >
+            {t("refund_only")}
           </button>
         </div>
+
+        {mode === "linked" && (
+          <div style={sectionStyle}>
+            <div style={{ ...modeSwitchStyle, marginBottom: 12 }}>
+              <button type="button" onClick={() => setSearchMode("ticket")}
+                style={{ ...modeButtonStyle, ...(searchMode === "ticket" ? activeModeButtonStyle : {}) }}>
+                {t("ticket_number")}
+              </button>
+              <button type="button" onClick={() => setSearchMode("date")}
+                style={{ ...modeButtonStyle, ...(searchMode === "date" ? activeModeButtonStyle : {}) }}>
+                {t("date_range")}
+              </button>
+            </div>
+
+            {!selectedTicket && (
+              <>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {searchMode === "ticket" ? (
+                    <input type="number" min="1" value={ticketNumber}
+                      onChange={event => setTicketNumber(event.target.value)}
+                      placeholder={t("ticket_number")} style={{ ...input, flex: 1 }} />
+                  ) : (
+                    <>
+                      <input type="date" value={startDate} onChange={event => setStartDate(event.target.value)} style={{ ...input, flex: 1 }} />
+                      <input type="date" value={endDate} onChange={event => setEndDate(event.target.value)} style={{ ...input, flex: 1 }} />
+                    </>
+                  )}
+                  <button type="button" onClick={searchTickets} disabled={searching} style={btnPrimary}>
+                    {searching ? t("loading") : t("search")}
+                  </button>
+                </div>
+
+                <div style={resultsStyle}>
+                  {ticketResults.map(ticket => (
+                    <button key={ticket.ticket_id} type="button" onClick={() => openTicket(ticket)} style={productResultStyle}>
+                      <div><div style={productNameStyle}>{t("ticket")} #{ticket.ticket_number || ticket.ticket_id}</div>
+                        <div style={productMetaStyle}>{ticket.datetime ? new Date(ticket.datetime).toLocaleString() : ""}{ticket.client_name_at_time ? ` · ${ticket.client_name_at_time}` : ""}</div></div>
+                      <div style={productPriceStyle}>${Number(ticket.revenue || 0).toFixed(2)}</div>
+                    </button>
+                  ))}
+                  {!searching && ticketResults.length === 0 && <div style={emptyResultStyle}>{t("no_tickets_found")}</div>}
+                </div>
+              </>
+            )}
+
+            {selectedTicket && (
+              <>
+                <div style={selectedProductStyle}>
+                  <div><div style={productNameStyle}>{t("ticket")} #{selectedTicket.ticket_number || selectedTicket.ticket_id}</div>
+                    <div style={productMetaStyle}>{selectedTicket.is_credit ? t("credit_sale") : t("cash_sale")}</div></div>
+                  <button type="button" onClick={() => { setSelectedTicket(null); setTicketItems([]); }} style={changeProductButtonStyle}>{t("change")}</button>
+                </div>
+                {ticketItems.map(item => (
+                  <div key={item.sale_event_id} style={{ ...selectedProductStyle, marginTop: 8 }}>
+                    <div style={{ minWidth: 0 }}><div style={productNameStyle}>{item.name}</div>
+                      <div style={productMetaStyle}>{t("purchased")}: {item.quantity} · {t("already_returned")}: {item.quantity_returned} · ${Number(item.price || 0).toFixed(2)}</div></div>
+                    <input type="number" min="0" max={item.quantity_returnable} step="1"
+                      value={returnQuantities[item.sale_event_id] || ""}
+                      onChange={event => setReturnQuantities(previous => ({ ...previous, [item.sale_event_id]: Math.min(Math.max(Number(event.target.value) || 0, 0), item.quantity_returnable) }))}
+                      style={{ ...input, width: 72 }} disabled={item.quantity_returnable <= 0} />
+                  </div>
+                ))}
+                <div style={{ ...fieldStyle, fontSize: 20, fontWeight: 700 }}>
+                  {t("refund_total")}: ${linkedAmount.toFixed(2)}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* RETURN PRODUCT SEARCH */}
         {mode === "return" && (
@@ -531,7 +725,7 @@ function ReturnModal({
         )}
 
         {/* AMOUNT */}
-        <div style={fieldStyle}>
+        {mode !== "linked" && <div style={fieldStyle}>
           <label style={labelStyle}>
             {t("amount")}
           </label>
@@ -553,7 +747,7 @@ function ReturnModal({
               style={amountInputStyle}
             />
           </div>
-        </div>
+        </div>}
 
         {/* NOTE */}
         <div style={fieldStyle}>
