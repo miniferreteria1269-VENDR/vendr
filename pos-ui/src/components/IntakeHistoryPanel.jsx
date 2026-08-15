@@ -504,16 +504,41 @@ function IntakeHistoryPanel({
 
       {selectedTicket && (
         <div
+          onClick={() =>
+            setSelectedTicket(null)
+          }
           style={{
-            marginTop: 16,
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             padding: 16,
-            border:
-              `1px solid ${COLORS.border}`,
-            borderRadius: 8,
+            boxSizing: "border-box",
             background:
-              COLORS.panelAlt
+              "rgba(0, 0, 0, 0.72)"
           }}
         >
+          <div
+            onClick={event =>
+              event.stopPropagation()
+            }
+            style={{
+              width: "min(960px, 100%)",
+              maxHeight: "90dvh",
+              overflowY: "auto",
+              padding: 18,
+              boxSizing: "border-box",
+              border:
+                `1px solid ${COLORS.border}`,
+              borderRadius: 12,
+              background:
+                COLORS.panelAlt,
+              boxShadow:
+                "0 24px 70px rgba(0, 0, 0, 0.55)"
+            }}
+          >
           <div
             style={{
               display: "flex",
@@ -772,6 +797,7 @@ function IntakeHistoryPanel({
                 </tr>
               </tfoot>
             </table>
+          </div>
           </div>
         </div>
       )}
