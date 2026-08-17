@@ -27,6 +27,42 @@ body {
   overflow: auto; /* prevents weird scrolling on PWA */
 }
 
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+@media (max-width: 720px) {
+  :root {
+    font-size: 15px;
+  }
+
+  body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .vendr-app {
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+  }
+
+  input,
+  select,
+  textarea {
+    /* Prevent iOS from zooming the page when a field receives focus. */
+    font-size: 16px !important;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
+}
+
 /* Links (optional, safe) */
 a {
   font-weight: 500;

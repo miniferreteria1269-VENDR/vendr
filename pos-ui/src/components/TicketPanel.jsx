@@ -45,7 +45,8 @@ function TicketPanel({
   discountValue,
   setDiscountValue,
   discountType,
-  setDiscountType
+  setDiscountType,
+  mobile = false
 }) {
   const { t } = useLang();
 
@@ -179,7 +180,7 @@ function TicketPanel({
 
         background: COLORS.panel,
         borderRadius: 14,
-        padding: 16,
+        padding: mobile ? 12 : 16,
 
         display: "flex",
         flexDirection: "column",

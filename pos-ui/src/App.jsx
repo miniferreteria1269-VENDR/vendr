@@ -93,13 +93,52 @@ const COLORS = {
   danger: "#ff5c5c"
 };
 
+const MOBILE_BREAKPOINT = 720;
+
+const useIsMobile = () => {
+  const getMatches = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia(
+      `(max-width: ${MOBILE_BREAKPOINT}px)`
+    ).matches;
+
+  const [isMobile, setIsMobile] =
+    useState(getMatches);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(
+      `(max-width: ${MOBILE_BREAKPOINT}px)`
+    );
+
+    const updateMatch = event =>
+      setIsMobile(event.matches);
+
+    mediaQuery.addEventListener(
+      "change",
+      updateMatch
+    );
+
+    return () => {
+      mediaQuery.removeEventListener(
+        "change",
+        updateMatch
+      );
+    };
+  }, []);
+
+  return isMobile;
+};
+
 function App() {
   // POS client assignment and fiado state are stored per ticket.
   const { t } = useLang();
 
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
+  const [mobilePosPane, setMobilePosPane] =
+    useState("products");
   const [authMode, setAuthMode] = useState("login");
+  const isMobile = useIsMobile();
 
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
@@ -385,6 +424,13 @@ function App() {
   const currentTicket = tickets.find(
     ticket => ticket.id === activeTicket
   );
+
+  const currentTicketItemCount =
+    currentTicket?.items?.reduce(
+      (total, item) =>
+        total + Number(item.quantity || 0),
+      0
+    ) || 0;
 
   // -------------------------------------------------
   // INTAKE SUPPLIERS
@@ -1729,6 +1775,7 @@ const finalizeIntake = async () => {
 
   return (
     <div
+      className="vendr-app"
       style={{
         fontFamily:
           "system-ui, -apple-system, sans-serif",
@@ -1969,23 +2016,111 @@ const finalizeIntake = async () => {
       {/* POS */}
       {view === "pos" && (
         <div
+          className="vendr-pos-layout"
           style={{
             display: "flex",
+            flexDirection:
+              isMobile ? "column" : "row",
             flex: 1,
             minHeight: 0,
             overflow: "hidden",
-            gap: 12,
-            padding: 12
+            gap: isMobile ? 8 : 12,
+            padding: isMobile ? 8 : 12
           }}
         >
-          <ProductPanel
-            products={products}
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            addItem={addItem}
-            storeId={storeId}
-          />
+          {isMobile && (
+            <div
+              role="tablist"
+              aria-label={t("pos")}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 6,
+                flex: "0 0 auto"
+              }}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={
+                  mobilePosPane === "products"
+                }
+                onClick={() =>
+                  setMobilePosPane("products")
+                }
+                style={{
+                  background:
+                    mobilePosPane === "products"
+                      ? COLORS.primary
+                      : COLORS.panelAlt,
+                  color: COLORS.text,
+                  border: "none",
+                  minHeight: 44
+                }}
+              >
+                {t("products")}
+              </button>
 
+              <button
+                type="button"
+                role="tab"
+                aria-selected={
+                  mobilePosPane === "ticket"
+                }
+                onClick={() =>
+                  setMobilePosPane("ticket")
+                }
+                style={{
+                  background:
+                    mobilePosPane === "ticket"
+                      ? COLORS.primary
+                      : COLORS.panelAlt,
+                  color: COLORS.text,
+                  border: "none",
+                  minHeight: 44
+                }}
+              >
+                {t("ticket")}
+                {currentTicketItemCount > 0 && (
+                  <span
+                    aria-label={`${currentTicketItemCount} ${t("items")}`}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: 20,
+                      height: 20,
+                      marginLeft: 7,
+                      padding: "0 5px",
+                      borderRadius: 999,
+                      background: "#0b1220",
+                      color: "white",
+                      fontSize: 12,
+                      fontWeight: "bold",
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    {currentTicketItemCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {(!isMobile ||
+            mobilePosPane === "products") && (
+            <ProductPanel
+              products={products}
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              addItem={addItem}
+              storeId={storeId}
+              mobile={isMobile}
+            />
+          )}
+
+          {(!isMobile ||
+            mobilePosPane === "ticket") && (
           <TicketPanel
             tickets={tickets}
             activeTicket={activeTicket}
@@ -2026,7 +2161,9 @@ const finalizeIntake = async () => {
             setDiscountType={
               updateSaleDiscountType
             }
+            mobile={isMobile}
           />
+          )}
         </div>
       )}
 
