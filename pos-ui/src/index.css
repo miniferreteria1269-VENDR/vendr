@@ -61,6 +61,39 @@ textarea {
   button {
     touch-action: manipulation;
   }
+
+  /*
+   * Wide reports remain readable while panning in either direction.
+   * The first column is the row identity (normally product/name), and
+   * the header row continues to explain whichever values are visible.
+   */
+  .vendr-app table {
+    border-collapse: separate !important;
+    border-spacing: 0;
+  }
+
+  .vendr-app table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background-color: #222733;
+    background-clip: padding-box;
+  }
+
+  .vendr-app table th:first-child,
+  .vendr-app table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background-color: #1a1d24;
+    background-clip: padding-box;
+    box-shadow: 1px 0 0 #2f3542;
+  }
+
+  .vendr-app table thead th:first-child {
+    z-index: 4;
+    background-color: #222733;
+  }
 }
 
 /* Links (optional, safe) */

@@ -20,8 +20,7 @@ function ProductPanel({
   searchTerm,
   setSearchTerm,
   addItem,
-  storeId,
-  mobile = false
+  storeId
 }) {
   const { t } = useLang();
 
@@ -76,15 +75,14 @@ function ProductPanel({
   return (
     <div
       style={{
-        width: mobile ? "100%" : "34%",
-        minWidth: mobile ? 0 : 240,
-        flex: mobile ? 1 : undefined,
+        width: "34%",
+        minWidth: 240,
         flexShrink: 0,
         boxSizing: "border-box",
 
         background: COLORS.panel,
         borderRadius: 14,
-        padding: mobile ? 12 : 16,
+        padding: 16,
 
         display: "flex",
         flexDirection: "column",
