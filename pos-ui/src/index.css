@@ -62,18 +62,21 @@ textarea {
     touch-action: manipulation;
   }
 
-  /*
-   * Wide reports remain readable while panning in either direction.
-   * The first column is the row identity (normally product/name), and
-   * the header row continues to explain whichever values are visible.
-   */
+}
+
+/*
+ * Wide reports remain readable on phones, tablets, and mobile browsers
+ * requesting a desktop-width viewport. The first column is normally the
+ * product/name identity; the header row explains the visible values.
+ */
+@media (max-width: 1100px) {
   .vendr-app table {
     border-collapse: separate !important;
     border-spacing: 0;
   }
 
   .vendr-app table thead th {
-    position: sticky;
+    position: sticky !important;
     top: 0;
     z-index: 3;
     background-color: #222733;
@@ -82,12 +85,12 @@ textarea {
 
   .vendr-app table th:first-child,
   .vendr-app table td:first-child {
-    position: sticky;
+    position: sticky !important;
     left: 0;
     z-index: 2;
     background-color: #1a1d24;
     background-clip: padding-box;
-    box-shadow: 1px 0 0 #2f3542;
+    box-shadow: 2px 0 0 #3a4250;
   }
 
   .vendr-app table thead th:first-child {
