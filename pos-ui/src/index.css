@@ -70,6 +70,12 @@ textarea {
  * product/name identity; the header row explains the visible values.
  */
 @media (max-width: 1100px) {
+  .vendr-app,
+  .vendr-app * {
+    /* Leave all native pan and pinch gestures available to the browser. */
+    touch-action: auto !important;
+  }
+
   .vendr-app table {
     border-collapse: separate !important;
     border-spacing: 0;
