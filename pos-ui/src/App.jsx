@@ -397,7 +397,10 @@ function App() {
         if (cancelled) return;
 
         const organizationId =
-          response.data.organization_id || null;
+          response.data.organization_id ||
+          response.data.organization
+            ?.organization_id ||
+          null;
 
         setOrganizationAvailability({
           available: Boolean(
