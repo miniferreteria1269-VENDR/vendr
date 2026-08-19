@@ -357,17 +357,12 @@ function ProductDiagnostics({ storeId }) {
       return;
     }
 
-    const difference = parsedCorrectStock - currentStock;
-
-    if (difference === 0) {
+    if (parsedCorrectStock === currentStock) {
       setErrorMessage(
         t("same_stock_value")
       );
       return;
     }
-
-    const direction =
-      difference > 0 ? "positive" : "negative";
 
     setSaving(true);
     setErrorMessage("");
@@ -376,8 +371,8 @@ function ProductDiagnostics({ storeId }) {
       await apiClient.post("/stock-adjustment", {
         store_id: storeId,
         product_id: selectedProduct.product_id,
-        quantity: Math.abs(difference),
-        direction,
+        counted_total: parsedCorrectStock,
+        expected_stock: currentStock,
         reason: "diagnostic_correction",
         note:
           note.trim() ||
@@ -398,7 +393,12 @@ function ProductDiagnostics({ storeId }) {
         err.message ||
         t("could_not_apply_stock_correction");
 
-      setErrorMessage(String(detail));
+      setErrorMessage(
+        typeof detail === "object"
+          ? detail.message ||
+              t("could_not_apply_stock_correction")
+          : String(detail)
+      );
     } finally {
       setSaving(false);
     }

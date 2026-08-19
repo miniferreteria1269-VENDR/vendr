@@ -131,6 +131,28 @@ function SyncStatus({
         ) > 0
     ).length;
 
+  const dismissStockConflict = async event => {
+    const productId =
+      event.payload?.product_id;
+
+    const currentStock = Number(
+      event.conflict_current_stock || 0
+    );
+
+    if (storeId && productId) {
+      await offlineDb.products.update(
+        [storeId, productId],
+        {
+          stock: currentStock
+        }
+      );
+    }
+
+    await offlineDb.pendingEvents.delete(
+      event.client_event_id
+    );
+  };
+
   const handleSyncNow = async () => {
     if (
       syncing ||
@@ -380,11 +402,13 @@ function SyncStatus({
                               : "#facc15"
                         }}
                       >
-                        {Number(
-                          event.retry_count || 0
-                        ) > 0
-                          ? "Retry needed"
-                          : "Queued"}
+                        {event.status === "conflict"
+                          ? "Review needed"
+                          : Number(
+                              event.retry_count || 0
+                            ) > 0
+                            ? "Retry needed"
+                            : "Queued"}
                       </span>
                     </div>
 
@@ -409,6 +433,22 @@ function SyncStatus({
                           </>
                         )}
                       </div>
+                    )}
+
+                    {event.status === "conflict" && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          dismissStockConflict(event)
+                        }
+                        style={{
+                          ...secondaryButtonStyle,
+                          marginTop: 8,
+                          width: "100%"
+                        }}
+                      >
+                        Dismiss and recount
+                      </button>
                     )}
                   </div>
                 ))

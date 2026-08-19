@@ -10,9 +10,10 @@ import {
 } from "../offlineEvents";
 import ProductSupplierManagement from "./ProductSupplierManagement";
 import {
-  searchCachedProducts,
-  applyLocalStockAdjustmentToCatalog
+  getCachedProducts,
+  applyLocalStockCountToCatalog
 } from "../offlineCatalog";
+import { offlineDb } from "../offlineDb";
 import ProductImporter from "./ProductImporter";
 import {
   COLORS,
@@ -1446,102 +1447,150 @@ export function StockAdjustment({
   const [selected, setSelected] =
     useState(null);
 
-  const [quantity, setQuantity] =
-    useState(1);
+  const [countedTotal, setCountedTotal] =
+    useState("");
 
-  const [direction, setDirection] =
-    useState("positive");
+  const [reason, setReason] =
+    useState("physical_count");
 
   const [note, setNote] =
     useState("");
 
+  const [loading, setLoading] =
+    useState(false);
+
   const [submitting, setSubmitting] =
     useState(false);
 
-const searchProducts = async term => {
-  const normalizedTerm =
-    String(term || "").trim();
+  const tracksStock = product =>
+    product.tracks_stock === 1 ||
+    product.tracks_stock === true ||
+    product.tracks_stock === "1" ||
+    product.tracks_stock === "true";
 
-  if (
-    !storeId ||
-    normalizedTerm.length < 2
-  ) {
-    setProducts([]);
-    return;
-  }
-
-  try {
-    const cachedProducts =
-      await searchCachedProducts(
-        storeId,
-        normalizedTerm
+  const sortProducts = loadedProducts =>
+    [...loadedProducts]
+      .filter(tracksStock)
+      .sort((a, b) =>
+        String(a.name || "").localeCompare(
+          String(b.name || ""),
+          undefined,
+          { sensitivity: "base" }
+        )
       );
 
-    const trackedProducts =
-      cachedProducts.filter(product => {
-        const tracksStock =
-          product.tracks_stock;
+  const loadAdjustmentProducts = async () => {
+    if (!storeId) {
+      setProducts([]);
+      return;
+    }
 
-        return (
-          tracksStock === 1 ||
-          tracksStock === true ||
-          tracksStock === "1" ||
-          tracksStock === "true"
-        );
-      });
+    setLoading(true);
 
-    console.log(
-      "OFFLINE ADJUSTMENT SEARCH:",
-      {
-        term: normalizedTerm,
-        cachedFound:
-          cachedProducts.length,
-        trackedFound:
-          trackedProducts.length
-      }
-    );
+    try {
+      const response = await apiClient.get(
+        "/products",
+        {
+          params: {
+            store_id: storeId
+          }
+        }
+      );
 
-    setProducts(trackedProducts);
-  } catch (error) {
-    console.error(
-      "ADJUSTMENT PRODUCT SEARCH ERROR:",
-      error
-    );
+      setProducts(
+        sortProducts(
+          response.data.products || []
+        )
+      );
+    } catch (error) {
+      console.warn(
+        "USING CACHED ADJUSTMENT PRODUCTS:",
+        error
+      );
 
-    setProducts([]);
-  }
-};
+      const cachedProducts =
+        await getCachedProducts(storeId);
 
-  const resetForm = () => {
+      setProducts(
+        sortProducts(cachedProducts)
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAdjustmentProducts();
+  }, [storeId]);
+
+  const resetSelection = () => {
     setSelected(null);
-    setSearch("");
-    setProducts([]);
-    setQuantity(1);
-    setDirection("positive");
+    setCountedTotal("");
+    setReason("physical_count");
     setNote("");
   };
+
+  const selectProduct = product => {
+    setSelected({
+      ...product,
+      stock: Number(product.stock || 0)
+    });
+    setCountedTotal("");
+    setReason("physical_count");
+    setNote("");
+  };
+
+  const normalizedSearch =
+    search.trim().toLowerCase();
+
+  const visibleProducts = products.filter(
+    product =>
+      !normalizedSearch ||
+      String(product.name || "")
+        .toLowerCase()
+        .includes(normalizedSearch) ||
+      String(product.product_id || "")
+        .includes(normalizedSearch) ||
+      String(product.location_code || "")
+        .toLowerCase()
+        .includes(normalizedSearch)
+  );
+
+  const numericCountedTotal =
+    Number(countedTotal);
+
+  const currentStock = Number(
+    selected?.stock || 0
+  );
+
+  const hasValidCount =
+    countedTotal !== "" &&
+    Number.isInteger(numericCountedTotal) &&
+    numericCountedTotal >= 0;
+
+  const stockDifference = hasValidCount
+    ? numericCountedTotal - currentStock
+    : null;
 
   const submit = async () => {
     if (submitting) {
       return;
     }
 
-    const numericQuantity =
-      Number(quantity);
-
     if (
       !storeId ||
       !selected?.product_id ||
-      !Number.isFinite(numericQuantity) ||
-      numericQuantity <= 0 ||
-      !["positive", "negative"].includes(
-        direction
-      )
+      !hasValidCount
     ) {
       alert(
-        t("stock_adjustment_failed")
+        t("invalid_counted_stock")
       );
 
+      return;
+    }
+
+    if (stockDifference === 0) {
+      alert(t("same_stock_value"));
       return;
     }
 
@@ -1558,9 +1607,9 @@ const searchProducts = async term => {
       store_id: storeId,
       product_id:
         selected.product_id,
-      quantity: numericQuantity,
-      direction,
-      reason: "",
+      counted_total: numericCountedTotal,
+      expected_stock: currentStock,
+      reason,
       note: note.trim(),
       client_event_id:
         clientEventId,
@@ -1593,23 +1642,14 @@ const searchProducts = async term => {
           pendingEvent
         );
 
-      /*
-       * Apply the stock movement exactly once locally.
-       */
+      // The local catalog mirrors the physical count.
       if (saveResult.created) {
-        await applyLocalStockAdjustmentToCatalog(
+        await applyLocalStockCountToCatalog(
           storeId,
           selected.product_id,
-          numericQuantity,
-          direction
+          numericCountedTotal
         );
       }
-
-      /*
-       * Clear the completed adjustment from the UI once
-       * it has been safely recorded locally.
-       */
-      resetForm();
 
       let synchronized = false;
 
@@ -1621,12 +1661,69 @@ const searchProducts = async term => {
 
           synchronized = true;
         } catch (syncError) {
+          const detail =
+            syncError.response?.data?.detail;
+
+          if (
+            syncError.response?.status === 409 &&
+            detail?.code === "STOCK_CHANGED"
+          ) {
+            await offlineDb.pendingEvents.delete(
+              clientEventId
+            );
+
+            const serverStock = Number(
+              detail.current_stock || 0
+            );
+
+            await applyLocalStockCountToCatalog(
+              storeId,
+              selected.product_id,
+              serverStock
+            );
+
+            setProducts(previous =>
+              previous.map(product =>
+                product.product_id ===
+                selected.product_id
+                  ? {
+                      ...product,
+                      stock: serverStock
+                    }
+                  : product
+              )
+            );
+
+            setSelected(previous => ({
+              ...previous,
+              stock: serverStock
+            }));
+
+            setCountedTotal("");
+            alert(t("stock_changed_recount"));
+            return;
+          }
+
           console.warn(
             "STOCK ADJUSTMENT SAVED PENDING SYNC:",
             syncError
           );
         }
       }
+
+      setProducts(previous =>
+        previous.map(product =>
+          product.product_id ===
+          selected.product_id
+            ? {
+                ...product,
+                stock: numericCountedTotal
+              }
+            : product
+        )
+      );
+
+      resetSelection();
 
       alert(
         synchronized
@@ -1648,160 +1745,343 @@ const searchProducts = async term => {
   };
 
   return (
-    <div style={card}>
-      <h3>
-        {t("stock_adjustment")}
-      </h3>
+    <div
+      style={{
+        ...card,
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 12
+        }}
+      >
+        <div>
+          <h3 style={{ margin: 0 }}>
+            {t("stock_adjustment")}
+          </h3>
 
-      {!selected && (
-        <>
-          <input
-            type="text"
-            placeholder={t("search")}
-            value={search}
-            onChange={event => {
-              const value =
-                event.target.value;
-
-              setSearch(value);
-              searchProducts(value);
+          <div
+            style={{
+              color: COLORS.textDim,
+              fontSize: 13,
+              marginTop: 4
             }}
-            disabled={submitting}
-            style={input}
-          />
+          >
+            {t("counted_total_help")}
+          </div>
+        </div>
 
-          {products.map(product => (
-            <button
-              key={product.product_id}
-              type="button"
-              onClick={() => {
-                setSelected(product);
-                setProducts([]);
-                setSearch("");
-              }}
-              disabled={submitting}
-              style={{
-                ...resultCard(),
-                width: "100%",
-                textAlign: "left",
-                cursor:
-                  submitting
-                    ? "default"
-                    : "pointer"
-              }}
-            >
-              {product.name}
-              {" ("}
-              {t("stock")}:{" "}
-              {Number(
-                product.stock || 0
-              )}
-              {")"}
-            </button>
-          ))}
-        </>
-      )}
+        <input
+          type="text"
+          placeholder={t("search_inventory")}
+          value={search}
+          onChange={event =>
+            setSearch(event.target.value)
+          }
+          disabled={submitting}
+          style={{
+            ...input,
+            width: 300,
+            maxWidth: "100%"
+          }}
+        />
+      </div>
 
       {selected && (
-        <>
-          <p>
-            <strong>
-              {selected.name}
-            </strong>
-          </p>
+        <div
+          style={{
+            background: COLORS.panelAlt,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 12
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "center",
+              marginBottom: 10
+            }}
+          >
+            <strong>{selected.name}</strong>
 
-          <p>
-            {t("stock")}:{" "}
-            {Number(
-              selected.stock || 0
+            <span style={{ color: COLORS.textDim }}>
+              {t("current_stock")}: {currentStock}
+            </span>
+
+            {stockDifference !== null && (
+              <span
+                style={{
+                  color:
+                    stockDifference > 0
+                      ? "#3ddc84"
+                      : stockDifference < 0
+                        ? COLORS.danger
+                        : COLORS.textDim,
+                  fontWeight: "bold"
+                }}
+              >
+                {t("calculated_adjustment")}: {" "}
+                {stockDifference > 0 ? "+" : ""}
+                {stockDifference}
+              </span>
             )}
-          </p>
+          </div>
 
-          <select
-            value={direction}
-            onChange={event =>
-              setDirection(
-                event.target.value
-              )
-            }
-            disabled={submitting}
-            style={input}
-          >
-            <option value="positive">
-              {t("adjustment_positive")}
-            </option>
-
-            <option value="negative">
-              {t("adjustment_negative")}
-            </option>
-          </select>
-
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={quantity}
-            onChange={event =>
-              setQuantity(
-                Number(
-                  event.target.value
-                )
-              )
-            }
-            disabled={submitting}
-            style={input}
-          />
-
-          <input
-            type="text"
-            placeholder={t("note")}
-            value={note}
-            onChange={event =>
-              setNote(
-                event.target.value
-              )
-            }
-            disabled={submitting}
-            style={input}
-          />
-
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting}
+          <div
             style={{
-              ...btnPrimary,
-              opacity:
-                submitting ? 0.6 : 1,
-              cursor:
-                submitting
-                  ? "default"
-                  : "pointer"
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(190px, 1fr))",
+              gap: 10
             }}
           >
-            {submitting
-              ? t("loading")
-              : t("submit")}
-          </button>
+            <select
+              value={reason}
+              onChange={event =>
+                setReason(event.target.value)
+              }
+              disabled={submitting}
+              style={input}
+            >
+              <option value="physical_count">
+                {t("physical_count")}
+              </option>
+              <option value="damage_or_loss">
+                {t("damage_or_loss")}
+              </option>
+              <option value="found_stock">
+                {t("found_stock")}
+              </option>
+              <option value="data_correction">
+                {t("data_correction")}
+              </option>
+              <option value="other">
+                {t("other")}
+              </option>
+            </select>
 
-          <button
-            type="button"
-            onClick={resetForm}
-            disabled={submitting}
+            <input
+              type="text"
+              placeholder={t("note_optional")}
+              value={note}
+              onChange={event =>
+                setNote(event.target.value)
+              }
+              disabled={submitting}
+              style={input}
+            />
+          </div>
+
+          <div
             style={{
-              ...btnSecondary,
-              opacity:
-                submitting ? 0.6 : 1,
-              cursor:
-                submitting
-                  ? "default"
-                  : "pointer"
+              display: "flex",
+              gap: 8,
+              justifyContent: "flex-end",
+              flexWrap: "wrap",
+              marginTop: 10
             }}
           >
-            {t("cancel")}
-          </button>
-        </>
+            <button
+              type="button"
+              onClick={resetSelection}
+              disabled={submitting}
+              style={btnSecondary}
+            >
+              {t("cancel")}
+            </button>
+
+            <button
+              type="button"
+              onClick={submit}
+              disabled={
+                submitting ||
+                !hasValidCount ||
+                stockDifference === 0
+              }
+              style={{
+                ...btnPrimary,
+                opacity:
+                  submitting ||
+                  !hasValidCount ||
+                  stockDifference === 0
+                    ? 0.6
+                    : 1
+              }}
+            >
+              {submitting
+                ? t("loading")
+                : t("confirm_adjustment")}
+            </button>
+          </div>
+        </div>
       )}
+
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto"
+        }}
+      >
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse"
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8 }}>
+                {t("product")}
+              </th>
+              <th style={{ textAlign: "left", padding: 8 }}>
+                {t("location")}
+              </th>
+              <th style={{ textAlign: "right", padding: 8 }}>
+                {t("current_stock")}
+              </th>
+              <th style={{ textAlign: "right", padding: 8 }}>
+                {t("counted_total")}
+              </th>
+              <th style={{ textAlign: "right", padding: 8 }}>
+                {t("difference")}
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {loading && (
+              <tr>
+                <td colSpan={5} style={{ padding: 12 }}>
+                  {t("loading")}
+                </td>
+              </tr>
+            )}
+
+            {!loading && visibleProducts.length === 0 && (
+              <tr>
+                <td
+                  colSpan={5}
+                  style={{
+                    padding: 12,
+                    color: COLORS.textDim
+                  }}
+                >
+                  {t("no_products_found")}
+                </td>
+              </tr>
+            )}
+
+            {!loading && visibleProducts.map(product => {
+              const isSelected =
+                selected?.product_id ===
+                product.product_id;
+
+              return (
+                <tr
+                  key={product.product_id}
+                  onClick={() =>
+                    !submitting && selectProduct(product)
+                  }
+                  style={{
+                    borderTop:
+                      `1px solid ${COLORS.border}`,
+                    background: isSelected
+                      ? "rgba(58, 160, 255, 0.12)"
+                      : "transparent",
+                    cursor: submitting
+                      ? "default"
+                      : "pointer"
+                  }}
+                >
+                  <td style={{ padding: 8 }}>
+                    <strong>{product.name}</strong>
+                  </td>
+                  <td style={{ padding: 8 }}>
+                    {product.location_code || "—"}
+                  </td>
+                  <td
+                    style={{
+                      padding: 8,
+                      textAlign: "right"
+                    }}
+                  >
+                    {Number(product.stock || 0)}
+                  </td>
+                  <td
+                    style={{
+                      padding: 8,
+                      textAlign: "right"
+                    }}
+                  >
+                    {isSelected ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        autoFocus
+                        value={countedTotal}
+                        onClick={event =>
+                          event.stopPropagation()
+                        }
+                        onChange={event =>
+                          setCountedTotal(
+                            event.target.value
+                          )
+                        }
+                        disabled={submitting}
+                        aria-label={t("counted_total")}
+                        style={{
+                          ...input,
+                          width: 100,
+                          border:
+                            `2px solid ${COLORS.primary}`,
+                          textAlign: "right"
+                        }}
+                      />
+                    ) : (
+                      <span style={{ color: COLORS.textDim }}>
+                        {t("select")}
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    style={{
+                      padding: 8,
+                      textAlign: "right",
+                      fontWeight: "bold",
+                      color:
+                        isSelected && stockDifference > 0
+                          ? "#3ddc84"
+                          : isSelected && stockDifference < 0
+                            ? COLORS.danger
+                            : COLORS.textDim
+                    }}
+                  >
+                    {isSelected && stockDifference !== null
+                      ? `${stockDifference > 0 ? "+" : ""}${stockDifference}`
+                      : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

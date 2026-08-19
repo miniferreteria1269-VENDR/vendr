@@ -259,3 +259,50 @@ export const applyLocalStockAdjustmentToCatalog =
       }
     );
   };
+
+export const applyLocalStockCountToCatalog =
+  async (
+    storeId,
+    productId,
+    countedTotal
+  ) => {
+    const numericCountedTotal =
+      Number(countedTotal);
+
+    if (
+      !storeId ||
+      !productId ||
+      !Number.isFinite(numericCountedTotal) ||
+      numericCountedTotal < 0
+    ) {
+      return;
+    }
+
+    const key = [
+      storeId,
+      productId
+    ];
+
+    await offlineDb.transaction(
+      "rw",
+      offlineDb.products,
+      async () => {
+        const product =
+          await offlineDb.products.get(key);
+
+        if (
+          !product ||
+          !isTruthyFlag(product.tracks_stock)
+        ) {
+          return;
+        }
+
+        await offlineDb.products.update(
+          key,
+          {
+            stock: numericCountedTotal
+          }
+        );
+      }
+    );
+  };

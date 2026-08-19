@@ -7,12 +7,37 @@ import {
 let syncInProgress = false;
 
 const getSyncErrorMessage = error => {
-  return (
+  const detail =
     error?.response?.data?.detail ||
     error?.response?.data?.message ||
     error?.message ||
-    "Unknown synchronization error"
-  );
+    "Unknown synchronization error";
+
+  if (
+    detail &&
+    typeof detail === "object"
+  ) {
+    return (
+      detail.message ||
+      JSON.stringify(detail)
+    );
+  }
+
+  return String(detail);
+};
+
+const getStockConflict = error => {
+  const detail =
+    error?.response?.data?.detail;
+
+  if (
+    error?.response?.status === 409 &&
+    detail?.code === "STOCK_CHANGED"
+  ) {
+    return detail;
+  }
+
+  return null;
 };
 
 const isConnectionError = error => {
@@ -83,6 +108,9 @@ export const syncPendingEvents = async () => {
       } catch (error) {
         results.failed += 1;
 
+        const stockConflict =
+          getStockConflict(error);
+
         const errorMessage =
           getSyncErrorMessage(error);
 
@@ -97,13 +125,40 @@ export const syncPendingEvents = async () => {
         await offlineDb.pendingEvents.update(
           event.client_event_id,
           {
+            status: stockConflict
+              ? "conflict"
+              : "pending",
             retry_count:
               Number(
                 event.retry_count || 0
               ) + 1,
-            last_error: errorMessage
+            last_error: errorMessage,
+            conflict_current_stock:
+              stockConflict
+                ? Number(
+                    stockConflict.current_stock || 0
+                  )
+                : null
           }
         );
+
+        if (
+          stockConflict &&
+          event.store_id &&
+          event.payload?.product_id
+        ) {
+          await offlineDb.products.update(
+            [
+              event.store_id,
+              event.payload.product_id
+            ],
+            {
+              stock: Number(
+                stockConflict.current_stock || 0
+              )
+            }
+          );
+        }
 
         if (isConnectionError(error)) {
           results.offline = true;
