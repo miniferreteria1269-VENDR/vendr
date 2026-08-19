@@ -15,7 +15,11 @@ import {
   input,
 } from "../uiStyles";
 
-function InventoryReport({ storeId }) {
+function InventoryReport({
+  storeId,
+  priorityLowStockCount = 0,
+  onPriorityLowStockChanged,
+}) {
   const { t } = useLang();
 
   const [products, setProducts] = useState([]);
@@ -119,6 +123,10 @@ function InventoryReport({ storeId }) {
     );
 
     setLowStockItems(res.data.low_stock || []);
+
+    onPriorityLowStockChanged?.(
+      Number(res.data.priority_count || 0)
+    );
   };
 
   const loadReorderItems = async () => {
@@ -664,6 +672,23 @@ function InventoryReport({ storeId }) {
                 : btnSecondary
             }
           >
+            {view === "lowstock" &&
+              priorityLowStockCount > 0 && (
+                <span
+                  aria-hidden="true"
+                  title={t("priority_low_stock_alert")}
+                  style={{
+                    display: "inline-block",
+                    width: 8,
+                    height: 8,
+                    marginRight: 6,
+                    borderRadius: "50%",
+                    background: "#ff8c42",
+                    boxShadow: "0 0 6px #ff8c42",
+                  }}
+                />
+              )}
+
             {t(view).toUpperCase()}
           </button>
         ))}
@@ -895,6 +920,34 @@ function InventoryReport({ storeId }) {
                 {t("lowstock")}
               </h3>
 
+              {priorityLowStockCount > 0 && (
+                <div
+                  style={{
+                    background: COLORS.panelAlt,
+                    border: "1px solid #ff8c42",
+                    borderRadius: 8,
+                    padding: 10,
+                    marginBottom: 12,
+                    color: COLORS.textDim,
+                    fontSize: 13,
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      display: "inline-block",
+                      width: 8,
+                      height: 8,
+                      marginRight: 7,
+                      borderRadius: "50%",
+                      background: "#ff8c42",
+                      boxShadow: "0 0 6px #ff8c42",
+                    }}
+                  />
+                  {t("priority_low_stock_explanation")}
+                </div>
+              )}
+
               <div
                 style={{
                   flex: 1,
@@ -928,12 +981,52 @@ function InventoryReport({ storeId }) {
                       }}
                     >
                       <div>
-                        <b>{item.name}</b>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 7,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <b>{item.name}</b>
+
+                          {item.is_priority && (
+                            <span
+                              title={t(
+                                "priority_low_stock_explanation"
+                              )}
+                              style={{
+                                border: "1px solid #ff8c42",
+                                borderRadius: 999,
+                                padding: "2px 7px",
+                                color: "#ffad73",
+                                fontSize: 11,
+                                fontWeight: "bold",
+                              }}
+                            >
+                              {t("priority_reorder")}
+                            </span>
+                          )}
+                        </div>
 
                         <div>
                           {t("stock")}: {item.stock} /{" "}
                           {t("min")}: {item.threshold}
                         </div>
+
+                        {item.is_priority && (
+                          <div
+                            style={{
+                              marginTop: 3,
+                              color: "#ffad73",
+                              fontSize: 12,
+                            }}
+                          >
+                            {t("units_sold_last_30_days")}: {" "}
+                            {item.units_sold_30d}
+                          </div>
+                        )}
 
                         {existingReorderItem && (
                           <div

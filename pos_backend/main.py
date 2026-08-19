@@ -9448,26 +9448,105 @@ def get_low_stock(
 
         cursor.execute(
             """
+            WITH sales_velocity AS (
+                SELECT
+                    p.product_id,
+                    GREATEST(
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN e.event_type = 'sale'
+                                    THEN e.quantity
+                                    WHEN e.event_type = 'return'
+                                    THEN -e.quantity
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ),
+                        0
+                    ) AS units_sold_30d
+                FROM products p
+
+                LEFT JOIN events e
+                  ON e.product_id = p.product_id
+                 AND e.store_id = p.store_id
+                 AND e.event_type IN ('sale', 'return')
+                 AND CASE
+                        WHEN e.event_datetime IS NOT NULL
+                         AND e.event_datetime <> ''
+                        THEN e.event_datetime::timestamptz
+                        ELSE NULL
+                     END >= NOW() - INTERVAL '30 days'
+
+                WHERE p.store_id = %s
+                  AND p.is_active = 1
+                  AND p.tracks_stock = 1
+
+                GROUP BY p.product_id
+            ),
+
+            ranked_velocity AS (
+                SELECT
+                    product_id,
+                    units_sold_30d,
+                    ROW_NUMBER() OVER (
+                        ORDER BY
+                            units_sold_30d DESC,
+                            product_id ASC
+                    ) AS velocity_rank,
+                    COUNT(*) FILTER (
+                        WHERE units_sold_30d > 0
+                    ) OVER () AS selling_product_count
+                FROM sales_velocity
+            )
+
             SELECT
-                product_id,
-                name,
-                stock,
-                low_stock_threshold
-            FROM products
-            WHERE store_id = %s
-              AND is_active = 1
-              AND tracks_stock = 1
-              AND stock <= low_stock_threshold
-            ORDER BY LOWER(name) ASC
+                p.product_id,
+                p.name,
+                p.stock,
+                p.low_stock_threshold,
+                rv.units_sold_30d,
+                CASE
+                    WHEN rv.units_sold_30d > 0
+                     AND rv.velocity_rank <= CEIL(
+                         rv.selling_product_count * 0.20
+                     )
+                    THEN TRUE
+                    ELSE FALSE
+                END AS is_priority
+            FROM products p
+
+            INNER JOIN ranked_velocity rv
+                ON rv.product_id = p.product_id
+
+            WHERE p.store_id = %s
+              AND p.is_active = 1
+              AND p.tracks_stock = 1
+              AND p.stock <= p.low_stock_threshold
+
+            ORDER BY
+                is_priority DESC,
+                rv.units_sold_30d DESC,
+                LOWER(p.name) ASC
             """,
-            (store_id,)
+            (
+                store_id,
+                store_id
+            )
         )
 
         rows = cursor.fetchall()
 
         low_stock = []
+        priority_count = 0
 
         for row in rows:
+            is_priority = bool(row[5])
+
+            if is_priority:
+                priority_count += 1
+
             low_stock.append({
                 "product_id":
                     row[0],
@@ -9479,12 +9558,24 @@ def get_low_stock(
                     int(row[2] or 0),
 
                 "threshold":
-                    int(row[3] or 0)
+                    int(row[3] or 0),
+
+                "units_sold_30d":
+                    int(row[4] or 0),
+
+                "is_priority":
+                    is_priority
             })
 
         return {
             "low_stock":
-                low_stock
+                low_stock,
+
+            "priority_count":
+                priority_count,
+
+            "velocity_window_days":
+                30
         }
 
     except HTTPException:
@@ -20753,21 +20844,26 @@ def get_organization_access_availability(
         cursor.execute(
             """
             SELECT
-                o.organization_id,
-                o.name
+                s.organization_id,
+                o.name,
+                CASE
+                    WHEN o.is_active = TRUE
+                     AND EXISTS (
+                         SELECT 1
+                         FROM organization_report_credentials orc
+                         WHERE orc.organization_id = o.organization_id
+                           AND orc.is_active = TRUE
+                     )
+                    THEN TRUE
+                    ELSE FALSE
+                END AS report_available
             FROM stores s
 
-            INNER JOIN organizations o
+            LEFT JOIN organizations o
                 ON o.organization_id =
                    s.organization_id
 
-            INNER JOIN organization_report_credentials orc
-                ON orc.organization_id =
-                   o.organization_id
-
             WHERE s.store_id = %s
-              AND o.is_active = TRUE
-              AND orc.is_active = TRUE
             """,
             (
                 current_user.store_id,
@@ -20776,22 +20872,30 @@ def get_organization_access_availability(
 
         row = cursor.fetchone()
 
-        if not row:
+        if not row or row[0] is None:
             return {
                 "available": False,
-                "organization": None
+                "organization": None,
+                "organization_id": None,
+                "has_organization": False
             }
 
         return {
-            "available": True,
-            "organization": {
-                "organization_id": int(
-                    row[0]
-                ),
-                "organization_name": str(
-                    row[1]
-                )
-            }
+            "available": bool(row[2]),
+            "organization": (
+                {
+                    "organization_id": int(
+                        row[0]
+                    ),
+                    "organization_name": str(
+                        row[1]
+                    )
+                }
+                if row[2]
+                else None
+            ),
+            "organization_id": int(row[0]),
+            "has_organization": True
         }
 
     except Exception as error:

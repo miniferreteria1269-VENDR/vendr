@@ -126,10 +126,13 @@ function App() {
     useState("green");
   const [transferAttention, setTransferAttention] =
     useState(false);
+  const [priorityLowStockCount, setPriorityLowStockCount] =
+    useState(0);
   const [organizationAvailability, setOrganizationAvailability] =
     useState({
       available: false,
-      organization: null
+      organization: null,
+      organizationId: null
     });
 
   const [discountValue, setDiscountValue] = useState(0);
@@ -141,7 +144,10 @@ function App() {
 
   const loadTransferAttention = useCallback(
     async () => {
-      if (!storeId) {
+      if (
+        !storeId ||
+        !organizationAvailability.organizationId
+      ) {
         setTransferAttention(false);
         return;
       }
@@ -199,8 +205,47 @@ function App() {
         }
       }
     },
+    [
+      storeId,
+      organizationAvailability.organizationId
+    ]
+  );
+
+  const loadPriorityLowStock = useCallback(
+    async () => {
+      if (!storeId) {
+        setPriorityLowStockCount(0);
+        return;
+      }
+
+      try {
+        const response = await apiClient.get(
+          "/low-stock",
+          {
+            params: {
+              store_id: storeId
+            }
+          }
+        );
+
+        setPriorityLowStockCount(
+          Number(
+            response.data.priority_count || 0
+          )
+        );
+      } catch (error) {
+        console.warn(
+          "Unable to load priority low-stock status:",
+          error
+        );
+      }
+    },
     [storeId]
   );
+
+  useEffect(() => {
+    loadPriorityLowStock();
+  }, [loadPriorityLowStock, view]);
 
   // Keep the Transfer navigation indicator current
   // across stores, devices, offline dispatches, and
@@ -335,7 +380,8 @@ function App() {
     if (!storeId) {
       setOrganizationAvailability({
         available: false,
-        organization: null
+        organization: null,
+        organizationId: null
       });
       return;
     }
@@ -350,13 +396,28 @@ function App() {
 
         if (cancelled) return;
 
+        const organizationId =
+          response.data.organization_id ||
+          response.data.organization
+            ?.organization_id ||
+          null;
+
         setOrganizationAvailability({
           available: Boolean(
             response.data.available
           ),
           organization:
-            response.data.organization || null
+            response.data.organization || null,
+          organizationId
         });
+
+        if (!organizationId) {
+          setView(previousView =>
+            previousView === "transfers"
+              ? "pos"
+              : previousView
+          );
+        }
       } catch (error) {
         console.warn(
           "Unable to determine organization availability:",
@@ -367,7 +428,8 @@ function App() {
 
         setOrganizationAvailability({
           available: false,
-          organization: null
+          organization: null,
+          organizationId: null
         });
       }
     };
@@ -791,6 +853,7 @@ function App() {
         });
 
         await loadProducts();
+        await loadPriorityLowStock();
       }
 
       if (results.failed > 0) {
@@ -1468,6 +1531,7 @@ function App() {
       setDiscountType("percent");
 
       await loadProducts();
+      await loadPriorityLowStock();
 
     } catch (error) {
       console.error(
@@ -1667,6 +1731,7 @@ const finalizeIntake = async () => {
 
     try {
       await loadProducts();
+      await loadPriorityLowStock();
     } catch (refreshError) {
       console.warn(
         "INTAKE PRODUCT REFRESH ERROR:",
@@ -1729,6 +1794,7 @@ const finalizeIntake = async () => {
 
   return (
     <div
+      className="vendr-app"
       style={{
         fontFamily:
           "system-ui, -apple-system, sans-serif",
@@ -1861,7 +1927,9 @@ const finalizeIntake = async () => {
             "agenda",
             "sales",
             "inventory",
-            "transfers",
+            ...(organizationAvailability.organizationId
+              ? ["transfers"]
+              : []),
             "suppliers",
             "clients",
             "products",
@@ -1949,6 +2017,25 @@ const finalizeIntake = async () => {
                         background: "#f5c542",
                         boxShadow:
                           "0 0 6px #f5c542"
+                      }}
+                    />
+                  )}
+
+                {navView === "inventory" &&
+                  priorityLowStockCount > 0 && (
+                    <span
+                      aria-hidden="true"
+                      title={t(
+                        "priority_low_stock_alert"
+                      )}
+                      style={{
+                        width: 8,
+                        height: 8,
+                        flex: "0 0 auto",
+                        borderRadius: "50%",
+                        background: "#ff8c42",
+                        boxShadow:
+                          "0 0 6px #ff8c42"
                       }}
                     />
                   )}
@@ -2052,15 +2139,25 @@ const finalizeIntake = async () => {
       {view === "inventory" && (
         <InventoryReport
           storeId={storeId}
+          priorityLowStockCount={
+            priorityLowStockCount
+          }
+          onPriorityLowStockChanged={
+            setPriorityLowStockCount
+          }
         />
       )}
 
       {/* STORE TRANSFERS */}
-      {view === "transfers" && (
+      {view === "transfers" &&
+        organizationAvailability.organizationId && (
         <TransferPanel
           storeId={storeId}
           storeName={user?.store_name}
-          onProductsChanged={loadProducts}
+          onProductsChanged={async () => {
+            await loadProducts();
+            await loadPriorityLowStock();
+          }}
           onTransferStatusChanged={
             loadTransferAttention
           }
