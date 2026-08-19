@@ -358,6 +358,28 @@ organization_report_load_failed:
     transfer_out: "Transfer Out",
     adjustment_positive: "Adj +",
     adjustment_negative: "Adj -",
+    stock_adjustment: "Stock Adjustment",
+    counted_total: "Counted Total",
+    counted_total_help:
+      "Select a product and enter the total physically counted. VENDR calculates the adjustment.",
+    calculated_adjustment: "Calculated adjustment",
+    difference: "Difference",
+    select: "Select",
+    confirm_adjustment: "Confirm Adjustment",
+    physical_count: "Physical count",
+    damage_or_loss: "Damage or loss",
+    found_stock: "Stock found",
+    data_correction: "Data correction",
+    invalid_counted_stock:
+      "Enter a valid whole-number stock total of zero or greater.",
+    stock_changed_recount:
+      "Stock changed after the count began. The latest stock has been loaded; please count the product again.",
+    stock_adjustment_completed:
+      "Stock count recorded.",
+    stock_adjustment_saved_pending:
+      "Stock count saved locally and pending synchronization.",
+    stock_adjustment_failed:
+      "The stock count could not be recorded.",
     final: "Final",
     no_product_movement:
       "No product movement found for this date range.",
@@ -1119,6 +1141,28 @@ organization_report_load_failed:
     transfer_out: "Transferencia saliente",
     adjustment_positive: "Ajuste +",
     adjustment_negative: "Ajuste -",
+    stock_adjustment: "Ajuste de inventario",
+    counted_total: "Total contado",
+    counted_total_help:
+      "Seleccione un producto e ingrese la existencia física total. VENDR calculará el ajuste.",
+    calculated_adjustment: "Ajuste calculado",
+    difference: "Diferencia",
+    select: "Seleccionar",
+    confirm_adjustment: "Confirmar ajuste",
+    physical_count: "Conteo físico",
+    damage_or_loss: "Daño o pérdida",
+    found_stock: "Existencia encontrada",
+    data_correction: "Corrección de datos",
+    invalid_counted_stock:
+      "Ingrese un total de inventario válido, entero e igual o mayor que cero.",
+    stock_changed_recount:
+      "El inventario cambió después de iniciar el conteo. Se cargó la existencia más reciente; vuelva a contar el producto.",
+    stock_adjustment_completed:
+      "Conteo de inventario registrado.",
+    stock_adjustment_saved_pending:
+      "Conteo guardado localmente y pendiente de sincronización.",
+    stock_adjustment_failed:
+      "No se pudo registrar el conteo de inventario.",
     final: "Final",
     no_product_movement:
       "No se encontraron movimientos de productos en este período.",

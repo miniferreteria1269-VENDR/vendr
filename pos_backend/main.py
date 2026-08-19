@@ -3307,8 +3307,10 @@ class AgendaItemUpdate(BaseModel):
 class StockAdjustmentRequest(BaseModel):
     store_id: int
     product_id: int
-    quantity: int
-    direction: str
+    quantity: Optional[int] = None
+    direction: Optional[str] = None
+    counted_total: Optional[int] = None
+    expected_stock: Optional[int] = None
     reason: Optional[str] = None
     note: Optional[str] = None
 
@@ -6305,23 +6307,54 @@ def stock_adjustment(
         # ---------------------------------------------
         # VALIDATION
         # ---------------------------------------------
-        if data.quantity <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Quantity must be greater than zero"
-            )
+        is_counted_total_request = (
+            data.counted_total is not None
+        )
 
-        if data.direction not in (
-            "positive",
-            "negative"
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Direction must be "
-                    "'positive' or 'negative'"
+        if is_counted_total_request:
+            if data.counted_total < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Counted stock must be zero "
+                        "or greater"
+                    )
                 )
-            )
+
+            if data.expected_stock is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Expected stock is required "
+                        "for a counted-total adjustment"
+                    )
+                )
+        else:
+            # Accept older queued adjustment events during
+            # the transition to counted-total adjustments.
+            if (
+                data.quantity is None
+                or data.quantity <= 0
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Quantity must be greater "
+                        "than zero"
+                    )
+                )
+
+            if data.direction not in (
+                "positive",
+                "negative"
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Direction must be "
+                        "'positive' or 'negative'"
+                    )
+                )
 
         conn = db()
         cursor = conn.cursor()
@@ -6373,6 +6406,7 @@ def stock_adjustment(
             """
             SELECT
                 name,
+                stock,
                 cost,
                 price,
                 tracks_stock
@@ -6380,6 +6414,7 @@ def stock_adjustment(
             WHERE product_id = %s
               AND store_id = %s
               AND is_active = 1
+            FOR UPDATE
             """,
             (
                 data.product_id,
@@ -6397,6 +6432,7 @@ def stock_adjustment(
 
         (
             name,
+            current_stock,
             cost,
             price,
             tracks_stock
@@ -6410,20 +6446,80 @@ def stock_adjustment(
                 )
             )
 
-        quantity = int(
-            data.quantity
+        previous_stock = int(
+            current_stock or 0
         )
+
+        if is_counted_total_request:
+            expected_stock = int(
+                data.expected_stock
+            )
+
+            if previous_stock != expected_stock:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code":
+                            "STOCK_CHANGED",
+
+                        "message": (
+                            "Stock changed after this "
+                            "count began. Review the "
+                            "current stock and count "
+                            "the product again."
+                        ),
+
+                        "expected_stock":
+                            expected_stock,
+
+                        "current_stock":
+                            previous_stock
+                    }
+                )
+
+            new_stock = int(
+                data.counted_total
+            )
+
+            stock_delta = (
+                new_stock - previous_stock
+            )
+
+            if stock_delta == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Counted stock is unchanged"
+                    )
+                )
+
+            quantity = abs(stock_delta)
+            direction = (
+                "positive"
+                if stock_delta > 0
+                else "negative"
+            )
+        else:
+            quantity = int(
+                data.quantity
+            )
+
+            direction = data.direction
+
+            stock_delta = (
+                quantity
+                if direction == "positive"
+                else -quantity
+            )
+
+            new_stock = (
+                previous_stock + stock_delta
+            )
 
         event_type = (
             "stock_adjustment_positive"
-            if data.direction == "positive"
+            if direction == "positive"
             else "stock_adjustment_negative"
-        )
-
-        stock_delta = (
-            quantity
-            if data.direction == "positive"
-            else -quantity
         )
 
         note_parts = []
@@ -6437,6 +6533,17 @@ def stock_adjustment(
             note_parts.append(
                 f"Note: {data.note}"
             )
+
+        note_parts.append(
+            (
+                "Stock count: "
+                f"{previous_stock} -> {new_stock}"
+            )
+        )
+
+        note_parts.append(
+            f"Adjustment: {stock_delta:+d}"
+        )
 
         adjustment_note = (
             " | ".join(note_parts)
@@ -6500,14 +6607,13 @@ def stock_adjustment(
         cursor.execute(
             """
             UPDATE products
-            SET stock =
-                COALESCE(stock, 0) + %s
+            SET stock = %s
             WHERE product_id = %s
               AND store_id = %s
               AND tracks_stock = 1
             """,
             (
-                stock_delta,
+                new_stock,
                 data.product_id,
                 data.store_id
             )
@@ -6536,6 +6642,12 @@ def stock_adjustment(
 
             "stock_delta":
                 stock_delta,
+
+            "previous_stock":
+                previous_stock,
+
+            "new_stock":
+                new_stock,
 
             "client_event_id":
                 data.client_event_id
