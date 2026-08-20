@@ -144,6 +144,9 @@ organization_report_load_failed:
     location_code_placeholder: "Example: E3R2I",
     active: "Active",
     archived: "Archived",
+    active_products: "Active products",
+    archived_products: "Archived products",
+    low_stock_products_count: "Products on low-stock list",
     yes: "Yes",
     no: "No",
 
@@ -908,6 +911,9 @@ organization_report_load_failed:
     location_code_placeholder: "Ejemplo: E3R2I",
     active: "Activo",
     archived: "Archivado",
+    active_products: "Productos activos",
+    archived_products: "Productos archivados",
+    low_stock_products_count: "Productos en existencias bajas",
     yes: "Sí",
     no: "No",
 
