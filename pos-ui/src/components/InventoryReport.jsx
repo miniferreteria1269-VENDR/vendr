@@ -920,6 +920,34 @@ function InventoryReport({
                 {t("lowstock")}
               </h3>
 
+              <div
+                style={{
+                  ...card,
+                  alignSelf: "flex-start",
+                  padding: "10px 14px",
+                  minWidth: 180,
+                  marginBottom: 12,
+                }}
+              >
+                <div
+                  style={{
+                    color: COLORS.textDim,
+                    fontSize: 12,
+                  }}
+                >
+                  {t("low_stock_products_count")}
+                </div>
+                <div
+                  style={{
+                    color: COLORS.primary,
+                    fontSize: 22,
+                    fontWeight: "bold",
+                  }}
+                >
+                  {filteredLowStock.length}
+                </div>
+              </div>
+
               {priorityLowStockCount > 0 && (
                 <div
                   style={{

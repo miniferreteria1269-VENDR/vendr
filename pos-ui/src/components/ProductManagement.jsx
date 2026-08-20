@@ -83,6 +83,14 @@ function ProductManagement({ storeId, onProductsChanged }) {
     );
   });
 
+  const activeProductCount = products.filter(
+    product => product.is_active !== false
+  ).length;
+
+  const archivedProductCount = products.filter(
+    product => product.is_active === false
+  ).length;
+
   const translatedText = (key, fallback) => {
     const translated = t(key);
 
@@ -123,6 +131,45 @@ function ProductManagement({ storeId, onProductsChanged }) {
   return (
     <div style={{ padding: 16, minHeight: 0 }}>
       <h2 style={{ marginBottom: 12 }}>{t("product_management")}</h2>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          marginBottom: 12
+        }}
+      >
+        <div
+          style={{
+            ...card,
+            padding: "10px 14px",
+            minWidth: 145
+          }}
+        >
+          <div style={{ color: COLORS.textDim, fontSize: 12 }}>
+            {t("active_products")}
+          </div>
+          <div style={{ color: COLORS.primary, fontSize: 22, fontWeight: "bold" }}>
+            {activeProductCount}
+          </div>
+        </div>
+
+        <div
+          style={{
+            ...card,
+            padding: "10px 14px",
+            minWidth: 145
+          }}
+        >
+          <div style={{ color: COLORS.textDim, fontSize: 12 }}>
+            {t("archived_products")}
+          </div>
+          <div style={{ fontSize: 22, fontWeight: "bold" }}>
+            {archivedProductCount}
+          </div>
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         {[
