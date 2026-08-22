@@ -1934,6 +1934,40 @@ export function StockAdjustment({
             )}
           </div>
 
+          {compact && (
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 5,
+                marginBottom: 10
+              }}
+            >
+              <span>{t("counted_total")}</span>
+
+              <input
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                autoFocus
+                value={countedTotal}
+                onChange={event =>
+                  setCountedTotal(
+                    event.target.value
+                  )
+                }
+                disabled={submitting}
+                style={{
+                  ...input,
+                  width: "100%",
+                  border:
+                    `2px solid ${COLORS.primary}`
+                }}
+              />
+            </label>
+          )}
+
           <div
             style={{
               display: "grid",
