@@ -33,6 +33,11 @@ function InventoryReport({
   const [reorderFilter, setReorderFilter] = useState("master");
   const [reorderSupplierId, setReorderSupplierId] = useState("");
   const [activeReorderProduct, setActiveReorderProduct] = useState(null);
+  const [adjustmentProduct, setAdjustmentProduct] = useState(null);
+  const [thresholdProduct, setThresholdProduct] = useState(null);
+  const [thresholdValue, setThresholdValue] = useState("");
+  const [thresholdSaving, setThresholdSaving] = useState(false);
+  const [thresholdError, setThresholdError] = useState("");
   const [assignedProductSuppliers, setAssignedProductSuppliers] = useState([]);
   const [allSuppliers, setAllSuppliers] = useState([]);
   const [reorderForm, setReorderForm] = useState({
@@ -517,6 +522,97 @@ function InventoryReport({
       );
     } finally {
       setReorderLoading(false);
+    }
+  };
+
+  const handleLowStockAdjustment = async ({
+    product_id,
+    new_stock,
+  }) => {
+    setLowStockItems((previous) =>
+      previous
+        .map((item) =>
+          item.product_id === product_id
+            ? { ...item, stock: new_stock }
+            : item
+        )
+        .filter(
+          (item) =>
+            Number(item.stock) <=
+            Number(item.threshold)
+        )
+    );
+
+    if (navigator.onLine) {
+      await loadLowStock();
+    }
+  };
+
+  const openThresholdModal = (product) => {
+    setThresholdProduct(product);
+    setThresholdValue(String(product.threshold ?? 0));
+    setThresholdError("");
+  };
+
+  const closeThresholdModal = () => {
+    if (thresholdSaving) return;
+
+    setThresholdProduct(null);
+    setThresholdValue("");
+    setThresholdError("");
+  };
+
+  const saveLowStockThreshold = async () => {
+    const numericThreshold = Number(thresholdValue);
+
+    if (
+      !thresholdProduct ||
+      !Number.isInteger(numericThreshold) ||
+      numericThreshold < 0
+    ) {
+      setThresholdError(
+        t("invalid_low_stock_threshold")
+      );
+      return;
+    }
+
+    if (
+      numericThreshold ===
+      Number(thresholdProduct.threshold || 0)
+    ) {
+      setThresholdError(t("same_low_stock_threshold"));
+      return;
+    }
+
+    setThresholdSaving(true);
+    setThresholdError("");
+
+    try {
+      await apiClient.post(
+        "/edit-product",
+        null,
+        {
+          params: {
+            store_id: storeId,
+            product_id: thresholdProduct.product_id,
+            name: thresholdProduct.name,
+            low_stock_threshold: numericThreshold,
+            tracks_stock: true,
+          },
+        }
+      );
+
+      await loadLowStock();
+      setThresholdProduct(null);
+      setThresholdValue("");
+      alert(t("low_stock_threshold_updated"));
+    } catch (error) {
+      setThresholdError(
+        error.response?.data?.detail ||
+          t("low_stock_threshold_update_failed")
+      );
+    } finally {
+      setThresholdSaving(false);
     }
   };
 
@@ -1106,19 +1202,47 @@ function InventoryReport({
                         )}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => openReorderModal(item)}
-                        style={
-                          existingReorderItem
-                            ? btnSecondary
-                            : btnPrimary
-                        }
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
                       >
-                        {existingReorderItem
-                          ? t("update_reorder")
-                          : t("add_to_reorder")}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAdjustmentProduct(item)
+                          }
+                          style={btnSecondary}
+                        >
+                          {t("adjust_stock")}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openThresholdModal(item)
+                          }
+                          style={btnSecondary}
+                        >
+                          {t("change_low_stock")}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => openReorderModal(item)}
+                          style={
+                            existingReorderItem
+                              ? btnSecondary
+                              : btnPrimary
+                          }
+                        >
+                          {existingReorderItem
+                            ? t("update_reorder")
+                            : t("add_to_reorder")}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1699,6 +1823,158 @@ function InventoryReport({
                 {product.days_since_sale ?? t("never")}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {adjustmentProduct && (
+        <div style={reorderModalBackdrop}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("adjust_stock")}
+            style={{
+              ...reorderModalPanel,
+              width: "min(560px, 100%)",
+            }}
+          >
+            <StockAdjustment
+              storeId={storeId}
+              initialProduct={{
+                ...adjustmentProduct,
+                tracks_stock: true,
+              }}
+              compact
+              onClose={() => setAdjustmentProduct(null)}
+              onCompleted={handleLowStockAdjustment}
+            />
+          </div>
+        </div>
+      )}
+
+      {thresholdProduct && (
+        <div
+          role="presentation"
+          onMouseDown={closeThresholdModal}
+          style={reorderModalBackdrop}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("change_low_stock")}
+            onMouseDown={(event) => event.stopPropagation()}
+            style={{
+              ...reorderModalPanel,
+              width: "min(460px, 100%)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  {t("change_low_stock")}
+                </h3>
+                <div
+                  style={{
+                    color: COLORS.textDim,
+                    marginTop: 4,
+                  }}
+                >
+                  {thresholdProduct.name}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeThresholdModal}
+                disabled={thresholdSaving}
+                style={reorderModalClose}
+              >
+                ×
+              </button>
+            </div>
+
+            <label style={reorderFieldStyle}>
+              <span>{t("low_stock_threshold")}</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                autoFocus
+                value={thresholdValue}
+                onChange={(event) =>
+                  setThresholdValue(event.target.value)
+                }
+                disabled={thresholdSaving}
+                style={{
+                  ...input,
+                  width: "100%",
+                  border: `2px solid ${COLORS.primary}`,
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                color: COLORS.textDim,
+                fontSize: 12,
+                marginTop: 8,
+              }}
+            >
+              {t("low_stock_threshold_help")}
+            </div>
+
+            {thresholdError && (
+              <div
+                style={{
+                  color: COLORS.danger,
+                  marginTop: 10,
+                }}
+              >
+                {thresholdError}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+                flexWrap: "wrap",
+                marginTop: 16,
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeThresholdModal}
+                disabled={thresholdSaving}
+                style={btnSecondary}
+              >
+                {t("cancel")}
+              </button>
+
+              <button
+                type="button"
+                onClick={saveLowStockThreshold}
+                disabled={thresholdSaving}
+                style={{
+                  ...btnPrimary,
+                  opacity: thresholdSaving ? 0.6 : 1,
+                }}
+              >
+                {thresholdSaving
+                  ? t("loading")
+                  : t("save")}
+              </button>
+            </div>
           </div>
         </div>
       )}

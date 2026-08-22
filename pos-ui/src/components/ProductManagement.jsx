@@ -1481,7 +1481,11 @@ const createAdjustmentClientEventId = () =>
 
 
 export function StockAdjustment({
-  storeId
+  storeId,
+  initialProduct = null,
+  compact = false,
+  onClose,
+  onCompleted
 }) {
   const { t } = useLang();
 
@@ -1492,7 +1496,16 @@ export function StockAdjustment({
     useState([]);
 
   const [selected, setSelected] =
-    useState(null);
+    useState(
+      initialProduct
+        ? {
+            ...initialProduct,
+            stock: Number(
+              initialProduct.stock || 0
+            )
+          }
+        : null
+    );
 
   const [countedTotal, setCountedTotal] =
     useState("");
@@ -1527,6 +1540,10 @@ export function StockAdjustment({
       );
 
   const loadAdjustmentProducts = async () => {
+    if (compact && initialProduct) {
+      return;
+    }
+
     if (!storeId) {
       setProducts([]);
       return;
@@ -1568,7 +1585,21 @@ export function StockAdjustment({
 
   useEffect(() => {
     loadAdjustmentProducts();
-  }, [storeId]);
+  }, [storeId, compact, initialProduct?.product_id]);
+
+  useEffect(() => {
+    if (!initialProduct) {
+      return;
+    }
+
+    setSelected({
+      ...initialProduct,
+      stock: Number(initialProduct.stock || 0)
+    });
+    setCountedTotal("");
+    setReason("physical_count");
+    setNote("");
+  }, [initialProduct?.product_id, initialProduct?.stock]);
 
   const resetSelection = () => {
     setSelected(null);
@@ -1770,6 +1801,18 @@ export function StockAdjustment({
         )
       );
 
+      try {
+        await onCompleted?.({
+          product_id: selected.product_id,
+          new_stock: numericCountedTotal
+        });
+      } catch (refreshError) {
+        console.warn(
+          "STOCK ADJUSTMENT REFRESH ERROR:",
+          refreshError
+        );
+      }
+
       resetSelection();
 
       alert(
@@ -1777,6 +1820,8 @@ export function StockAdjustment({
           ? t("stock_adjustment_completed")
           : t("stock_adjustment_saved_pending")
       );
+
+      onClose?.();
     } catch (error) {
       console.error(
         "STOCK ADJUSTMENT LOCAL SAVE ERROR:",
@@ -1801,6 +1846,7 @@ export function StockAdjustment({
         minHeight: 0
       }}
     >
+      {!compact && (
       <div
         style={{
           display: "flex",
@@ -1842,6 +1888,7 @@ export function StockAdjustment({
           }}
         />
       </div>
+      )}
 
       {selected && (
         <div
@@ -1943,7 +1990,11 @@ export function StockAdjustment({
           >
             <button
               type="button"
-              onClick={resetSelection}
+              onClick={
+                compact && onClose
+                  ? onClose
+                  : resetSelection
+              }
               disabled={submitting}
               style={btnSecondary}
             >
@@ -1976,6 +2027,7 @@ export function StockAdjustment({
         </div>
       )}
 
+      {!compact && (
       <div
         style={{
           flex: 1,
@@ -2129,6 +2181,7 @@ export function StockAdjustment({
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
