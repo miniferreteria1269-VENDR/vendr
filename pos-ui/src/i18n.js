@@ -147,6 +147,8 @@ organization_report_load_failed:
     active_products: "Active products",
     archived_products: "Archived products",
     low_stock_products_count: "Products on low-stock list",
+    stock_zero: "Stock 0",
+    no_zero_stock_products: "No products have zero stock.",
     yes: "Yes",
     no: "No",
 
@@ -914,6 +916,8 @@ organization_report_load_failed:
     active_products: "Productos activos",
     archived_products: "Productos archivados",
     low_stock_products_count: "Productos en existencias bajas",
+    stock_zero: "Existencia 0",
+    no_zero_stock_products: "No hay productos con existencia cero.",
     yes: "Sí",
     no: "No",
 
