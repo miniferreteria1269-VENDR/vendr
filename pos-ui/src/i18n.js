@@ -149,6 +149,19 @@ organization_report_load_failed:
     low_stock_products_count: "Products on low-stock list",
     stock_zero: "Stock 0",
     no_zero_stock_products: "No products have zero stock.",
+    adjust_stock: "Adjust Stock",
+    change_low_stock: "Change Low Stock",
+    low_stock_threshold: "Low-stock threshold",
+    low_stock_threshold_help:
+      "VENDR will flag this product when stock reaches this number.",
+    invalid_low_stock_threshold:
+      "Enter a whole number of zero or greater.",
+    same_low_stock_threshold:
+      "The low-stock threshold is unchanged.",
+    low_stock_threshold_updated:
+      "Low-stock threshold updated.",
+    low_stock_threshold_update_failed:
+      "Unable to update the low-stock threshold.",
     yes: "Yes",
     no: "No",
 
@@ -918,6 +931,19 @@ organization_report_load_failed:
     low_stock_products_count: "Productos en existencias bajas",
     stock_zero: "Existencia 0",
     no_zero_stock_products: "No hay productos con existencia cero.",
+    adjust_stock: "Ajustar inventario",
+    change_low_stock: "Cambiar mínimo",
+    low_stock_threshold: "Mínimo de existencias",
+    low_stock_threshold_help:
+      "VENDR marcará este producto cuando la existencia llegue a este número.",
+    invalid_low_stock_threshold:
+      "Ingrese un número entero igual o mayor que cero.",
+    same_low_stock_threshold:
+      "El mínimo de existencias no ha cambiado.",
+    low_stock_threshold_updated:
+      "Mínimo de existencias actualizado.",
+    low_stock_threshold_update_failed:
+      "No se pudo actualizar el mínimo de existencias.",
     yes: "Sí",
     no: "No",
 
