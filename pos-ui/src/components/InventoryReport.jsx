@@ -28,6 +28,7 @@ function InventoryReport({
 
   const [lowStockItems, setLowStockItems] = useState([]);
   const [lowStockView, setLowStockView] = useState("lowstock");
+  const [showZeroStockOnly, setShowZeroStockOnly] = useState(false);
   const [reorderItems, setReorderItems] = useState([]);
   const [reorderFilter, setReorderFilter] = useState("master");
   const [reorderSupplierId, setReorderSupplierId] = useState("");
@@ -334,6 +335,12 @@ function InventoryReport({
       item.stock !== undefined &&
       item.threshold !== null
   );
+
+  const visibleLowStock = showZeroStockOnly
+    ? filteredLowStock.filter(
+        (item) => Number(item.stock) === 0
+      )
+    : filteredLowStock;
 
   const normalizedReorderProductSearch =
     reorderProductSearch.trim().toLowerCase();
@@ -922,30 +929,55 @@ function InventoryReport({
 
               <div
                 style={{
-                  ...card,
-                  alignSelf: "flex-start",
-                  padding: "10px 14px",
-                  minWidth: 180,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
                   marginBottom: 12,
                 }}
               >
                 <div
                   style={{
-                    color: COLORS.textDim,
-                    fontSize: 12,
+                    ...card,
+                    padding: "10px 14px",
+                    minWidth: 180,
                   }}
                 >
-                  {t("low_stock_products_count")}
+                  <div
+                    style={{
+                      color: COLORS.textDim,
+                      fontSize: 12,
+                    }}
+                  >
+                    {t("low_stock_products_count")}
+                  </div>
+                  <div
+                    style={{
+                      color: COLORS.primary,
+                      fontSize: 22,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {visibleLowStock.length}
+                  </div>
                 </div>
-                <div
+
+                <button
+                  type="button"
+                  aria-pressed={showZeroStockOnly}
+                  onClick={() =>
+                    setShowZeroStockOnly(
+                      (previous) => !previous
+                    )
+                  }
                   style={{
-                    color: COLORS.primary,
-                    fontSize: 22,
-                    fontWeight: "bold",
+                    ...(showZeroStockOnly
+                      ? btnPrimary
+                      : btnSecondary),
                   }}
                 >
-                  {filteredLowStock.length}
-                </div>
+                  {t("stock_zero")}
+                </button>
               </div>
 
               {priorityLowStockCount > 0 && (
@@ -983,13 +1015,15 @@ function InventoryReport({
                   minHeight: 0,
                 }}
               >
-                {filteredLowStock.length === 0 && (
+                {visibleLowStock.length === 0 && (
                   <div style={{ color: COLORS.textDim }}>
-                    {t("no_issues")}
+                    {showZeroStockOnly
+                      ? t("no_zero_stock_products")
+                      : t("no_issues")}
                   </div>
                 )}
 
-                {filteredLowStock.map((item) => {
+                {visibleLowStock.map((item) => {
                   const existingReorderItem = reorderItems.find(
                     (reorderItem) =>
                       reorderItem.product_id === item.product_id
