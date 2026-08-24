@@ -31,6 +31,7 @@ function InventoryReport({
   const [showZeroStockOnly, setShowZeroStockOnly] = useState(false);
   const [reorderItems, setReorderItems] = useState([]);
   const [reorderFilter, setReorderFilter] = useState("master");
+  const [reorderPriorityFilter, setReorderPriorityFilter] = useState("all");
   const [reorderSupplierId, setReorderSupplierId] = useState("");
   const [activeReorderProduct, setActiveReorderProduct] = useState(null);
   const [adjustmentProduct, setAdjustmentProduct] = useState(null);
@@ -43,6 +44,7 @@ function InventoryReport({
   const [reorderForm, setReorderForm] = useState({
     supplier_id: "",
     quantity: 1,
+    purchase_priority: false,
   });
   const [reorderLoading, setReorderLoading] = useState(false);
   const [reorderSaving, setReorderSaving] = useState(false);
@@ -417,7 +419,7 @@ function InventoryReport({
     )
   );
 
-  const visibleReorderItems = reorderItems.filter((item) => {
+  const supplierFilteredReorderItems = reorderItems.filter((item) => {
     if (reorderFilter === "unassigned") {
       return item.supplier_id == null;
     }
@@ -432,11 +434,40 @@ function InventoryReport({
     return true;
   });
 
+  const visibleReorderItems = supplierFilteredReorderItems
+    .filter((item) => {
+      if (reorderPriorityFilter === "priority") {
+        return item.purchase_priority === true;
+      }
+
+      if (reorderPriorityFilter === "regular") {
+        return item.purchase_priority !== true;
+      }
+
+      return true;
+    })
+    .sort((a, b) =>
+      Number(b.purchase_priority === true) -
+      Number(a.purchase_priority === true)
+    );
+
   const visibleProjectedTotal = visibleReorderItems.reduce(
     (sum, item) =>
       sum + Number(item.projected_cost || 0),
     0
   );
+
+  const visiblePriorityProjectedTotal = visibleReorderItems.reduce(
+    (sum, item) =>
+      item.purchase_priority
+        ? sum + Number(item.projected_cost || 0)
+        : sum,
+    0
+  );
+
+  const visiblePriorityCount = visibleReorderItems.filter(
+    (item) => item.purchase_priority === true
+  ).length;
 
   const visibleUnknownCostCount = visibleReorderItems.filter(
     (item) => item.estimated_unit_cost == null
@@ -488,6 +519,8 @@ function InventoryReport({
             Number(product.stock || 0),
           1
         ),
+      purchase_priority:
+        existingItem?.purchase_priority === true,
     });
 
     try {
@@ -648,6 +681,8 @@ function InventoryReport({
             reorderForm.supplier_id === ""
               ? null
               : Number(reorderForm.supplier_id),
+          purchase_priority:
+            reorderForm.purchase_priority === true,
         }
       );
 
@@ -1312,6 +1347,37 @@ function InventoryReport({
                   </select>
                 )}
 
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    paddingLeft: 8,
+                    borderLeft: `1px solid ${COLORS.border}`,
+                  }}
+                >
+                  {[
+                    ["all", t("all")],
+                    ["priority", t("purchase_priority")],
+                    ["regular", t("non_priority")],
+                  ].map(([filter, label]) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() =>
+                        setReorderPriorityFilter(filter)
+                      }
+                      style={
+                        reorderPriorityFilter === filter
+                          ? btnPrimary
+                          : btnSecondary
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
                 <button
                   type="button"
                   onClick={openReorderProductPicker}
@@ -1373,6 +1439,23 @@ function InventoryReport({
                         <tr key={item.product_id}>
                           <td style={reorderBodyCell}>
                             <strong>{item.product_name}</strong>
+
+                            {item.purchase_priority && (
+                              <div
+                                style={{
+                                  display: "inline-block",
+                                  marginLeft: 7,
+                                  padding: "2px 7px",
+                                  border: "1px solid #ff8c42",
+                                  borderRadius: 999,
+                                  color: "#ffad73",
+                                  fontSize: 11,
+                                  fontWeight: "bold",
+                                }}
+                              >
+                                {t("must_purchase")}
+                              </div>
+                            )}
                           </td>
 
                           <td style={reorderBodyCell}>
@@ -1470,6 +1553,22 @@ function InventoryReport({
                     {formatMoney(visibleProjectedTotal)}
                   </div>
 
+                  {visiblePriorityCount > 0 && (
+                    <div
+                      style={{
+                        color: "#ffad73",
+                        marginTop: 4,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {t("priority_subtotal")}: ${
+                        formatMoney(
+                          visiblePriorityProjectedTotal
+                        )
+                      } ({visiblePriorityCount})
+                    </div>
+                  )}
+
                   {visibleUnknownCostCount > 0 && (
                     <div
                       style={{
@@ -1486,7 +1585,8 @@ function InventoryReport({
                   )}
                 </div>
 
-                {visibleReorderItems.length > 0 && (
+                {visibleReorderItems.length > 0 &&
+                  reorderPriorityFilter === "all" && (
                   <button
                     type="button"
                     onClick={clearCurrentReorderView}
@@ -2266,6 +2366,51 @@ function InventoryReport({
                     />
                   </label>
                 </div>
+
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 9,
+                    marginTop: 14,
+                    padding: 10,
+                    border: reorderForm.purchase_priority
+                      ? "1px solid #ff8c42"
+                      : `1px solid ${COLORS.border}`,
+                    borderRadius: 8,
+                    background: COLORS.panelAlt,
+                    cursor: reorderSaving
+                      ? "default"
+                      : "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={reorderForm.purchase_priority}
+                    onChange={(event) =>
+                      setReorderForm((previous) => ({
+                        ...previous,
+                        purchase_priority:
+                          event.target.checked,
+                      }))
+                    }
+                    disabled={reorderSaving}
+                  />
+
+                  <span>
+                    <strong>{t("mark_purchase_priority")}</strong>
+                    <span
+                      style={{
+                        display: "block",
+                        color: COLORS.textDim,
+                        fontSize: 12,
+                        marginTop: 2,
+                      }}
+                    >
+                      {t("purchase_priority_help")}
+                    </span>
+                  </span>
+                </label>
 
                 <div
                   style={{

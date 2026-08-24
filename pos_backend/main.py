@@ -475,6 +475,30 @@ def init_db():
     """)
 
     # ---------------------------------------------
+    # REORDER ITEMS
+    # ---------------------------------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reorder_items (
+        store_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        supplier_id INTEGER,
+        quantity INTEGER NOT NULL,
+        estimated_unit_cost DOUBLE PRECISION,
+        cost_source TEXT,
+        purchase_priority BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (store_id, product_id)
+    )
+    """)
+
+    cursor.execute("""
+    ALTER TABLE reorder_items
+    ADD COLUMN IF NOT EXISTS
+        purchase_priority BOOLEAN NOT NULL DEFAULT FALSE
+    """)
+
+    # ---------------------------------------------
     # EVENTS
     # ---------------------------------------------
     cursor.execute("""
@@ -3390,6 +3414,7 @@ class ProductSupplierAssignment(BaseModel):
 class ReorderItemUpsert(BaseModel):
     quantity: int
     supplier_id: Optional[int] = None
+    purchase_priority: bool = False
 
 class ProductSupplierPreferenceUpdate(BaseModel):
     is_preferred: bool
@@ -16638,9 +16663,11 @@ def add_or_update_reorder_item(
                 supplier_id,
                 quantity,
                 estimated_unit_cost,
-                cost_source
+                cost_source,
+                purchase_priority
             )
             VALUES (
+                %s,
                 %s,
                 %s,
                 %s,
@@ -16663,6 +16690,9 @@ def add_or_update_reorder_item(
                 cost_source =
                     EXCLUDED.cost_source,
 
+                purchase_priority =
+                    EXCLUDED.purchase_priority,
+
                 updated_at =
                     NOW()
             """,
@@ -16672,7 +16702,8 @@ def add_or_update_reorder_item(
                 item.supplier_id,
                 item.quantity,
                 estimated_unit_cost,
-                cost_source
+                cost_source,
+                item.purchase_priority
             )
         )
 
@@ -16716,7 +16747,10 @@ def add_or_update_reorder_item(
                     cost_source,
 
                 "projected_cost":
-                    projected_cost
+                    projected_cost,
+
+                "purchase_priority":
+                    item.purchase_priority
             }
         }
 
@@ -16781,6 +16815,7 @@ def get_reorder_items(
                 ri.quantity,
                 ri.estimated_unit_cost,
                 ri.cost_source,
+                ri.purchase_priority,
                 ri.created_at,
                 ri.updated_at
 
@@ -16802,6 +16837,8 @@ def get_reorder_items(
                 ri.store_id = %s
 
             ORDER BY
+                ri.purchase_priority DESC,
+
                 CASE
                     WHEN s.supplier_name IS NULL
                     THEN 1
@@ -16856,11 +16893,14 @@ def get_reorder_items(
 
                 "cost_source": row[7],
 
+                "purchase_priority":
+                    bool(row[8]),
+
                 "projected_cost":
                     projected_cost,
 
-                "created_at": row[8],
-                "updated_at": row[9]
+                "created_at": row[9],
+                "updated_at": row[10]
             })
 
         return {

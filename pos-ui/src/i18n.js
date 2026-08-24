@@ -162,6 +162,13 @@ organization_report_load_failed:
       "Low-stock threshold updated.",
     low_stock_threshold_update_failed:
       "Unable to update the low-stock threshold.",
+    purchase_priority: "Priority",
+    non_priority: "Non-priority",
+    must_purchase: "MUST PURCHASE",
+    mark_purchase_priority: "Mark as purchase priority",
+    purchase_priority_help:
+      "Do not finalize the reorder without reviewing this item.",
+    priority_subtotal: "Priority subtotal",
     yes: "Yes",
     no: "No",
 
@@ -944,6 +951,13 @@ organization_report_load_failed:
       "Mínimo de existencias actualizado.",
     low_stock_threshold_update_failed:
       "No se pudo actualizar el mínimo de existencias.",
+    purchase_priority: "Prioridad",
+    non_priority: "No prioritarios",
+    must_purchase: "COMPRA PRIORITARIA",
+    mark_purchase_priority: "Marcar como prioridad de compra",
+    purchase_priority_help:
+      "No finalice la reposición sin revisar este producto.",
+    priority_subtotal: "Subtotal prioritario",
     yes: "Sí",
     no: "No",
 
