@@ -182,6 +182,69 @@ textarea {
   .low-stock-row-actions > button {
     padding: 7px 9px !important;
   }
+
+  .product-management {
+    padding: 10px !important;
+  }
+
+  .product-management-title {
+    margin: 2px 0 8px !important;
+    font-size: 22px;
+  }
+
+  .product-count-summary {
+    gap: 7px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .product-count-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0 !important;
+    padding: 7px 11px !important;
+  }
+
+  .product-count-card > div:last-child {
+    font-size: 19px !important;
+  }
+
+  .product-management-actions {
+    flex-wrap: nowrap !important;
+    gap: 5px !important;
+    margin-bottom: 7px !important;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .product-management-actions > button {
+    flex: 0 0 auto;
+    padding: 7px 10px !important;
+  }
+
+  .product-selection-help {
+    margin-bottom: 5px !important;
+    font-size: 13px;
+  }
+
+  .product-master-controls {
+    flex-wrap: nowrap !important;
+    margin-bottom: 7px !important;
+  }
+
+  .product-master-controls > input {
+    max-width: none !important;
+  }
+
+  .product-master-controls > button {
+    flex: 0 0 auto;
+    padding: 7px 10px !important;
+  }
+
+  .product-master-table {
+    max-height: calc(100dvh - 230px) !important;
+  }
 }
 
 /* Links (optional, safe) */

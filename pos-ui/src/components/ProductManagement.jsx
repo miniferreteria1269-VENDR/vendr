@@ -129,10 +129,11 @@ function ProductManagement({ storeId, onProductsChanged }) {
   };
 
   return (
-    <div style={{ padding: 16, minHeight: 0 }}>
-      <h2 style={{ marginBottom: 12 }}>{t("product_management")}</h2>
+    <div className="product-management" style={{ padding: 16, minHeight: 0 }}>
+      <h2 className="product-management-title" style={{ marginBottom: 12 }}>{t("product_management")}</h2>
 
       <div
+        className="product-count-summary"
         style={{
           display: "flex",
           gap: 10,
@@ -141,6 +142,7 @@ function ProductManagement({ storeId, onProductsChanged }) {
         }}
       >
         <div
+          className="product-count-card"
           style={{
             ...card,
             padding: "10px 14px",
@@ -156,6 +158,7 @@ function ProductManagement({ storeId, onProductsChanged }) {
         </div>
 
         <div
+          className="product-count-card"
           style={{
             ...card,
             padding: "10px 14px",
@@ -171,7 +174,7 @@ function ProductManagement({ storeId, onProductsChanged }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+      <div className="product-management-actions" style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         {[
           ["create", "create"],
           ["price", "price"],
@@ -193,11 +196,12 @@ function ProductManagement({ storeId, onProductsChanged }) {
         ))}
       </div>
 
-      <div style={{ color: COLORS.textDim, marginBottom: 10 }}>
+      <div className="product-selection-help" style={{ color: COLORS.textDim, marginBottom: 10 }}>
         {requiresProduct ? t("select_product") : t("select_tool")}
       </div>
 
       <div
+        className="product-master-controls"
         style={{
           display: "flex",
           alignItems: "center",
@@ -642,6 +646,7 @@ function ProductMasterTable({
 
   return (
     <div
+      className="product-master-table"
       style={{
         border:
           `1px solid ${COLORS.border}`,

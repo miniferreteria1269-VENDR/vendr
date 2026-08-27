@@ -141,6 +141,7 @@ organization_report_load_failed:
 
         // PRODUCT MASTER / POS LOCATION
     location: "Location",
+    low_stock_short: "Low Stock",
     location_code_placeholder: "Example: E3R2I",
     active: "Active",
     archived: "Archived",
@@ -930,6 +931,7 @@ organization_report_load_failed:
 
         // MAESTRO DE PRODUCTOS / UBICACIÓN EN POS
     location: "Ubicación",
+    low_stock_short: "Mínimo",
     location_code_placeholder: "Ejemplo: E3R2I",
     active: "Activo",
     archived: "Archivado",
