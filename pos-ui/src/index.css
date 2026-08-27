@@ -105,6 +105,85 @@ textarea {
   }
 }
 
+/*
+ * Landscape tablets often expose a 1280px desktop-like viewport.  Compact the
+ * navigation and Low Stock workspace when that viewport also has touch input,
+ * while leaving mouse-driven desktop layouts unchanged.
+ */
+@media (max-width: 1366px) and (pointer: coarse) {
+  .app-navigation-buttons {
+    gap: 5px !important;
+    padding: 5px 8px !important;
+  }
+
+  .app-navigation-button {
+    padding: 6px 9px !important;
+    border-radius: 6px !important;
+  }
+
+  .inventory-report {
+    padding: 10px !important;
+  }
+
+  .inventory-view-tabs {
+    gap: 6px !important;
+    margin-bottom: 10px !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .inventory-view-tabs > button,
+  .low-stock-view-tabs > button {
+    flex: 0 0 auto;
+    padding: 7px 10px !important;
+  }
+
+  .low-stock-card {
+    padding: 12px !important;
+  }
+
+  .low-stock-view-tabs {
+    margin-bottom: 8px !important;
+  }
+
+  .low-stock-toolbar {
+    margin-bottom: 8px !important;
+  }
+
+  .low-stock-count-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0 !important;
+    padding: 7px 11px !important;
+  }
+
+  .low-stock-count-card > div:last-child {
+    font-size: 19px !important;
+  }
+
+  .priority-low-stock-explanation {
+    padding: 7px 9px !important;
+    margin-bottom: 7px !important;
+    line-height: 1.3;
+  }
+
+  .low-stock-row {
+    padding: 8px 4px !important;
+    gap: 8px !important;
+  }
+
+  .low-stock-row-actions {
+    gap: 6px !important;
+  }
+
+  .low-stock-row-actions > button {
+    padding: 7px 9px !important;
+  }
+}
+
 /* Links (optional, safe) */
 a {
   font-weight: 500;

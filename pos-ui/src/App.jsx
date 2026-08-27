@@ -1780,6 +1780,7 @@ const finalizeIntake = async () => {
   if (!storeId) {
     return (
       <div
+        className="app-navigation-scroll"
         style={{
           color: COLORS.text
         }}
@@ -1838,6 +1839,7 @@ const finalizeIntake = async () => {
         }}
       >
         <div
+          className="app-navigation-buttons"
           style={{
             minWidth: 0,
             overflow: "hidden"
@@ -1941,6 +1943,7 @@ const finalizeIntake = async () => {
             "cash"
           ].map(navView => (
             <button
+              className="app-navigation-button"
               key={navView}
               type="button"
               onClick={() =>
