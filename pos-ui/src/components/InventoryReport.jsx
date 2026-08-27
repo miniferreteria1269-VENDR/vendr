@@ -774,6 +774,7 @@ function InventoryReport({
 
   return (
     <div
+      className="inventory-report"
       style={{
         padding: 16,
         display: "flex",
@@ -785,6 +786,7 @@ function InventoryReport({
       
 
       <div
+        className="inventory-view-tabs"
         style={{
           display: "flex",
           gap: 8,
@@ -834,6 +836,7 @@ function InventoryReport({
 
       {inventoryView === "stock" && (
         <div
+          className="low-stock-card"
           style={{
             display: "flex",
             alignItems: "center",
@@ -892,6 +895,7 @@ function InventoryReport({
           }}
         >
           <div
+            className="low-stock-view-tabs"
             style={{
               display: "flex",
               gap: 30,
@@ -1054,11 +1058,8 @@ function InventoryReport({
 
           {lowStockView === "lowstock" && (
             <>
-              <h3 style={{ marginTop: 0 }}>
-                {t("lowstock")}
-              </h3>
-
               <div
+                className="low-stock-toolbar"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1068,6 +1069,7 @@ function InventoryReport({
                 }}
               >
                 <div
+                  className="low-stock-count-card"
                   style={{
                     ...card,
                     padding: "10px 14px",
@@ -1113,6 +1115,7 @@ function InventoryReport({
 
               {priorityLowStockCount > 0 && (
                 <div
+                  className="priority-low-stock-explanation"
                   style={{
                     background: COLORS.panelAlt,
                     border: "1px solid #ff8c42",
@@ -1162,6 +1165,7 @@ function InventoryReport({
 
                   return (
                     <div
+                      className="low-stock-row"
                       key={item.product_id}
                       style={{
                         padding: 10,
@@ -1238,6 +1242,7 @@ function InventoryReport({
                       </div>
 
                       <div
+                        className="low-stock-row-actions"
                         style={{
                           display: "flex",
                           gap: 8,
