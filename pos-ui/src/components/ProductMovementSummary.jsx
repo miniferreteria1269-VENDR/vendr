@@ -12,8 +12,11 @@ import {
   COLORS,
   card,
   input,
-  btnPrimary
+  btnPrimary,
+  btnSecondary
 } from "../uiStyles";
+
+import ProductMovementOptions from "./ProductMovementOptions";
 
 const getLocalDateValue = () => {
   const now = new Date();
@@ -61,10 +64,36 @@ function ProductMovementSummary({
     setErrorMessage
   ] = useState("");
 
+  const [
+    optionsProduct,
+    setOptionsProduct
+  ] = useState(null);
+
   const invalidDateRange =
     !startDate ||
     !endDate ||
     startDate > endDate;
+
+  const rangeIncludesToday =
+    Boolean(startDate && endDate) &&
+    startDate <= today &&
+    today <= endDate;
+
+  const updateRowThreshold = (productId, threshold) => {
+    setRows(previous =>
+      previous.map(row =>
+        row.product_id === productId
+          ? { ...row, low_stock_threshold: threshold }
+          : row
+      )
+    );
+
+    setOptionsProduct(previous =>
+      previous?.product_id === productId
+        ? { ...previous, low_stock_threshold: threshold }
+        : previous
+    );
+  };
 
   const loadReport = async () => {
     if (
@@ -338,7 +367,29 @@ function ProductMovementSummary({
                 key={row.product_id}
               >
                 <td style={productCell}>
-                  {row.product}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8
+                    }}
+                  >
+                    <span>{row.product}</span>
+
+                    <button
+                      type="button"
+                      onClick={() => setOptionsProduct(row)}
+                      style={{
+                        ...btnSecondary,
+                        flex: "0 0 auto",
+                        padding: "4px 8px",
+                        fontSize: 12
+                      }}
+                    >
+                      {t("options") || "Options"}
+                    </button>
+                  </div>
                 </td>
 
                 <td style={cell}>
@@ -377,7 +428,30 @@ function ProductMovementSummary({
                   }
                 </td>
 
-                <td style={cell}>
+                <td
+                  title={
+                    rangeIncludesToday &&
+                    Number(row.final_stock) <=
+                      Number(row.low_stock_threshold)
+                      ? `${t("final")}: ${row.final_stock} · ${t("low_stock_threshold")}: ${row.low_stock_threshold}`
+                      : undefined
+                  }
+                  style={{
+                    ...cell,
+                    color:
+                      rangeIncludesToday &&
+                      Number(row.final_stock) <=
+                        Number(row.low_stock_threshold)
+                        ? "#f5c542"
+                        : undefined,
+                    fontWeight:
+                      rangeIncludesToday &&
+                      Number(row.final_stock) <=
+                        Number(row.low_stock_threshold)
+                        ? 700
+                        : undefined
+                  }}
+                >
                   {row.final_stock}
                 </td>
               </tr>
@@ -403,6 +477,15 @@ function ProductMovementSummary({
             </p>
           )}
       </div>
+
+      {optionsProduct && (
+        <ProductMovementOptions
+          product={optionsProduct}
+          storeId={storeId}
+          onClose={() => setOptionsProduct(null)}
+          onThresholdChanged={updateRowThreshold}
+        />
+      )}
     </div>
   );
 }

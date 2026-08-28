@@ -438,6 +438,7 @@ organization_report_load_failed:
 
     review_diagnostic_issue: "Review Diagnostic Issue",
     current_stock: "Current stock",
+    options: "Options",
     correct_physical_stock: "Correct physical stock",
     apply_price_change: "Apply Price Change",
     apply_stock_adjustment: "Apply Stock Adjustment",
@@ -1250,6 +1251,7 @@ organization_report_load_failed:
     review_diagnostic_issue:
       "Revisar problema de diagnóstico",
     current_stock: "Stock actual",
+    options: "Opciones",
     correct_physical_stock: "Existencia física correcta",
     apply_price_change: "Aplicar cambio de precio",
     apply_stock_adjustment: "Aplicar ajuste de inventario",
