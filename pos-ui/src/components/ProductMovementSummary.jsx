@@ -108,25 +108,52 @@ function ProductMovementSummary({
     setErrorMessage("");
 
     try {
-      const response =
-        await apiClient.get(
-          "/product-movement-summary",
-          {
-            params: {
-              store_id:
-                storeId,
+      const [response, productsResponse] =
+        await Promise.all([
+          apiClient.get(
+            "/product-movement-summary",
+            {
+              params: {
+                store_id:
+                  storeId,
 
-              start_date:
-                startDate,
+                start_date:
+                  startDate,
 
-              end_date:
-                endDate
+                end_date:
+                  endDate
+              }
             }
-          }
-        );
+          ),
+          apiClient.get("/products", {
+            params: {
+              store_id: storeId,
+              include_archived: true
+            }
+          })
+        ]);
+
+      const currentProducts = new Map(
+        (productsResponse.data.products || []).map(product => [
+          product.product_id,
+          product
+        ])
+      );
 
       setRows(
-        response.data.summary || []
+        (response.data.summary || []).map(row => {
+          const currentProduct = currentProducts.get(row.product_id);
+
+          return {
+            ...row,
+            current_stock: Number(currentProduct?.stock || 0),
+            low_stock_threshold: Number(
+              currentProduct?.low_stock_threshold || 0
+            ),
+            has_current_product: Boolean(currentProduct),
+            is_active: currentProduct?.is_active !== false
+          };
+        })
       );
     } catch (error) {
       console.error(
@@ -431,6 +458,7 @@ function ProductMovementSummary({
                 <td
                   title={
                     rangeIncludesToday &&
+                    row.has_current_product &&
                     Number(row.final_stock) <=
                       Number(row.low_stock_threshold)
                       ? `${t("final")}: ${row.final_stock} · ${t("low_stock_threshold")}: ${row.low_stock_threshold}`
@@ -440,12 +468,14 @@ function ProductMovementSummary({
                     ...cell,
                     color:
                       rangeIncludesToday &&
+                      row.has_current_product &&
                       Number(row.final_stock) <=
                         Number(row.low_stock_threshold)
                         ? "#f5c542"
                         : undefined,
                     fontWeight:
                       rangeIncludesToday &&
+                      row.has_current_product &&
                       Number(row.final_stock) <=
                         Number(row.low_stock_threshold)
                         ? 700

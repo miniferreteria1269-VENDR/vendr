@@ -226,7 +226,17 @@ function ProductMovementOptions({
 
         {view === "menu" && (
           <div style={optionGrid}>
-            <button type="button" onClick={openReorder} style={optionButton}>
+            <button
+              type="button"
+              onClick={openReorder}
+              disabled={!product.is_active}
+              title={!product.is_active ? t("archived") : undefined}
+              style={{
+                ...optionButton,
+                opacity: product.is_active ? 1 : 0.55,
+                cursor: product.is_active ? "pointer" : "not-allowed"
+              }}
+            >
               <strong>{t("add_to_reorder")}</strong>
             </button>
             <button type="button" onClick={() => setView("performance")} style={optionButton}>
