@@ -302,7 +302,7 @@ const getLocalDateValue = date => {
   return localDate.toISOString().slice(0, 10);
 };
 
-function ProductPerformance({ product }) {
+export function ProductPerformance({ product }) {
   const { t } = useLang();
 
   const text = (key, fallback) => {

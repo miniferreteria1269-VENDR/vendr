@@ -12,8 +12,11 @@ import {
   COLORS,
   card,
   input,
-  btnPrimary
+  btnPrimary,
+  btnSecondary
 } from "../uiStyles";
+
+import ProductMovementOptions from "./ProductMovementOptions";
 
 const getLocalDateValue = () => {
   const now = new Date();
@@ -61,10 +64,36 @@ function ProductMovementSummary({
     setErrorMessage
   ] = useState("");
 
+  const [
+    optionsProduct,
+    setOptionsProduct
+  ] = useState(null);
+
   const invalidDateRange =
     !startDate ||
     !endDate ||
     startDate > endDate;
+
+  const rangeIncludesToday =
+    Boolean(startDate && endDate) &&
+    startDate <= today &&
+    today <= endDate;
+
+  const updateRowThreshold = (productId, threshold) => {
+    setRows(previous =>
+      previous.map(row =>
+        row.product_id === productId
+          ? { ...row, low_stock_threshold: threshold }
+          : row
+      )
+    );
+
+    setOptionsProduct(previous =>
+      previous?.product_id === productId
+        ? { ...previous, low_stock_threshold: threshold }
+        : previous
+    );
+  };
 
   const loadReport = async () => {
     if (
@@ -79,25 +108,52 @@ function ProductMovementSummary({
     setErrorMessage("");
 
     try {
-      const response =
-        await apiClient.get(
-          "/product-movement-summary",
-          {
-            params: {
-              store_id:
-                storeId,
+      const [response, productsResponse] =
+        await Promise.all([
+          apiClient.get(
+            "/product-movement-summary",
+            {
+              params: {
+                store_id:
+                  storeId,
 
-              start_date:
-                startDate,
+                start_date:
+                  startDate,
 
-              end_date:
-                endDate
+                end_date:
+                  endDate
+              }
             }
-          }
-        );
+          ),
+          apiClient.get("/products", {
+            params: {
+              store_id: storeId,
+              include_archived: true
+            }
+          })
+        ]);
+
+      const currentProducts = new Map(
+        (productsResponse.data.products || []).map(product => [
+          product.product_id,
+          product
+        ])
+      );
 
       setRows(
-        response.data.summary || []
+        (response.data.summary || []).map(row => {
+          const currentProduct = currentProducts.get(row.product_id);
+
+          return {
+            ...row,
+            current_stock: Number(currentProduct?.stock || 0),
+            low_stock_threshold: Number(
+              currentProduct?.low_stock_threshold || 0
+            ),
+            has_current_product: Boolean(currentProduct),
+            is_active: currentProduct?.is_active !== false
+          };
+        })
       );
     } catch (error) {
       console.error(
@@ -338,7 +394,29 @@ function ProductMovementSummary({
                 key={row.product_id}
               >
                 <td style={productCell}>
-                  {row.product}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8
+                    }}
+                  >
+                    <span>{row.product}</span>
+
+                    <button
+                      type="button"
+                      onClick={() => setOptionsProduct(row)}
+                      style={{
+                        ...btnSecondary,
+                        flex: "0 0 auto",
+                        padding: "4px 8px",
+                        fontSize: 12
+                      }}
+                    >
+                      {t("options") || "Options"}
+                    </button>
+                  </div>
                 </td>
 
                 <td style={cell}>
@@ -377,7 +455,33 @@ function ProductMovementSummary({
                   }
                 </td>
 
-                <td style={cell}>
+                <td
+                  title={
+                    rangeIncludesToday &&
+                    row.has_current_product &&
+                    Number(row.final_stock) <=
+                      Number(row.low_stock_threshold)
+                      ? `${t("final")}: ${row.final_stock} · ${t("low_stock_threshold")}: ${row.low_stock_threshold}`
+                      : undefined
+                  }
+                  style={{
+                    ...cell,
+                    color:
+                      rangeIncludesToday &&
+                      row.has_current_product &&
+                      Number(row.final_stock) <=
+                        Number(row.low_stock_threshold)
+                        ? "#f5c542"
+                        : undefined,
+                    fontWeight:
+                      rangeIncludesToday &&
+                      row.has_current_product &&
+                      Number(row.final_stock) <=
+                        Number(row.low_stock_threshold)
+                        ? 700
+                        : undefined
+                  }}
+                >
                   {row.final_stock}
                 </td>
               </tr>
@@ -403,6 +507,15 @@ function ProductMovementSummary({
             </p>
           )}
       </div>
+
+      {optionsProduct && (
+        <ProductMovementOptions
+          product={optionsProduct}
+          storeId={storeId}
+          onClose={() => setOptionsProduct(null)}
+          onThresholdChanged={updateRowThreshold}
+        />
+      )}
     </div>
   );
 }
