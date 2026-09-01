@@ -62,6 +62,11 @@ textarea {
     touch-action: manipulation;
   }
 
+  .ai-weekly-brief-scroll {
+    height: calc(100dvh - 260px) !important;
+    max-height: calc(100dvh - 260px) !important;
+  }
+
 }
 
 /*

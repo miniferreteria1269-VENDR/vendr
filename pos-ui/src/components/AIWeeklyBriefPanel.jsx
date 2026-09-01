@@ -208,13 +208,17 @@ function AIWeeklyBriefPanel({
 
   return (
     <div
+      className="ai-weekly-brief-scroll"
       style={{
         flex: 1,
         minHeight: 0,
-        overflowY: "auto",
+        height: "calc(100dvh - 210px)",
+        maxHeight: "calc(100dvh - 210px)",
+        overflowY: "scroll",
         overscrollBehavior: "contain",
         paddingRight: 4,
-        scrollbarGutter: "stable"
+        scrollbarGutter: "stable",
+        WebkitOverflowScrolling: "touch"
       }}
     >
       {errorMessage && (
