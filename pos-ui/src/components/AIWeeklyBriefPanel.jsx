@@ -207,7 +207,16 @@ function AIWeeklyBriefPanel({
   const report = selectedReport?.report;
 
   return (
-    <div>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        overflowY: "auto",
+        overscrollBehavior: "contain",
+        paddingRight: 4,
+        scrollbarGutter: "stable"
+      }}
+    >
       {errorMessage && (
         <div style={errorStyle}>
           {errorMessage}
@@ -250,7 +259,14 @@ function AIWeeklyBriefPanel({
               alignItems: "flex-end",
               justifyContent: "space-between",
               flexWrap: "wrap",
-              marginBottom: 12
+              position: "sticky",
+              top: 0,
+              zIndex: 5,
+              marginBottom: 12,
+              padding: "4px 0 10px",
+              background: COLORS.bg,
+              borderBottom:
+                `1px solid ${COLORS.border}`
             }}
           >
             <div>
