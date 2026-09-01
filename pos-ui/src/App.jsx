@@ -2199,9 +2199,19 @@ const finalizeIntake = async () => {
 
       {/* ANALYSIS */}
       {view === "analysis" && (
-        <SalesAnalysisPanel
-          storeId={storeId}
-        />
+        <div
+          style={{
+            flex: "1 1 0",
+            minHeight: 0,
+            minWidth: 0,
+            overflow: "hidden",
+            position: "relative"
+          }}
+        >
+          <SalesAnalysisPanel
+            storeId={storeId}
+          />
+        </div>
       )}
 
       {/* ORGANIZATION REPORTS */}

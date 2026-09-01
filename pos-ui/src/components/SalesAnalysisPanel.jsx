@@ -173,7 +173,8 @@ function SalesAnalysisPanel({
     <div
       style={{
         padding: 16,
-        flex: 1,
+        position: "absolute",
+        inset: 0,
         minHeight: 0,
         overflow: "hidden",
         display: "flex",
@@ -229,13 +230,22 @@ function SalesAnalysisPanel({
       </div>
 
       {analysisView === "weekly" ? (
-        <AIWeeklyBriefPanel
-          storeId={storeId}
-        />
+        <div
+          style={{
+            flex: "1 1 0",
+            minHeight: 0,
+            position: "relative",
+            overflow: "hidden"
+          }}
+        >
+          <AIWeeklyBriefPanel
+            storeId={storeId}
+          />
+        </div>
       ) : (
         <div
           style={{
-            flex: 1,
+            flex: "1 1 0",
             minHeight: 0,
             overflowY: "auto",
             paddingRight: 4,
