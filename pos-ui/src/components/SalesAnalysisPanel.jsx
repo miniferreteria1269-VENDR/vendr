@@ -223,7 +223,9 @@ function SalesAnalysisPanel({
       </div>
 
       {analysisView === "weekly" ? (
-        <AIWeeklyBriefPanel />
+        <AIWeeklyBriefPanel
+          storeId={storeId}
+        />
       ) : (
         <>
 

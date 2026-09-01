@@ -23,7 +23,9 @@ const priorityColors = {
   low: COLORS.primary
 };
 
-function AIWeeklyBriefPanel() {
+function AIWeeklyBriefPanel({
+  storeId
+}) {
   const {
     t,
     lang
@@ -186,6 +188,9 @@ function AIWeeklyBriefPanel() {
       <StatusCard>
         <strong>{t("ai_reporting_not_enabled")}</strong>
         <span>{t("ai_reporting_not_enabled_help")}</span>
+        <span>
+          {t("store_id")}: {storeId}
+        </span>
       </StatusCard>
     );
   }
