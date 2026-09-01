@@ -9,10 +9,13 @@ import {
 
 import apiClient from "../apiClient";
 
+import AIWeeklyBriefPanel from "./AIWeeklyBriefPanel";
+
 import {
   COLORS,
   card,
   btnPrimary,
+  btnSecondary,
   input
 } from "../uiStyles";
 
@@ -76,6 +79,11 @@ function SalesAnalysisPanel({
     errorMessage,
     setErrorMessage
   ] = useState("");
+
+  const [
+    analysisView,
+    setAnalysisView
+  ] = useState("sales");
 
   const invalidDateRange =
     !startDate ||
@@ -172,8 +180,52 @@ function SalesAnalysisPanel({
           marginBottom: 12
         }}
       >
-        {t("sales_analysis")}
+        {analysisView === "weekly"
+          ? t("weekly_brief")
+          : t("sales_analysis")}
       </h2>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 16
+        }}
+      >
+        <button
+          type="button"
+          onClick={() =>
+            setAnalysisView("sales")
+          }
+          style={
+            analysisView === "sales"
+              ? btnPrimary
+              : btnSecondary
+          }
+        >
+          {t("sales_analysis")}
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setAnalysisView("weekly")
+          }
+          style={
+            analysisView === "weekly"
+              ? btnPrimary
+              : btnSecondary
+          }
+        >
+          {t("weekly_brief")}
+        </button>
+      </div>
+
+      {analysisView === "weekly" ? (
+        <AIWeeklyBriefPanel />
+      ) : (
+        <>
 
       {/* DATE RANGE */}
       <div
@@ -336,6 +388,8 @@ function SalesAnalysisPanel({
           field="units"
         />
       </div>
+        </>
+      )}
     </div>
   );
 }

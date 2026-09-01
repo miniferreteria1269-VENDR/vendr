@@ -455,6 +455,65 @@ def init_db():
     )
     """)
 
+    cursor.execute("""
+    ALTER TABLE stores
+    ADD COLUMN IF NOT EXISTS
+        ai_reports_enabled BOOLEAN NOT NULL DEFAULT FALSE
+    """)
+
+    cursor.execute("""
+    ALTER TABLE stores
+    ADD COLUMN IF NOT EXISTS
+        ai_report_language TEXT NOT NULL DEFAULT 'es'
+    """)
+
+    # ---------------------------------------------
+    # AI BUSINESS REPORTS
+    #
+    # The source snapshot preserves the exact VENDR-
+    # calculated facts supplied to the model. Report
+    # content stores the validated structured response.
+    # ---------------------------------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ai_business_reports (
+        report_id BIGSERIAL PRIMARY KEY,
+        store_id INTEGER NOT NULL,
+        report_type TEXT NOT NULL,
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        report_language TEXT NOT NULL DEFAULT 'es',
+        status TEXT NOT NULL,
+        prompt_version INTEGER NOT NULL DEFAULT 1,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        source_snapshot JSONB,
+        report_content JSONB,
+        model_name TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        total_tokens INTEGER,
+        error_message TEXT,
+        generated_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (
+            store_id,
+            report_type,
+            period_start,
+            period_end
+        )
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_ai_business_reports_store_period
+    ON ai_business_reports (
+        store_id,
+        report_type,
+        period_end DESC
+    )
+    """)
+
     # ---------------------------------------------
     # PRODUCTS
     # ---------------------------------------------
@@ -22551,6 +22610,209 @@ def generate_weekly_ai_report(
 
         if conn:
             conn.close()
+
+
+@app.get("/ai-reports/weekly")
+def get_weekly_ai_reports(
+    limit: int = Query(default=12, ge=1, le=52),
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                ai_reports_enabled,
+                ai_report_language
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (current_user.store_id,)
+        )
+
+        store = cursor.fetchone()
+
+        if not store:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        cursor.execute(
+            """
+            SELECT
+                report_id,
+                period_start,
+                period_end,
+                report_language,
+                report_content,
+                model_name,
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                generated_at
+            FROM ai_business_reports
+            WHERE store_id = %s
+              AND report_type = 'weekly'
+              AND status = 'completed'
+            ORDER BY period_end DESC
+            LIMIT %s
+            """,
+            (
+                current_user.store_id,
+                limit
+            )
+        )
+
+        reports = []
+
+        for row in cursor.fetchall():
+            reports.append({
+                "report_id": row[0],
+                "period_start": (
+                    row[1].isoformat()
+                    if row[1]
+                    else None
+                ),
+                "period_end": (
+                    row[2].isoformat()
+                    if row[2]
+                    else None
+                ),
+                "report_language": row[3],
+                "report": row[4],
+                "model_name": row[5],
+                "input_tokens": row[6],
+                "output_tokens": row[7],
+                "total_tokens": row[8],
+                "generated_at": (
+                    row[9].isoformat()
+                    if row[9]
+                    else None
+                )
+            })
+
+        return {
+            "enabled": bool(store[0]),
+            "configured": bool(openai_client),
+            "report_language": str(
+                store[1] or "es"
+            ),
+            "reports": reports
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "LOAD AI REPORTS ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load AI reports"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
+@app.post("/ai-reports/weekly/generate")
+def generate_current_store_weekly_ai_report(
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                ai_reports_enabled,
+                ai_report_language
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (current_user.store_id,)
+        )
+
+        store = cursor.fetchone()
+
+        if not store:
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        if not bool(store[0]):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "AI reporting is not enabled "
+                    "for this store"
+                )
+            )
+
+        if not openai_client:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "AI report generation is "
+                    "not configured"
+                )
+            )
+
+        report_language = str(
+            store[1] or "es"
+        ).strip().lower()
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+    try:
+        return generate_weekly_ai_report(
+            store_id=current_user.store_id,
+            report_language=report_language
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "GENERATE STORE AI REPORT ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "The weekly report could not be "
+                "generated. Please try again."
+            )
+        )
 
 @app.post(
     "/internal/ai-reports/generate-weekly"
