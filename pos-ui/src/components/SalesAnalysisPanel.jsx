@@ -172,7 +172,13 @@ function SalesAnalysisPanel({
   return (
     <div
       style={{
-        padding: 16
+        padding: 16,
+        flex: 1,
+        minHeight: 0,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        boxSizing: "border-box"
       }}
     >
       <h2
@@ -223,9 +229,19 @@ function SalesAnalysisPanel({
       </div>
 
       {analysisView === "weekly" ? (
-        <AIWeeklyBriefPanel />
+        <AIWeeklyBriefPanel
+          storeId={storeId}
+        />
       ) : (
-        <>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            paddingRight: 4,
+            scrollbarGutter: "stable"
+          }}
+        >
 
       {/* DATE RANGE */}
       <div
@@ -388,7 +404,7 @@ function SalesAnalysisPanel({
           field="units"
         />
       </div>
-        </>
+        </div>
       )}
     </div>
   );

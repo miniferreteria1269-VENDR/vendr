@@ -162,6 +162,60 @@ openai_client = (
 AI_REPORT_CRON_SECRET = os.environ.get(
     "AI_REPORT_CRON_SECRET"
 )
+
+
+def parse_ai_report_store_ids(
+    raw_value: Optional[str]
+) -> frozenset[int]:
+    if not raw_value:
+        return frozenset()
+
+    store_ids = set()
+
+    for value in raw_value.split(","):
+        normalized = value.strip()
+
+        if not normalized:
+            continue
+
+        try:
+            store_id = int(normalized)
+
+        except ValueError as error:
+            raise RuntimeError(
+                "AI_REPORT_ENABLED_STORE_IDS must "
+                "contain only comma-separated integers"
+            ) from error
+
+        if store_id <= 0:
+            raise RuntimeError(
+                "AI_REPORT_ENABLED_STORE_IDS must "
+                "contain only positive store IDs"
+            )
+
+        store_ids.add(store_id)
+
+    return frozenset(store_ids)
+
+
+AI_REPORT_ENABLED_STORE_IDS = (
+    parse_ai_report_store_ids(
+        os.environ.get(
+            "AI_REPORT_ENABLED_STORE_IDS"
+        )
+    )
+)
+
+
+def is_ai_reporting_enabled(
+    store_id: int,
+    database_enabled: bool
+) -> bool:
+    return (
+        bool(database_enabled)
+        or int(store_id)
+        in AI_REPORT_ENABLED_STORE_IDS
+    )
     
 class AuthenticatedUser(BaseModel):
     user_id: int
@@ -22700,7 +22754,10 @@ def get_weekly_ai_reports(
             })
 
         return {
-            "enabled": bool(store[0]),
+            "enabled": is_ai_reporting_enabled(
+                current_user.store_id,
+                bool(store[0])
+            ),
             "configured": bool(openai_client),
             "report_language": str(
                 store[1] or "es"
@@ -22762,7 +22819,10 @@ def generate_current_store_weekly_ai_report(
                 detail="Store not found"
             )
 
-        if not bool(store[0]):
+        if not is_ai_reporting_enabled(
+            current_user.store_id,
+            bool(store[0])
+        ):
             raise HTTPException(
                 status_code=403,
                 detail=(
@@ -22849,8 +22909,14 @@ def generate_weekly_ai_reports(
                 ai_report_language
             FROM stores
             WHERE ai_reports_enabled = TRUE
+               OR store_id = ANY(%s::int[])
             ORDER BY store_id ASC
-            """
+            """,
+            (
+                list(
+                    AI_REPORT_ENABLED_STORE_IDS
+                ),
+            )
         )
 
         rows = cursor.fetchall()

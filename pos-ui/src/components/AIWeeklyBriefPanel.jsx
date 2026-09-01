@@ -23,7 +23,9 @@ const priorityColors = {
   low: COLORS.primary
 };
 
-function AIWeeklyBriefPanel() {
+function AIWeeklyBriefPanel({
+  storeId
+}) {
   const {
     t,
     lang
@@ -186,6 +188,9 @@ function AIWeeklyBriefPanel() {
       <StatusCard>
         <strong>{t("ai_reporting_not_enabled")}</strong>
         <span>{t("ai_reporting_not_enabled_help")}</span>
+        <span>
+          {t("store_id")}: {storeId}
+        </span>
       </StatusCard>
     );
   }
@@ -202,7 +207,20 @@ function AIWeeklyBriefPanel() {
   const report = selectedReport?.report;
 
   return (
-    <div>
+    <div
+      className="ai-weekly-brief-scroll"
+      style={{
+        flex: 1,
+        minHeight: 0,
+        height: "calc(100dvh - 210px)",
+        maxHeight: "calc(100dvh - 210px)",
+        overflowY: "scroll",
+        overscrollBehavior: "contain",
+        paddingRight: 4,
+        scrollbarGutter: "stable",
+        WebkitOverflowScrolling: "touch"
+      }}
+    >
       {errorMessage && (
         <div style={errorStyle}>
           {errorMessage}
@@ -245,7 +263,14 @@ function AIWeeklyBriefPanel() {
               alignItems: "flex-end",
               justifyContent: "space-between",
               flexWrap: "wrap",
-              marginBottom: 12
+              position: "sticky",
+              top: 0,
+              zIndex: 5,
+              marginBottom: 12,
+              padding: "4px 0 10px",
+              background: COLORS.bg,
+              borderBottom:
+                `1px solid ${COLORS.border}`
             }}
           >
             <div>
