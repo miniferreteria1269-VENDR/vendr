@@ -14489,59 +14489,76 @@ def create_cash_event(
             2
         )
 
-        register_amount = (
-            amount
-            if data.register_amount is None
-            else round(
-                float(
-                    data.register_amount
-                ),
-                2
-            )
+        is_strongbox_adjustment = (
+            event_type in {
+                "strongbox_adjustment_positive",
+                "strongbox_adjustment_negative"
+            }
         )
 
-        if register_amount < 0:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Register amount cannot "
-                    "be negative"
+        # Strongbox corrections retain an amount for the
+        # audit trail, but that amount is not a payment split.
+        # Normalize them before validating payment sources so
+        # queued corrections are not required to allocate their
+        # amount between the register and another source.
+        if is_strongbox_adjustment:
+            register_amount = 0.0
+            external_amount = 0.0
+
+        else:
+            register_amount = (
+                amount
+                if data.register_amount is None
+                else round(
+                    float(
+                        data.register_amount
+                    ),
+                    2
                 )
             )
 
-        if register_amount > amount:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Register amount cannot exceed "
-                    "the total amount"
-                )
-            )
-
-        external_amount = round(
-            amount - register_amount,
-            2
-        )
-
-        if data.external_amount is not None:
-            supplied_external_amount = round(
-                float(
-                    data.external_amount
-                ),
-                2
-            )
-
-            if (
-                supplied_external_amount
-                != external_amount
-            ):
+            if register_amount < 0:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "Payment sources must equal "
+                        "Register amount cannot "
+                        "be negative"
+                    )
+                )
+
+            if register_amount > amount:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Register amount cannot exceed "
                         "the total amount"
                     )
                 )
+
+            external_amount = round(
+                amount - register_amount,
+                2
+            )
+
+            if data.external_amount is not None:
+                supplied_external_amount = round(
+                    float(
+                        data.external_amount
+                    ),
+                    2
+                )
+
+                if (
+                    supplied_external_amount
+                    != external_amount
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Payment sources must equal "
+                            "the total amount"
+                        )
+                    )
 
         external_source = (
             str(data.external_source).strip()
@@ -14598,13 +14615,6 @@ def create_cash_event(
                     "Select the other cash location"
                 )
             )
-
-        is_strongbox_adjustment = (
-            event_type in {
-                "strongbox_adjustment_positive",
-                "strongbox_adjustment_negative"
-            }
-        )
 
         # Strongbox corrections never affect the register.
         if is_strongbox_adjustment:
