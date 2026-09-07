@@ -472,6 +472,23 @@ organization_report_load_failed:
 
     // CASH PANEL
     cash_balance: "Cash Balance",
+    strongbox_balance: "Strongbox Balance",
+    deposit: "Deposit",
+    withdraw: "Withdraw",
+    adjust: "Adjust",
+    deposit_to_strongbox: "Deposit into Strongbox",
+    return_from_strongbox: "Return Cash to Register",
+    return_to_register: "Return to Register",
+    withdraw_from_strongbox: "Withdraw from Strongbox",
+    adjust_strongbox: "Adjust Strongbox",
+    strongbox_adjustment_direction:
+      "Strongbox adjustment direction",
+    strongbox_increase:
+      "Increase strongbox balance",
+    strongbox_decrease:
+      "Decrease strongbox balance",
+    strongbox_adjustment_no_profit_effect:
+      "This corrects the strongbox balance and does not count as revenue or expense.",
     expense: "Expense",
     adjust_register: "Adjust Register",
     move_cash: "Move Cash",
@@ -599,6 +616,7 @@ organization_report_load_failed:
     sales_performance: "Sales performance",
     profitability: "Profitability",
     cash_activity: "Cash activity",
+    expense_activity: "Recorded expenses",
     inventory_activity: "Inventory activity",
     positive_signals: "Positive signals",
     no_positive_signals: "No positive signals were identified.",
@@ -1310,6 +1328,23 @@ organization_report_load_failed:
 
     // CASH PANEL
     cash_balance: "Saldo de caja",
+    strongbox_balance: "Saldo de caja fuerte",
+    deposit: "Depositar",
+    withdraw: "Retirar",
+    adjust: "Ajustar",
+    deposit_to_strongbox: "Depositar en caja fuerte",
+    return_from_strongbox: "Regresar efectivo a caja",
+    return_to_register: "Regresar a caja",
+    withdraw_from_strongbox: "Retirar de caja fuerte",
+    adjust_strongbox: "Ajustar caja fuerte",
+    strongbox_adjustment_direction:
+      "Dirección del ajuste de caja fuerte",
+    strongbox_increase:
+      "Aumentar saldo de caja fuerte",
+    strongbox_decrease:
+      "Disminuir saldo de caja fuerte",
+    strongbox_adjustment_no_profit_effect:
+      "Este movimiento corrige el saldo de caja fuerte y no cuenta como ingreso ni gasto.",
     expense: "Gasto",
     adjust_register: "Ajustar caja",
     move_cash: "Mover efectivo",
@@ -1438,6 +1473,7 @@ organization_report_load_failed:
     sales_performance: "Rendimiento de ventas",
     profitability: "Rentabilidad",
     cash_activity: "Actividad de caja",
+    expense_activity: "Gastos registrados",
     inventory_activity: "Actividad de inventario",
     positive_signals: "Señales positivas",
     no_positive_signals: "No se identificaron señales positivas.",

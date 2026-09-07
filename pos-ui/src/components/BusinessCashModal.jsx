@@ -35,6 +35,10 @@ function BusinessCashModal({
   storeId,
   type,
   categories,
+  registerLocked = false,
+  initialExternalSource = "Strongbox",
+  sourceLocked = false,
+  titleKey = null,
   onClose,
   onSuccess
 }) {
@@ -43,11 +47,11 @@ function BusinessCashModal({
 
   const [amount, setAmount] = useState("");
   const [registerAmount, setRegisterAmount] =
-    useState("");
+    useState(registerLocked ? "0" : "");
   const [registerEdited, setRegisterEdited] =
-    useState(false);
+    useState(registerLocked);
   const [externalSource, setExternalSource] =
-    useState(sources[0][0]);
+    useState(initialExternalSource);
   const [category, setCategory] =
     useState(categories[0].value);
   const [note, setNote] = useState("");
@@ -65,7 +69,7 @@ function BusinessCashModal({
 
   const changeTotal = value => {
     setAmount(value);
-    if (!registerEdited) {
+    if (!registerEdited && !registerLocked) {
       setRegisterAmount(value);
     }
   };
@@ -201,9 +205,11 @@ function BusinessCashModal({
       <div style={modalStyle}>
         <h3 style={{ margin: 0 }}>
           {t(
-            isExpense
-              ? "add_expense"
-              : "add_revenue"
+            titleKey || (
+              isExpense
+                ? "add_expense"
+                : "add_revenue"
+            )
           )}
         </h3>
 
@@ -270,7 +276,9 @@ function BusinessCashModal({
                 event.target.value
               );
             }}
-            disabled={submitting}
+            disabled={
+              submitting || registerLocked
+            }
             style={inputStyle}
           />
         </Field>
@@ -300,7 +308,9 @@ function BusinessCashModal({
                     event.target.value
                   )
                 }
-                disabled={submitting}
+                disabled={
+                  submitting || sourceLocked
+                }
                 style={inputStyle}
               >
                 {sources.map(

@@ -20,6 +20,12 @@ const EVENT_LABELS = {
   return: "Return / Refund",
   revenue: "Revenue",
   expense: "Expense",
+  cash_adjustment_positive: "Register Adjustment",
+  cash_adjustment_negative: "Register Adjustment",
+  cash_transfer_in: "Cash Transfer",
+  cash_transfer_out: "Cash Transfer",
+  strongbox_adjustment_positive: "Strongbox Adjustment",
+  strongbox_adjustment_negative: "Strongbox Adjustment",
   intake: "Intake",
   stock_adjustment: "Stock Adjustment"
 };

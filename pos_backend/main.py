@@ -146,7 +146,7 @@ OPENAI_MODEL = os.environ.get(
 AI_REPORT_PROMPT_VERSION = int(
     os.environ.get(
         "AI_REPORT_PROMPT_VERSION",
-        "1"
+        "2"
     )
 )
 
@@ -260,7 +260,7 @@ class AIWeeklyBusinessReport(BaseModel):
     executive_summary: str
     sales_performance: AIReportSection
     profitability: AIReportSection
-    cash_activity: AIReportSection
+    expense_activity: AIReportSection
     inventory_activity: AIReportSection
     positive_signals: list[AIReportFinding]
     concerns: list[AIReportFinding]
@@ -980,6 +980,58 @@ def init_db():
 
 def round_money(value):
     return round(float(value or 0), 2)
+
+
+def get_strongbox_balance(cursor, store_id: int) -> float:
+    """Calculate strongbox custody from the audited cash ledger."""
+    cursor.execute(
+        """
+        SELECT COALESCE(
+            SUM(
+                CASE
+                    WHEN type = 'cash_transfer_out'
+                     AND LOWER(TRIM(COALESCE(external_source, '')))
+                         IN ('strongbox', 'caja fuerte')
+                        THEN amount
+
+                    WHEN type = 'cash_transfer_in'
+                     AND LOWER(TRIM(COALESCE(external_source, '')))
+                         IN ('strongbox', 'caja fuerte')
+                        THEN -amount
+
+                    WHEN type = 'revenue'
+                     AND LOWER(TRIM(COALESCE(external_source, '')))
+                         IN ('strongbox', 'caja fuerte')
+                        THEN COALESCE(external_amount, 0)
+
+                    WHEN type = 'expense'
+                     AND LOWER(TRIM(COALESCE(external_source, '')))
+                         IN ('strongbox', 'caja fuerte')
+                        THEN -COALESCE(external_amount, 0)
+
+                    WHEN type = 'strongbox_adjustment_positive'
+                        THEN amount
+
+                    WHEN type = 'strongbox_adjustment_negative'
+                        THEN -amount
+
+                    ELSE 0
+                END
+            ),
+            0
+        )
+        FROM cash_events
+        WHERE store_id = %s
+        """,
+        (store_id,)
+    )
+
+    row = cursor.fetchone()
+
+    return round_money(
+        row[0] if row else 0
+    )
+
 
 password_hash = (
     PasswordHash.recommended()
@@ -2658,6 +2710,76 @@ def build_cash_activity_data(
 
         "by_category":
             by_category
+    }
+
+
+def build_recorded_expense_data(
+    cursor,
+    store_id: int,
+    start_datetime: datetime,
+    end_exclusive: datetime
+):
+    """Build the expense-only input for weekly business briefs."""
+    cursor.execute(
+        """
+        SELECT
+            COALESCE(category, ''),
+            COUNT(*),
+            COALESCE(SUM(amount), 0)
+        FROM cash_events
+        WHERE store_id = %s
+          AND type = 'expense'
+          AND created_at >= %s
+          AND created_at < %s
+          AND LOWER(
+                REPLACE(
+                    REPLACE(
+                        COALESCE(category, ''),
+                        '_',
+                        ' '
+                    ),
+                    '-',
+                    ' '
+                )
+              ) NOT IN (
+                  'cash adjustment',
+                  'internal transfer',
+                  'ajuste caja',
+                  'transferencia interna'
+              )
+        GROUP BY COALESCE(category, '')
+        ORDER BY SUM(amount) DESC,
+                 LOWER(COALESCE(category, '')) ASC
+        """,
+        (
+            store_id,
+            start_datetime,
+            end_exclusive
+        )
+    )
+
+    by_category = []
+    event_count = 0
+    total_recorded_expenses = 0.0
+
+    for category, count, total in cursor.fetchall():
+        numeric_count = int(count or 0)
+        numeric_total = round_money(total)
+
+        event_count += numeric_count
+        total_recorded_expenses += numeric_total
+
+        by_category.append({
+            "category": str(category or ""),
+            "count": numeric_count,
+            "total": numeric_total
+        })
+
+    return {
+        "event_count": event_count,
+        "total_recorded_expenses":
+            round_money(total_recorded_expenses),
+        "by_category": by_category
     }
 
 
@@ -11946,6 +12068,61 @@ def cash_balance(
         if conn:
             conn.close()
 
+
+@app.get("/strongbox-balance")
+def strongbox_balance(
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        balance = get_strongbox_balance(
+            cursor,
+            store_id
+        )
+
+        return {
+            "store_id": store_id,
+            "balance": balance
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "STRONGBOX BALANCE ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load strongbox balance"
+            )
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
 @app.post("/archive-product")
 def archive_product(
     store_id: int,
@@ -12338,10 +12515,10 @@ def build_weekly_briefing_snapshot(
         )
 
         # ---------------------------------------------
-        # CURRENT WEEK CASH ACTIVITY
+        # CURRENT WEEK RECORDED EXPENSES
         # ---------------------------------------------
-        current_cash = (
-            build_cash_activity_data(
+        current_expenses = (
+            build_recorded_expense_data(
                 cursor=cursor,
                 store_id=store_id,
                 start_datetime=
@@ -12354,10 +12531,10 @@ def build_weekly_briefing_snapshot(
         )
 
         # ---------------------------------------------
-        # PREVIOUS WEEK CASH ACTIVITY
+        # PREVIOUS WEEK RECORDED EXPENSES
         # ---------------------------------------------
-        previous_cash = (
-            build_cash_activity_data(
+        previous_expenses = (
+            build_recorded_expense_data(
                 cursor=cursor,
                 store_id=store_id,
                 start_datetime=
@@ -12446,60 +12623,6 @@ def build_weekly_briefing_snapshot(
             )
         )
 
-        current_net_cash = float(
-            current_cash.get(
-                "net_cash_movement",
-                0
-            ) or 0
-        )
-
-        previous_net_cash = float(
-            previous_cash.get(
-                "net_cash_movement",
-                0
-            ) or 0
-        )
-
-        # ---------------------------------------------
-        # NET CASH POSITION CLASSIFICATION
-        # ---------------------------------------------
-        if (
-            previous_net_cash < 0
-            and current_net_cash >= 0
-        ):
-            net_cash_position_change = (
-                "negative_to_positive"
-            )
-
-        elif (
-            previous_net_cash >= 0
-            and current_net_cash < 0
-        ):
-            net_cash_position_change = (
-                "positive_to_negative"
-            )
-
-        elif (
-            current_net_cash
-            > previous_net_cash
-        ):
-            net_cash_position_change = (
-                "improved"
-            )
-
-        elif (
-            current_net_cash
-            < previous_net_cash
-        ):
-            net_cash_position_change = (
-                "declined"
-            )
-
-        else:
-            net_cash_position_change = (
-                "unchanged"
-            )
-
         # ---------------------------------------------
         # PERIOD COMPARISON
         # ---------------------------------------------
@@ -12565,37 +12688,15 @@ def build_weekly_briefing_snapshot(
                 else None
             ),
 
-            "cash_inflow_change_percent":
+            "recorded_expense_change_percent":
                 calculate_percent_change(
-                    current_cash[
-                        "total_inflows"
+                    current_expenses[
+                        "total_recorded_expenses"
                     ],
-                    previous_cash[
-                        "total_inflows"
+                    previous_expenses[
+                        "total_recorded_expenses"
                     ]
-                ),
-
-            "cash_outflow_change_percent":
-                calculate_percent_change(
-                    current_cash[
-                        "total_outflows"
-                    ],
-                    previous_cash[
-                        "total_outflows"
-                    ]
-                ),
-
-            # Net cash movement may cross zero, so an
-            # absolute change is safer than a percentage.
-            "net_cash_movement_change":
-                round_money(
-                    current_net_cash
-                    -
-                    previous_net_cash
-                ),
-
-            "net_cash_position_change":
-                net_cash_position_change
+                )
         }
 
         # ---------------------------------------------
@@ -12694,12 +12795,12 @@ def build_weekly_briefing_snapshot(
                     or empty_inventory.copy()
             },
 
-            "cash": {
+            "expenses": {
                 "current_week":
-                    current_cash,
+                    current_expenses,
 
                 "previous_week":
-                    previous_cash
+                    previous_expenses
             },
 
             "catalog_profile": {
@@ -14362,7 +14463,9 @@ def create_cash_event(
             "cash_adjustment_positive",
             "cash_adjustment_negative",
             "cash_transfer_in",
-            "cash_transfer_out"
+            "cash_transfer_out",
+            "strongbox_adjustment_positive",
+            "strongbox_adjustment_negative"
         }
 
         if event_type not in valid_event_types:
@@ -14496,10 +14599,23 @@ def create_cash_event(
                 )
             )
 
-        # Corrections and cash-location movements are
-        # register-only events. Their amount is never a
-        # business revenue or expense.
-        if not is_business_event:
+        is_strongbox_adjustment = (
+            event_type in {
+                "strongbox_adjustment_positive",
+                "strongbox_adjustment_negative"
+            }
+        )
+
+        # Strongbox corrections never affect the register.
+        if is_strongbox_adjustment:
+            register_amount = 0.0
+            external_source = "Strongbox"
+            external_amount = 0.0
+
+        # Register corrections and cash-location movements
+        # affect the register but are never business revenue
+        # or expense.
+        elif not is_business_event:
             register_amount = amount
             external_amount = 0.0
 
@@ -14560,7 +14676,8 @@ def create_cash_event(
             if event_type in {
                 "revenue",
                 "cash_adjustment_positive",
-                "cash_transfer_in"
+                "cash_transfer_in",
+                "strongbox_adjustment_positive"
             }
             else -1
         )
@@ -21643,8 +21760,7 @@ def get_organization_sales_report(
         if conn:
             conn.close()
 
-@app.get("/internal/weekly-briefing-data")
-def weekly_briefing_data(
+def legacy_weekly_briefing_data(
     week_end: Optional[date] = None,
     current_user: AuthenticatedUser = Depends(
         get_current_user
@@ -22233,7 +22349,14 @@ Hard rules:
 8. Return no more than three positive signals, three concerns, and
    five recommended actions.
 9. Evidence must reference specific facts from the supplied snapshot.
-10. Do not use Markdown.
+10. Analyze only sales, gross profit, recorded expenses, products, and
+    inventory. Do not discuss register balances, strongbox balances,
+    internal cash transfers, cash corrections, or net cash movement.
+11. The expenses object contains only entries recorded through VENDR's
+    Expense workflow. Describe them as recorded expenses. Do not assume
+    they are complete, and do not call gross profit minus recorded
+    expenses net profit or calculate a net-profit figure.
+12. Do not use Markdown.
 """
 
 
@@ -22348,23 +22471,33 @@ def generate_weekly_ai_report(
                     status = 'processing',
                     report_language = %s,
                     prompt_version = %s,
-                    attempt_count =
-                        attempt_count + 1,
+                    attempt_count = CASE
+                        WHEN prompt_version < %s
+                            THEN 1
+                        ELSE attempt_count + 1
+                    END,
                     error_message = NULL,
                     updated_at = NOW()
                 WHERE store_id = %s
                   AND report_type = 'weekly'
                   AND period_start = %s
                   AND period_end = %s
-                  AND attempt_count < 3
                   AND
                   (
-                      status = 'failed'
+                      prompt_version < %s
                       OR
                       (
-                          status = 'processing'
-                          AND updated_at <
-                              NOW() - INTERVAL '30 minutes'
+                          attempt_count < 3
+                          AND
+                          (
+                              status = 'failed'
+                              OR
+                              (
+                                  status = 'processing'
+                                  AND updated_at <
+                                      NOW() - INTERVAL '30 minutes'
+                              )
+                          )
                       )
                   )
                 RETURNING report_id
@@ -22372,9 +22505,11 @@ def generate_weekly_ai_report(
                 (
                     report_language,
                     AI_REPORT_PROMPT_VERSION,
+                    AI_REPORT_PROMPT_VERSION,
                     store_id,
                     week_start,
-                    week_end
+                    week_end,
+                    AI_REPORT_PROMPT_VERSION
                 )
             )
 
