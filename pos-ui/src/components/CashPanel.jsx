@@ -17,7 +17,9 @@ import MovementSummary from "./MovementSummary";
 
 import {
   cacheConfirmedCashBalance,
-  getDisplayedCashBalance
+  cacheConfirmedStrongboxBalance,
+  getDisplayedCashBalance,
+  getDisplayedStrongboxBalance
 } from "../offlineCash";
 
 import {
@@ -40,6 +42,11 @@ function CashPanel({
   ] = useState(0);
 
   const [
+    strongboxBalance,
+    setStrongboxBalance
+  ] = useState(null);
+
+  const [
     showReturn,
     setShowReturn
   ] = useState(false);
@@ -52,6 +59,11 @@ function CashPanel({
   const [
     showExpense,
     setShowExpense
+  ] = useState(false);
+
+  const [
+    showStrongboxExpense,
+    setShowStrongboxExpense
   ] = useState(false);
 
   const [
@@ -128,9 +140,78 @@ function CashPanel({
     }
   };
 
+  const loadStrongboxBalance = async () => {
+    if (!storeId) {
+      return;
+    }
+
+    try {
+      const response =
+        await apiClient.get(
+          "/strongbox-balance",
+          {
+            params: {
+              store_id: storeId
+            }
+          }
+        );
+
+      const confirmedBalance =
+        Number(
+          response.data.balance || 0
+        );
+
+      await cacheConfirmedStrongboxBalance(
+        storeId,
+        confirmedBalance
+      );
+
+      const displayedBalance =
+        await getDisplayedStrongboxBalance(
+          storeId
+        );
+
+      setStrongboxBalance(
+        displayedBalance !== null
+          ? displayedBalance
+          : confirmedBalance
+      );
+    } catch (error) {
+      console.warn(
+        "USING OFFLINE STRONGBOX BALANCE:",
+        error
+      );
+
+      try {
+        const displayedBalance =
+          await getDisplayedStrongboxBalance(
+            storeId
+          );
+
+        if (displayedBalance !== null) {
+          setStrongboxBalance(
+            displayedBalance
+          );
+        }
+      } catch (offlineError) {
+        console.error(
+          "FAILED TO LOAD OFFLINE STRONGBOX BALANCE:",
+          offlineError
+        );
+      }
+    }
+  };
+
+  const loadBalances = async () => {
+    await Promise.all([
+      loadBalance(),
+      loadStrongboxBalance()
+    ]);
+  };
+
   useEffect(() => {
     if (storeId) {
-      loadBalance();
+      loadBalances();
     }
   }, [storeId]);
 
@@ -146,31 +227,134 @@ function CashPanel({
     >
       <div
         style={{
-          ...card,
-          textAlign: "center",
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: 12,
           marginBottom: 16
         }}
       >
         <div
           style={{
-            color: COLORS.textDim
+            ...card,
+            textAlign: "center"
           }}
         >
-          {t("cash_balance")}
+          <div
+            style={{
+              color: COLORS.textDim
+            }}
+          >
+            {t("cash_balance")}
+          </div>
+
+          <div
+            style={{
+              fontSize: 32,
+              fontWeight: "bold",
+              color: COLORS.primary,
+              marginTop: 6
+            }}
+          >
+            $
+            {Number(
+              balance
+            ).toFixed(2)}
+          </div>
         </div>
 
         <div
           style={{
-            fontSize: 32,
-            fontWeight: "bold",
-            color: COLORS.primary,
-            marginTop: 6
+            ...card,
+            textAlign: "center"
           }}
         >
-          $
-          {Number(
-            balance
-          ).toFixed(2)}
+          <div
+            style={{
+              color: COLORS.textDim
+            }}
+          >
+            {t("strongbox_balance")}
+          </div>
+
+          <div
+            style={{
+              fontSize: 32,
+              fontWeight: "bold",
+              color: COLORS.primary,
+              marginTop: 6,
+              marginBottom: 12
+            }}
+          >
+            {strongboxBalance === null
+              ? "—"
+              : `$${Number(
+                  strongboxBalance
+                ).toFixed(2)}`}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              justifyContent: "center",
+              flexWrap: "wrap"
+            }}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setCashMovementMode({
+                  mode: "transfer",
+                  initialDirection: "out",
+                  fixedDirection: true,
+                  fixedCashLocation: "Strongbox",
+                  titleKey: "deposit_to_strongbox"
+                })
+              }
+              style={btnPrimary}
+            >
+              {t("deposit")}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setCashMovementMode({
+                  mode: "transfer",
+                  initialDirection: "in",
+                  fixedDirection: true,
+                  fixedCashLocation: "Strongbox",
+                  titleKey: "return_from_strongbox"
+                })
+              }
+              style={btnSecondary}
+            >
+              {t("return_to_register")}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setShowStrongboxExpense(true)
+              }
+              style={btnDanger}
+            >
+              {t("withdraw")}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setCashMovementMode({
+                  mode: "strongbox_adjustment"
+                })
+              }
+              style={btnSecondary}
+            >
+              {t("adjust")}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -215,9 +399,9 @@ function CashPanel({
         <button
           type="button"
           onClick={() =>
-            setCashMovementMode(
-              "adjustment"
-            )
+            setCashMovementMode({
+              mode: "adjustment"
+            })
           }
           style={btnSecondary}
         >
@@ -227,9 +411,9 @@ function CashPanel({
         <button
           type="button"
           onClick={() =>
-            setCashMovementMode(
-              "transfer"
-            )
+            setCashMovementMode({
+              mode: "transfer"
+            })
           }
           style={btnSecondary}
         >
@@ -270,7 +454,7 @@ function CashPanel({
           onClose={() =>
             setShowRevenue(false)
           }
-          onSuccess={loadBalance}
+          onSuccess={loadBalances}
         />
       )}
 
@@ -281,7 +465,7 @@ function CashPanel({
           onClose={() =>
             setShowReturn(false)
           }
-          onSuccess={loadBalance}
+          onSuccess={loadBalances}
         />
       )}
 
@@ -291,18 +475,32 @@ function CashPanel({
           onClose={() =>
             setShowExpense(false)
           }
-          onSuccess={loadBalance}
+          onSuccess={loadBalances}
+        />
+      )}
+
+      {showStrongboxExpense && (
+        <ExpenseModal
+          storeId={storeId}
+          registerLocked
+          initialExternalSource="Strongbox"
+          sourceLocked
+          titleKey="withdraw_from_strongbox"
+          onClose={() =>
+            setShowStrongboxExpense(false)
+          }
+          onSuccess={loadBalances}
         />
       )}
 
       {cashMovementMode && (
         <CashMovementModal
           storeId={storeId}
-          mode={cashMovementMode}
+          {...cashMovementMode}
           onClose={() =>
             setCashMovementMode(null)
           }
-          onSuccess={loadBalance}
+          onSuccess={loadBalances}
         />
       )}
     </div>

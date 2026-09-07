@@ -46,6 +46,10 @@ const getOrCreateDeviceId = () => {
 function CashMovementModal({
   storeId,
   mode,
+  initialDirection = "out",
+  fixedDirection = false,
+  fixedCashLocation = null,
+  titleKey = null,
   onClose,
   onSuccess
 }) {
@@ -54,10 +58,13 @@ function CashMovementModal({
   const isTransfer =
     mode === "transfer";
 
+  const isStrongboxAdjustment =
+    mode === "strongbox_adjustment";
+
   const [
     direction,
     setDirection
-  ] = useState("out");
+  ] = useState(initialDirection);
 
   const [
     amount,
@@ -67,7 +74,9 @@ function CashMovementModal({
   const [
     cashLocation,
     setCashLocation
-  ] = useState("Strongbox");
+  ] = useState(
+    fixedCashLocation || "Strongbox"
+  );
 
   const [
     note,
@@ -116,11 +125,17 @@ function CashMovementModal({
             ? "cash_transfer_in"
             : "cash_transfer_out"
         )
-      : (
+      : isStrongboxAdjustment
+        ? (
+            direction === "in"
+              ? "strongbox_adjustment_positive"
+              : "strongbox_adjustment_negative"
+          )
+        : (
           direction === "in"
             ? "cash_adjustment_positive"
             : "cash_adjustment_negative"
-        );
+          );
 
     const clientEventId =
       createClientEventId(eventType);
@@ -135,14 +150,22 @@ function CashMovementModal({
       store_id: storeId,
       type: eventType,
       amount: numericAmount,
-      register_amount: numericAmount,
+      register_amount:
+        isStrongboxAdjustment
+          ? 0
+          : numericAmount,
       external_amount: 0,
-      external_source: isTransfer
-        ? String(cashLocation).trim()
-        : null,
+      external_source:
+        isTransfer
+          ? String(cashLocation).trim()
+          : isStrongboxAdjustment
+            ? "Strongbox"
+            : null,
       category: isTransfer
         ? "Internal Transfer"
-        : "Cash Adjustment",
+        : isStrongboxAdjustment
+          ? "Strongbox Adjustment"
+          : "Cash Adjustment",
       note: note.trim() || null,
       client_event_id:
         clientEventId,
@@ -246,9 +269,13 @@ function CashMovementModal({
         }}
       >
         <h3 style={{ marginTop: 0 }}>
-          {isTransfer
-            ? t("move_cash")
-            : t("adjust_register")}
+          {titleKey
+            ? t(titleKey)
+            : isTransfer
+              ? t("move_cash")
+              : isStrongboxAdjustment
+                ? t("adjust_strongbox")
+                : t("adjust_register")}
         </h3>
 
         <label
@@ -266,7 +293,9 @@ function CashMovementModal({
           >
             {isTransfer
               ? t("movement_direction")
-              : t("adjustment_direction")}
+              : isStrongboxAdjustment
+                ? t("strongbox_adjustment_direction")
+                : t("adjustment_direction")}
           </span>
 
           <select
@@ -276,7 +305,9 @@ function CashMovementModal({
                 event.target.value
               )
             }
-            disabled={submitting}
+            disabled={
+              submitting || fixedDirection
+            }
             style={{
               ...input,
               width: "100%"
@@ -285,13 +316,17 @@ function CashMovementModal({
             <option value="out">
               {isTransfer
                 ? t("out_of_register")
-                : t("register_decrease")}
+                : isStrongboxAdjustment
+                  ? t("strongbox_decrease")
+                  : t("register_decrease")}
             </option>
 
             <option value="in">
               {isTransfer
                 ? t("into_register")
-                : t("register_increase")}
+                : isStrongboxAdjustment
+                  ? t("strongbox_increase")
+                  : t("register_increase")}
             </option>
           </select>
         </label>
@@ -330,7 +365,7 @@ function CashMovementModal({
           />
         </label>
 
-        {isTransfer && (
+        {isTransfer && !fixedCashLocation && (
           <label
             style={{
               display: "block",
@@ -409,7 +444,7 @@ function CashMovementModal({
           />
         </label>
 
-        {!isTransfer && (
+        {!isTransfer && !isStrongboxAdjustment && (
           <div
             style={{
               color: COLORS.textDim,
@@ -431,6 +466,19 @@ function CashMovementModal({
           >
             {t(
               "cash_transfer_no_profit_effect"
+            )}
+          </div>
+        )}
+
+        {isStrongboxAdjustment && (
+          <div
+            style={{
+              color: COLORS.textDim,
+              marginBottom: 12
+            }}
+          >
+            {t(
+              "strongbox_adjustment_no_profit_effect"
             )}
           </div>
         )}

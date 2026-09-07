@@ -365,8 +365,15 @@ function AIWeeklyBriefPanel({
               section={report.profitability}
             />
             <ReportSection
-              title={t("cash_activity")}
-              section={report.cash_activity}
+              title={
+                report.expense_activity
+                  ? t("expense_activity")
+                  : t("cash_activity")
+              }
+              section={
+                report.expense_activity ||
+                report.cash_activity
+              }
             />
             <ReportSection
               title={t("inventory_activity")}

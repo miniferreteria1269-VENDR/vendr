@@ -41,3 +41,20 @@ offlineDb.version(4).stores({
   cashBalances:
     "store_id, updated_at"
 });
+
+offlineDb.version(5).stores({
+  pendingSales:
+    "client_event_id, store_id, status, created_at",
+
+  pendingEvents:
+    "client_event_id, event_type, store_id, status, created_at",
+
+  products:
+    "[store_id+product_id], store_id, product_id, name, is_active",
+
+  cashBalances:
+    "store_id, updated_at",
+
+  strongboxBalances:
+    "store_id, updated_at"
+});
