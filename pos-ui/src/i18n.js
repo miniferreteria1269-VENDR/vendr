@@ -9,6 +9,54 @@ export const translations = {
     store_name: "Store Name",
     sign_up: "Sign Up",
     back_to_login: "Back to Login",
+    please_fill_all_fields: "Please fill in all fields.",
+    signup_failed: "Unable to create the account.",
+    signup_error: "Unable to connect. Please try again.",
+    logout: "Log out",
+    store: "Store",
+    change: "Change",
+    subtotal: "Subtotal",
+    total: "Total",
+    ticket_name_prompt: "Name this ticket:",
+    history: "History",
+    print_receipt: "Print receipt",
+    receipt_preview: "Receipt preview",
+    receipt_reference: "Reference",
+    pending_synchronization: "Pending synchronization",
+    receipt_thank_you: "Thank you for your purchase.",
+    receipt_come_again: "We hope to see you again.",
+    unassigned_supplier: "Unassigned supplier",
+
+    // INVENTORY EVENT FEEDBACK
+    intake_completed: "Intake completed.",
+    intake_saved_pending:
+      "Intake saved locally. It will synchronize automatically when the connection returns.",
+    intake_failed:
+      "The intake could not be saved. Please try again.",
+    return_completed: "Return completed.",
+    refund_completed: "Refund completed.",
+    return_saved_pending:
+      "Return/refund saved locally. It will synchronize automatically when the connection returns.",
+    return_save_failed:
+      "The return/refund could not be saved. Please try again.",
+    enter_valid_quantity: "Enter a valid quantity.",
+    log_loss: "Log loss",
+    loss_recorded: "Loss recorded.",
+
+    // PRODUCT AND DIAGNOSTIC ACTIONS
+    edit_product: "Edit product",
+    archive_product: "Archive or restore product",
+    lst_requires_review:
+      "The low-stock threshold needs review.",
+    review_reorder_threshold:
+      "Review the reorder threshold.",
+    current_lst: "Current LST",
+    confirmed_lst: "Confirmed LST",
+    confirm_lst: "Confirm LST",
+    invalid_lst:
+      "Enter a valid low-stock threshold of zero or greater.",
+    could_not_apply_lst_review:
+      "Unable to save the low-stock threshold review.",
     // ORGANIZATION REPORTS
 organization: "Organization",
 organization_reports: "Organization Reports",
@@ -402,7 +450,6 @@ organization_report_load_failed:
     product_lines: "Product Lines",
     total_units: "Total Units",
     total_cost: "Total Cost",
-    unit_cost: "Unit Cost",
     sale_price: "Sale Price",
     line_cost: "Line Cost",
     totals: "Totals",
@@ -697,7 +744,6 @@ organization_report_load_failed:
     credit_limit: "Credit Limit",
     balance: "Balance",
     status: "Status",
-    active: "Active",
     inactive: "Inactive",
     show_inactive: "Show inactive",
     search_clients: "Search clients...",
@@ -876,6 +922,56 @@ organization_report_load_failed:
     store_name: "Nombre del negocio",
     sign_up: "Registrarse",
     back_to_login: "Volver",
+    please_fill_all_fields:
+      "Complete todos los campos.",
+    signup_failed:
+      "No se pudo crear la cuenta.",
+    signup_error:
+      "No se pudo establecer conexión. Inténtelo nuevamente.",
+    logout: "Cerrar sesión",
+    store: "Tienda",
+    change: "Cambiar",
+    subtotal: "Subtotal",
+    total: "Total",
+    ticket_name_prompt: "Nombre para este ticket:",
+    print_receipt: "Imprimir recibo",
+    receipt_preview: "Vista previa del recibo",
+    receipt_reference: "Referencia",
+    pending_synchronization: "Sincronización pendiente",
+    receipt_thank_you: "Gracias por su compra.",
+    receipt_come_again: "Esperamos atenderle nuevamente.",
+    unassigned_supplier: "Proveedor sin asignar",
+
+    // RESPUESTAS DE EVENTOS DE INVENTARIO
+    intake_completed: "Ingreso completado.",
+    intake_saved_pending:
+      "Ingreso guardado localmente. Se sincronizará automáticamente cuando vuelva la conexión.",
+    intake_failed:
+      "No se pudo guardar el ingreso. Inténtelo nuevamente.",
+    return_completed: "Devolución completada.",
+    refund_completed: "Reembolso completado.",
+    return_saved_pending:
+      "Devolución o reembolso guardado localmente. Se sincronizará automáticamente cuando vuelva la conexión.",
+    return_save_failed:
+      "No se pudo guardar la devolución o el reembolso. Inténtelo nuevamente.",
+    enter_valid_quantity: "Ingrese una cantidad válida.",
+    log_loss: "Registrar pérdida",
+    loss_recorded: "Pérdida registrada.",
+
+    // ACCIONES DE PRODUCTOS Y DIAGNÓSTICO
+    edit_product: "Editar producto",
+    archive_product: "Archivar o restaurar producto",
+    lst_requires_review:
+      "El mínimo de existencias requiere revisión.",
+    review_reorder_threshold:
+      "Revisar el mínimo de reposición.",
+    current_lst: "Mínimo actual",
+    confirmed_lst: "Mínimo confirmado",
+    confirm_lst: "Confirmar mínimo",
+    invalid_lst:
+      "Ingrese un mínimo de existencias válido, igual o mayor que cero.",
+    could_not_apply_lst_review:
+      "No se pudo guardar la revisión del mínimo de existencias.",
         // AGENDA
     agenda: "Agenda",
     today: "Hoy",
@@ -1284,7 +1380,6 @@ organization_report_load_failed:
     product_lines: "Productos distintos",
     total_units: "Unidades totales",
     total_cost: "Costo total",
-    unit_cost: "Costo unitario",
     sale_price: "Precio de venta",
     line_cost: "Costo de línea",
     totals: "Totales",
@@ -1586,7 +1681,6 @@ organization_report_load_failed:
     credit_limit: "Límite de crédito",
     balance: "Saldo",
     status: "Estado",
-    active: "Activo",
     inactive: "Inactivo",
     show_inactive: "Mostrar inactivos",
     search_clients: "Buscar clientes...",
