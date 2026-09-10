@@ -23,6 +23,7 @@ import AgendaPanel from "./components/AgendaPanel";
 import OrganizationPanel from "./components/OrganizationPanel";
 import TransferPanel from "./components/TransferPanel";
 import ReorderCleanupModal from "./components/ReorderCleanupModal";
+import ProductMovementOptions from "./components/ProductMovementOptions";
 // Client management navigation and view
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
@@ -194,6 +195,8 @@ function App() {
     useState(null);
   const [reorderCleanupItems, setReorderCleanupItems] =
     useState([]);
+  const [reorderReminderQueue, setReorderReminderQueue] =
+    useState([]);
 
   const storeId = user?.store_id;
 
@@ -252,6 +255,60 @@ function App() {
     []
   );
 
+  const queueReorderReminders = useCallback(
+    reminders => {
+      const validReminders = (
+        Array.isArray(reminders) ? reminders : []
+      ).filter(reminder =>
+        Number(reminder?.product_id) > 0 &&
+        (reminder?.trigger === "lst" ||
+          reminder?.trigger === "zero")
+      );
+
+      if (validReminders.length === 0) {
+        return;
+      }
+
+      setReorderReminderQueue(current => {
+        const queuedKeys = new Set(
+          current.map(item =>
+            `${item.product_id}:${item.trigger}`
+          )
+        );
+        const next = [...current];
+
+        for (const reminder of validReminders) {
+          const normalized = {
+            product_id: Number(reminder.product_id),
+            product_name:
+              reminder.product_name || "",
+            new_stock: Number(reminder.new_stock || 0),
+            low_stock_threshold: Number(
+              reminder.low_stock_threshold || 0
+            ),
+            trigger: reminder.trigger
+          };
+          const key =
+            `${normalized.product_id}:${normalized.trigger}`;
+
+          if (!queuedKeys.has(key)) {
+            queuedKeys.add(key);
+            next.push(normalized);
+          }
+        }
+
+        return next;
+      });
+    },
+    []
+  );
+
+  const closeReorderReminder = useCallback(() => {
+    setReorderReminderQueue(current =>
+      current.slice(1)
+    );
+  }, []);
+
   useEffect(() => {
     const handleSynchronizedEvent =
       browserEvent => {
@@ -271,6 +328,11 @@ function App() {
             syncedEvent
           )
         );
+
+        queueReorderReminders(
+          browserEvent.detail?.responseData
+            ?.reorder_reminders
+        );
       };
 
     window.addEventListener(
@@ -284,7 +346,7 @@ function App() {
         handleSynchronizedEvent
       );
     };
-  }, [storeId, queueReorderCleanup]);
+  }, [storeId, queueReorderCleanup, queueReorderReminders]);
 
   const loadTransferAttention = useCallback(
     async () => {
@@ -2326,6 +2388,9 @@ const finalizeIntake = async () => {
       {view === "products" && (
         <ProductManagement
           storeId={storeId}
+          onReorderReminder={
+            queueReorderReminders
+          }
         />
       )}
 
@@ -2387,6 +2452,30 @@ const finalizeIntake = async () => {
             reorderCleanupItems
           }
           onClose={closeReorderCleanup}
+        />
+      )}
+
+      {reorderReminderQueue.length > 0 && (
+        <ProductMovementOptions
+          key={`${reorderReminderQueue[0].product_id}:${reorderReminderQueue[0].trigger}`}
+          storeId={storeId}
+          product={{
+            product_id:
+              reorderReminderQueue[0].product_id,
+            product:
+              reorderReminderQueue[0].product_name,
+            current_stock:
+              reorderReminderQueue[0].new_stock,
+            low_stock_threshold:
+              reorderReminderQueue[0]
+                .low_stock_threshold,
+            is_active: true
+          }}
+          initialView="reorder"
+          reminderTrigger={
+            reorderReminderQueue[0].trigger
+          }
+          onClose={closeReorderReminder}
         />
       )}
     </div>

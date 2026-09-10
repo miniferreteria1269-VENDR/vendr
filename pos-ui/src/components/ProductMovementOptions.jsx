@@ -14,10 +14,12 @@ function ProductMovementOptions({
   product,
   storeId,
   onClose,
-  onThresholdChanged
+  onThresholdChanged = () => {},
+  initialView = "menu",
+  reminderTrigger = null
 }) {
   const { t } = useLang();
-  const [view, setView] = useState("menu");
+  const [view, setView] = useState(initialView);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,12 +41,6 @@ function ProductMovementOptions({
     const translated = t(key);
     return translated && translated !== key ? translated : fallback;
   };
-
-  useEffect(() => {
-    setView("menu");
-    setError("");
-    setThreshold(String(product.low_stock_threshold ?? 0));
-  }, [product.product_id]);
 
   const openReorder = async () => {
     setView("reorder");
@@ -103,6 +99,16 @@ function ProductMovementOptions({
       setLoading(false);
     }
   };
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (initialView === "reorder") {
+      void openReorder();
+    }
+    // Reopen only when a new reminder product becomes active.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.product_id, initialView]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const saveThreshold = async () => {
     const numericThreshold = Number(threshold);
@@ -193,7 +199,10 @@ function ProductMovementOptions({
           <div>
             <h3 style={{ margin: 0 }}>{product.product}</h3>
             <div style={metadata}>
-              {t("final")}: {product.final_stock} · {t("current_stock")}: {product.current_stock} · {t("low_stock_threshold")}: {product.low_stock_threshold}
+              {product.final_stock != null && (
+                <>{t("final")}: {product.final_stock} · </>
+              )}
+              {t("current_stock")}: {product.current_stock} · {t("low_stock_threshold")}: {product.low_stock_threshold}
             </div>
           </div>
 
@@ -208,7 +217,7 @@ function ProductMovementOptions({
           </button>
         </div>
 
-        {view !== "menu" && view !== "performance" && (
+        {view !== "menu" && view !== "performance" && initialView !== "reorder" && (
           <button
             type="button"
             onClick={() => {
@@ -223,6 +232,17 @@ function ProductMovementOptions({
         )}
 
         {error && <div style={errorStyle}>{error}</div>}
+
+        {view === "reorder" && reminderTrigger && (
+          <div style={reminderStyle}>
+            <strong>{t("reorder_reminder_title")}</strong>
+            <span>
+              {reminderTrigger === "zero"
+                ? t("reorder_reminder_zero")
+                : t("reorder_reminder_lst")}
+            </span>
+          </div>
+        )}
 
         {view === "menu" && (
           <div style={optionGrid}>
@@ -337,7 +357,12 @@ function ProductMovementOptions({
                 </span>
               </label>
               <div style={footer}>
-                <button type="button" onClick={() => setView("menu")} disabled={saving} style={btnSecondary}>
+                <button
+                  type="button"
+                  onClick={initialView === "reorder" ? onClose : () => setView("menu")}
+                  disabled={saving}
+                  style={btnSecondary}
+                >
                   {t("cancel")}
                 </button>
                 <button type="button" onClick={saveReorder} disabled={saving} style={btnPrimary}>
@@ -392,5 +417,6 @@ const field = { display: "flex", flexDirection: "column", gap: 5 };
 const priorityField = { display: "flex", alignItems: "flex-start", gap: 9, marginTop: 14, padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.panel };
 const footer = { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 };
 const errorStyle = { marginBottom: 12, padding: 10, borderRadius: 6, background: "rgba(255, 92, 92, 0.12)", color: COLORS.danger };
+const reminderStyle = { display: "flex", flexDirection: "column", gap: 4, marginBottom: 14, padding: 10, border: "1px solid #d6a84b", borderRadius: 7, background: "rgba(214, 168, 75, 0.12)", color: COLORS.text };
 
 export default ProductMovementOptions;
