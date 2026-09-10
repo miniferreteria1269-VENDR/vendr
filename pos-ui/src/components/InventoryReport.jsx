@@ -1385,11 +1385,19 @@ function InventoryReport({
 
                 <button
                   type="button"
-                  onClick={openReorderProductPicker}
+                  onClick={loadReorderItems}
                   style={{
-                    ...btnPrimary,
+                    ...btnSecondary,
                     marginLeft: "auto",
                   }}
+                >
+                  {t("refresh")}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={openReorderProductPicker}
+                  style={btnPrimary}
                 >
                   + {t("add_product")}
                 </button>
@@ -1416,6 +1424,9 @@ function InventoryReport({
                       <th style={reorderHeaderCell}>Supplier</th>
                       <th style={reorderHeaderCell}>Supplier SKU</th>
                       <th style={reorderHeaderCell}>Quantity</th>
+                      <th style={reorderHeaderCell}>
+                        {t("current_stock")}
+                      </th>
                       <th style={reorderHeaderCell}>Estimated Unit Cost</th>
                       <th style={reorderHeaderCell}>Projected Cost</th>
                       <th style={reorderHeaderCell}>Actions</th>
@@ -1426,7 +1437,7 @@ function InventoryReport({
                     {visibleReorderItems.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={8}
                           style={{
                             padding: 18,
                             textAlign: "center",
@@ -1473,6 +1484,40 @@ function InventoryReport({
 
                           <td style={reorderBodyCell}>
                             {item.quantity}
+                          </td>
+
+                          <td
+                            style={{
+                              ...reorderBodyCell,
+                              color:
+                                item.tracks_stock &&
+                                item.stock != null &&
+                                Number(item.stock) <=
+                                  Number(
+                                    item.low_stock_threshold || 0
+                                  )
+                                  ? "#facc15"
+                                  : COLORS.text,
+                            }}
+                          >
+                            {item.stock == null ? (
+                              "—"
+                            ) : (
+                              <>
+                                <strong>
+                                  {item.stock}
+                                </strong>
+                                <div
+                                  style={{
+                                    color: COLORS.textDim,
+                                    fontSize: 11,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  LST: {item.low_stock_threshold ?? 0}
+                                </div>
+                              </>
+                            )}
                           </td>
 
                           <td style={reorderBodyCell}>
