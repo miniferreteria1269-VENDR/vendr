@@ -17057,7 +17057,10 @@ def get_reorder_items(
                 ri.cost_source,
                 ri.purchase_priority,
                 ri.created_at,
-                ri.updated_at
+                ri.updated_at,
+                p.stock,
+                p.low_stock_threshold,
+                p.tracks_stock
 
             FROM reorder_items ri
 
@@ -17140,7 +17143,15 @@ def get_reorder_items(
                     projected_cost,
 
                 "created_at": row[9],
-                "updated_at": row[10]
+                "updated_at": row[10],
+
+                "stock": int(row[11] or 0),
+
+                "low_stock_threshold":
+                    int(row[12] or 0),
+
+                "tracks_stock":
+                    bool(row[13])
             })
 
         return {

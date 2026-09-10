@@ -117,6 +117,19 @@ organization_report_load_failed:
     clear_supplier_list: "Clear Supplier List",
     clear_unassigned: "Clear Unassigned",
     save_to_reorder_list: "Save to Reorder List",
+    remove_replenished_from_reorder:
+      "Remove replenished products?",
+    reorder_cleanup_help:
+      "These products are on the reorder list. Choose which ones to remove now.",
+    select_all: "Select All",
+    remove_selected: "Remove Selected",
+    keep_all: "Keep All",
+    replenished_quantity: "Replenished",
+    still_low: "STILL LOW",
+    reorder_cleanup_check_failed:
+      "Inventory was updated, but VENDR could not check the reorder list.",
+    reorder_cleanup_remove_failed:
+      "Some products could not be removed. The remaining selections are shown below.",
 
     open: "Open",
     completed: "Completed",
@@ -929,6 +942,19 @@ organization_report_load_failed:
     clear_supplier_list: "Vaciar lista del proveedor",
     clear_unassigned: "Vaciar sin asignar",
     save_to_reorder_list: "Guardar en lista de reposición",
+    remove_replenished_from_reorder:
+      "¿Quitar productos reabastecidos?",
+    reorder_cleanup_help:
+      "Estos productos están en la lista de reposición. Elija cuáles desea quitar ahora.",
+    select_all: "Seleccionar todo",
+    remove_selected: "Quitar seleccionados",
+    keep_all: "Conservar todos",
+    replenished_quantity: "Reabastecido",
+    still_low: "AÚN BAJO",
+    reorder_cleanup_check_failed:
+      "El inventario se actualizó, pero VENDR no pudo revisar la lista de reposición.",
+    reorder_cleanup_remove_failed:
+      "No se pudieron quitar algunos productos. Las selecciones pendientes aparecen abajo.",
 
     open: "Pendientes",
     completed: "Completados",

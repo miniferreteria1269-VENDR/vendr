@@ -155,7 +155,8 @@ function TransferPanel({
   storeId,
   storeName,
   onProductsChanged,
-  onTransferStatusChanged
+  onTransferStatusChanged,
+  onReplenishmentCompleted
 }) {
   const { t } = useLang();
 
@@ -458,7 +459,7 @@ function TransferPanel({
               setSelectedTransfer(null);
             }}
             onReceived={
-              async () => {
+              async replenishedItems => {
                 if (onProductsChanged) {
                   await onProductsChanged();
                 }
@@ -470,6 +471,10 @@ function TransferPanel({
                 }
 
                 await refreshCurrentView();
+
+                onReplenishmentCompleted?.(
+                  replenishedItems
+                );
               }
             }
           />
@@ -1497,7 +1502,19 @@ function TransferDetail({
       );
 
       if (onReceived) {
-        await onReceived();
+        await onReceived(
+          payload.items
+            .filter(
+              item =>
+                item.quantity_received > 0
+            )
+            .map(item => ({
+              product_id:
+                item.destination_product_id,
+              quantity:
+                item.quantity_received
+            }))
+        );
       }
     } catch (submitError) {
       console.error(

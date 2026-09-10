@@ -3,6 +3,9 @@ import Dexie from "dexie";
 import apiClient from "./apiClient";
 import { offlineDb } from "./offlineDb";
 
+export const PENDING_EVENT_SYNCED_EVENT =
+  "vendr:pending-event-synced";
+
 /**
  * Stores an event locally exactly once.
  *
@@ -232,6 +235,26 @@ export const submitPendingEvent =
     await offlineDb.pendingEvents.delete(
       event.client_event_id
     );
+
+    /*
+     * Let the active UI offer contextual follow-up work
+     * only after the backend has accepted the inventory
+     * event. This also covers events synchronized later
+     * after the device comes back online.
+     */
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(
+          PENDING_EVENT_SYNCED_EVENT,
+          {
+            detail: {
+              event,
+              responseData
+            }
+          }
+        )
+      );
+    }
 
     return responseData;
   };
