@@ -22,6 +22,7 @@ import SupplierManagement from "./components/SupplierManagement";
 import AgendaPanel from "./components/AgendaPanel";
 import OrganizationPanel from "./components/OrganizationPanel";
 import TransferPanel from "./components/TransferPanel";
+import ReorderCleanupModal from "./components/ReorderCleanupModal";
 // Client management navigation and view
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
@@ -37,7 +38,8 @@ import {
 import {
   savePendingEvent,
   submitPendingEvent,
-  migratePendingSalesToEvents
+  migratePendingSalesToEvents,
+  PENDING_EVENT_SYNCED_EVENT
 } from "./offlineEvents";
 
 import {
@@ -76,6 +78,57 @@ const createIntakeClientEventId = () =>
   `intake-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2)}`;
+
+const getReplenishedItemsFromEvent =
+  event => {
+    if (event?.event_type === "intake") {
+      return (
+        event.payload?.items || []
+      ).map(item => ({
+        product_id: item.product_id,
+        quantity: Number(item.quantity || 0)
+      }));
+    }
+
+    if (
+      event?.event_type ===
+      "stock_adjustment"
+    ) {
+      const countedTotal = Number(
+        event.payload?.counted_total
+      );
+      const expectedStock = Number(
+        event.payload?.expected_stock
+      );
+
+      let positiveQuantity = 0;
+
+      if (
+        Number.isFinite(countedTotal) &&
+        Number.isFinite(expectedStock)
+      ) {
+        positiveQuantity =
+          countedTotal - expectedStock;
+      } else if (
+        event.payload?.direction ===
+        "positive"
+      ) {
+        positiveQuantity = Number(
+          event.payload?.quantity || 0
+        );
+      }
+
+      return positiveQuantity > 0
+        ? [{
+            product_id:
+              event.payload?.product_id,
+            quantity: positiveQuantity
+          }]
+        : [];
+    }
+
+    return [];
+  };
 
 // Global color system
 const COLORS = {
@@ -139,8 +192,99 @@ function App() {
   const [discountType, setDiscountType] = useState("percent");
   const [completedReceipt, setCompletedReceipt] =
     useState(null);
+  const [reorderCleanupItems, setReorderCleanupItems] =
+    useState([]);
 
   const storeId = user?.store_id;
+
+  const queueReorderCleanup = useCallback(
+    items => {
+      const validItems = (
+        Array.isArray(items) ? items : []
+      ).filter(item =>
+        Number(item?.product_id) > 0 &&
+        Number(item?.quantity) > 0
+      );
+
+      if (validItems.length === 0) {
+        return;
+      }
+
+      setReorderCleanupItems(current => {
+        const merged = new Map(
+          current.map(item => [
+            Number(item.product_id),
+            {
+              product_id:
+                Number(item.product_id),
+              quantity:
+                Number(item.quantity || 0)
+            }
+          ])
+        );
+
+        for (const item of validItems) {
+          const productId = Number(
+            item.product_id
+          );
+          const previous = merged.get(
+            productId
+          );
+
+          merged.set(productId, {
+            product_id: productId,
+            quantity:
+              Number(previous?.quantity || 0) +
+              Number(item.quantity)
+          });
+        }
+
+        return Array.from(merged.values());
+      });
+    },
+    []
+  );
+
+  const closeReorderCleanup = useCallback(
+    () => {
+      setReorderCleanupItems([]);
+    },
+    []
+  );
+
+  useEffect(() => {
+    const handleSynchronizedEvent =
+      browserEvent => {
+        const syncedEvent =
+          browserEvent.detail?.event;
+
+        if (
+          !storeId ||
+          Number(syncedEvent?.store_id) !==
+            Number(storeId)
+        ) {
+          return;
+        }
+
+        queueReorderCleanup(
+          getReplenishedItemsFromEvent(
+            syncedEvent
+          )
+        );
+      };
+
+    window.addEventListener(
+      PENDING_EVENT_SYNCED_EVENT,
+      handleSynchronizedEvent
+    );
+
+    return () => {
+      window.removeEventListener(
+        PENDING_EVENT_SYNCED_EVENT,
+        handleSynchronizedEvent
+      );
+    };
+  }, [storeId, queueReorderCleanup]);
 
   const loadTransferAttention = useCallback(
     async () => {
@@ -605,6 +749,7 @@ function App() {
   setUser(null);
   setTickets([]);
   setActiveTicket(null);
+  setReorderCleanupItems([]);
 };
 
   useEffect(() => {
@@ -2164,6 +2309,9 @@ const finalizeIntake = async () => {
           onTransferStatusChanged={
             loadTransferAttention
           }
+          onReplenishmentCompleted={
+            queueReorderCleanup
+          }
         />
       )}
 
@@ -2231,6 +2379,16 @@ const finalizeIntake = async () => {
           setCompletedReceipt(null)
         }
       />
+
+      {reorderCleanupItems.length > 0 && (
+        <ReorderCleanupModal
+          storeId={storeId}
+          replenishedItems={
+            reorderCleanupItems
+          }
+          onClose={closeReorderCleanup}
+        />
+      )}
     </div>
   );
 }
