@@ -4386,6 +4386,54 @@ def build_reorder_reminder(
         "trigger": trigger
     }
 
+
+def load_negative_stock_items(
+    cursor,
+    store_id,
+    product_ids
+):
+    normalized_ids = sorted({
+        int(product_id)
+        for product_id in product_ids
+        if product_id is not None
+    })
+
+    if not normalized_ids:
+        return []
+
+    cursor.execute(
+        """
+        SELECT
+            product_id,
+            name,
+            stock,
+            low_stock_threshold,
+            location_code
+        FROM products
+        WHERE store_id = %s
+          AND product_id = ANY(%s)
+          AND is_active = 1
+          AND tracks_stock = 1
+          AND COALESCE(stock, 0) < 0
+        ORDER BY LOWER(name), product_id
+        """,
+        (
+            store_id,
+            normalized_ids
+        )
+    )
+
+    return [
+        {
+            "product_id": int(row[0]),
+            "product_name": row[1],
+            "new_stock": int(row[2] or 0),
+            "low_stock_threshold": int(row[3] or 0),
+            "location_code": row[4]
+        }
+        for row in cursor.fetchall()
+    ]
+
 @app.post("/sale-ticket")
 def sale_ticket(
     ticket: SaleTicket,
@@ -4447,6 +4495,16 @@ def sale_ticket(
                     # Customer-facing store number
                     "ticket_number":
                         existing[1],
+
+                    "negative_stock_items":
+                        load_negative_stock_items(
+                            cursor,
+                            ticket.store_id,
+                            [
+                                item.product_id
+                                for item in ticket.items
+                            ]
+                        ),
 
                     "client_event_id":
                         ticket.client_event_id
@@ -4597,6 +4655,7 @@ def sale_ticket(
 
         total_revenue = 0.0
         reorder_reminders = []
+        negative_stock_items = {}
 
         # -------------------------------------------------
         # PROCESS SALE ITEMS
@@ -4609,7 +4668,8 @@ def sale_ticket(
                     cost,
                     stock,
                     low_stock_threshold,
-                    tracks_stock
+                    tracks_stock,
+                    location_code
                 FROM products
                 WHERE product_id = %s
                   AND store_id = %s
@@ -4638,7 +4698,8 @@ def sale_ticket(
                 cost,
                 previous_stock,
                 low_stock_threshold,
-                tracks_stock
+                tracks_stock,
+                location_code
             ) = product
 
             quantity = int(
@@ -4744,6 +4805,24 @@ def sale_ticket(
 
                 if reminder:
                     reorder_reminders.append(reminder)
+
+                new_stock = int(
+                    updated_product[0] or 0
+                )
+
+                if new_stock < 0:
+                    negative_stock_items[
+                        int(item.product_id)
+                    ] = {
+                        "product_id":
+                            int(item.product_id),
+                        "product_name": name,
+                        "new_stock": new_stock,
+                        "low_stock_threshold": int(
+                            low_stock_threshold or 0
+                        ),
+                        "location_code": location_code
+                    }
 
         total_revenue = round(
             total_revenue,
@@ -4892,6 +4971,9 @@ def sale_ticket(
             "reorder_reminders":
                 reorder_reminders,
 
+            "negative_stock_items":
+                list(negative_stock_items.values()),
+
             "client_event_id":
                 ticket.client_event_id
         }
@@ -4938,6 +5020,16 @@ def sale_ticket(
 
                     "ticket_number":
                         existing[1],
+
+                    "negative_stock_items":
+                        load_negative_stock_items(
+                            cursor,
+                            ticket.store_id,
+                            [
+                                item.product_id
+                                for item in ticket.items
+                            ]
+                        ),
 
                     "client_event_id":
                         ticket.client_event_id
