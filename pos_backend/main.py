@@ -4355,6 +4355,37 @@ def sale_product(store_id: int, product_id: int, quantity: int):
 # SALE TICKET
 # -----------------------------
 
+def build_reorder_reminder(
+    product_id,
+    product_name,
+    previous_stock,
+    new_stock,
+    low_stock_threshold
+):
+    numeric_previous = int(previous_stock or 0)
+    numeric_stock = int(new_stock or 0)
+    numeric_threshold = int(
+        low_stock_threshold or 0
+    )
+
+    if numeric_previous > 0 and numeric_stock <= 0:
+        trigger = "zero"
+    elif (
+        numeric_previous > numeric_threshold
+        and numeric_stock <= numeric_threshold
+    ):
+        trigger = "lst"
+    else:
+        return None
+
+    return {
+        "product_id": int(product_id),
+        "product_name": product_name,
+        "new_stock": numeric_stock,
+        "low_stock_threshold": numeric_threshold,
+        "trigger": trigger
+    }
+
 @app.post("/sale-ticket")
 def sale_ticket(
     ticket: SaleTicket,
@@ -4565,6 +4596,7 @@ def sale_ticket(
         )
 
         total_revenue = 0.0
+        reorder_reminders = []
 
         # -------------------------------------------------
         # PROCESS SALE ITEMS
@@ -4574,11 +4606,15 @@ def sale_ticket(
                 """
                 SELECT
                     name,
-                    cost
+                    cost,
+                    stock,
+                    low_stock_threshold,
+                    tracks_stock
                 FROM products
                 WHERE product_id = %s
                   AND store_id = %s
                   AND is_active = 1
+                FOR UPDATE
                 """,
                 (
                     item.product_id,
@@ -4597,7 +4633,13 @@ def sale_ticket(
                     )
                 )
 
-            name, cost = product
+            (
+                name,
+                cost,
+                previous_stock,
+                low_stock_threshold,
+                tracks_stock
+            ) = product
 
             quantity = int(
                 item.quantity
@@ -4677,6 +4719,7 @@ def sale_ticket(
                 WHERE product_id = %s
                   AND store_id = %s
                   AND tracks_stock = 1
+                RETURNING stock
                 """,
                 (
                     quantity,
@@ -4684,6 +4727,23 @@ def sale_ticket(
                     ticket.store_id
                 )
             )
+
+            updated_product = cursor.fetchone()
+
+            if updated_product and (
+                tracks_stock == 1 or
+                tracks_stock is True
+            ):
+                reminder = build_reorder_reminder(
+                    item.product_id,
+                    name,
+                    previous_stock,
+                    updated_product[0],
+                    low_stock_threshold
+                )
+
+                if reminder:
+                    reorder_reminders.append(reminder)
 
         total_revenue = round(
             total_revenue,
@@ -4828,6 +4888,9 @@ def sale_ticket(
 
             "is_credit":
                 ticket.is_credit,
+
+            "reorder_reminders":
+                reorder_reminders,
 
             "client_event_id":
                 ticket.client_event_id
@@ -5145,11 +5208,14 @@ def record_loss(
                 name,
                 cost,
                 price,
-                tracks_stock
+                tracks_stock,
+                stock,
+                low_stock_threshold
             FROM products
             WHERE product_id = %s
               AND store_id = %s
               AND is_active = 1
+            FOR UPDATE
             """,
             (
                 product_id,
@@ -5169,7 +5235,9 @@ def record_loss(
             product_name,
             cost,
             price,
-            tracks_stock
+            tracks_stock,
+            previous_stock,
+            low_stock_threshold
         ) = product
 
         if (
@@ -5275,6 +5343,14 @@ def record_loss(
             updated_product[0] or 0
         )
 
+        reminder = build_reorder_reminder(
+            product_id,
+            product_name,
+            previous_stock,
+            new_stock,
+            low_stock_threshold
+        )
+
         conn.commit()
 
         return {
@@ -5300,7 +5376,10 @@ def record_loss(
                 normalized_note,
 
             "new_stock":
-                new_stock
+                new_stock,
+
+            "reorder_reminders":
+                [reminder] if reminder else []
         }
 
     except HTTPException:
@@ -6669,7 +6748,8 @@ def stock_adjustment(
                 stock,
                 cost,
                 price,
-                tracks_stock
+                tracks_stock,
+                low_stock_threshold
             FROM products
             WHERE product_id = %s
               AND store_id = %s
@@ -6695,7 +6775,8 @@ def stock_adjustment(
             current_stock,
             cost,
             price,
-            tracks_stock
+            tracks_stock,
+            low_stock_threshold
         ) = product
 
         if tracks_stock != 1:
@@ -6881,6 +6962,18 @@ def stock_adjustment(
 
         conn.commit()
 
+        reminder = (
+            build_reorder_reminder(
+                data.product_id,
+                name,
+                previous_stock,
+                new_stock,
+                low_stock_threshold
+            )
+            if stock_delta < 0
+            else None
+        )
+
         return {
             "status":
                 "accepted",
@@ -6908,6 +7001,9 @@ def stock_adjustment(
 
             "new_stock":
                 new_stock,
+
+            "reorder_reminders":
+                [reminder] if reminder else [],
 
             "client_event_id":
                 data.client_event_id

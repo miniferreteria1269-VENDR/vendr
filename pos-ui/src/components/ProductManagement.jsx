@@ -27,7 +27,11 @@ import {
 // ==============================
 // MAIN PANEL
 // ==============================
-function ProductManagement({ storeId, onProductsChanged }) {
+function ProductManagement({
+  storeId,
+  onProductsChanged,
+  onReorderReminder
+}) {
   const { t } = useLang();
   const [pmView, setPmView] = useState("menu");
   const [products, setProducts] = useState([]);
@@ -279,7 +283,19 @@ function ProductManagement({ storeId, onProductsChanged }) {
         >
           {pmView === "price" && <PriceChange storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
           {pmView === "edit" && <EditDetails storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
-          {pmView === "loss" && <LogLoss storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
+          {pmView === "loss" && (
+            <LogLoss
+              storeId={storeId}
+              product={selectedProduct}
+              onCompleted={async responseData => {
+                await refreshProducts();
+                onReorderReminder?.(
+                  responseData?.reorder_reminders
+                );
+              }}
+              onClose={() => setSelectedProduct(null)}
+            />
+          )}
           {pmView === "archive" && <ArchiveProduct storeId={storeId} product={selectedProduct} onCompleted={refreshProducts} onClose={() => setSelectedProduct(null)} />}
           {pmView === "suppliers" && <ProductSupplierManagement storeId={storeId} product={selectedProduct} embedded onChanged={refreshProducts} />}
           {pmView === "performance" && (
@@ -1172,7 +1188,7 @@ function LogLoss({ storeId, product, onCompleted, onClose }) {
   };
 
   const submit = async () => {
-    await apiClient.post(
+    const response = await apiClient.post(
       "/loss",
       null,
       {
@@ -1184,7 +1200,9 @@ function LogLoss({ storeId, product, onCompleted, onClose }) {
         }
       }
     );
-    if (onCompleted) await onCompleted();
+    if (onCompleted) {
+      await onCompleted(response.data);
+    }
     alert(t("loss_recorded"));
     if (onClose) onClose();
     else setSelected(null);

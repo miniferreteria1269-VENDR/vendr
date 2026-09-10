@@ -130,6 +130,12 @@ organization_report_load_failed:
       "Inventory was updated, but VENDR could not check the reorder list.",
     reorder_cleanup_remove_failed:
       "Some products could not be removed. The remaining selections are shown below.",
+    reorder_reminder_title:
+      "Add to Reorder reminder",
+    reorder_reminder_lst:
+      "This event brought the product to or below its low-stock threshold. Add it to the reorder list or update its existing entry.",
+    reorder_reminder_zero:
+      "This event brought the product to stock 0 or below. Add it to the reorder list or update its existing entry.",
 
     open: "Open",
     completed: "Completed",
@@ -955,6 +961,12 @@ organization_report_load_failed:
       "El inventario se actualizó, pero VENDR no pudo revisar la lista de reposición.",
     reorder_cleanup_remove_failed:
       "No se pudieron quitar algunos productos. Las selecciones pendientes aparecen abajo.",
+    reorder_reminder_title:
+      "Recordatorio de reposición",
+    reorder_reminder_lst:
+      "Este evento llevó el producto a su mínimo de existencias o por debajo. Agréguelo a la lista de reposición o actualice su registro existente.",
+    reorder_reminder_zero:
+      "Este evento llevó el producto a existencia 0 o menos. Agréguelo a la lista de reposición o actualice su registro existente.",
 
     open: "Pendientes",
     completed: "Completados",
