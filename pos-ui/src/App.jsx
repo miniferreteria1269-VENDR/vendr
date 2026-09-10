@@ -24,6 +24,7 @@ import OrganizationPanel from "./components/OrganizationPanel";
 import TransferPanel from "./components/TransferPanel";
 import ReorderCleanupModal from "./components/ReorderCleanupModal";
 import ProductMovementOptions from "./components/ProductMovementOptions";
+import NegativeStockSalePrompt from "./components/NegativeStockSalePrompt";
 // Client management navigation and view
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
@@ -197,6 +198,8 @@ function App() {
     useState([]);
   const [reorderReminderQueue, setReorderReminderQueue] =
     useState([]);
+  const [negativeStockSaleQueue, setNegativeStockSaleQueue] =
+    useState([]);
 
   const storeId = user?.store_id;
 
@@ -309,6 +312,72 @@ function App() {
     );
   }, []);
 
+  const queueNegativeStockSale = useCallback(
+    (event, responseData) => {
+      if (event?.event_type !== "sale") {
+        return;
+      }
+
+      const itemMap = new Map();
+
+      for (const item of (
+        Array.isArray(responseData?.negative_stock_items)
+          ? responseData.negative_stock_items
+          : []
+      )) {
+        if (
+          Number(item?.product_id) > 0 &&
+          Number(item?.new_stock) < 0
+        ) {
+          itemMap.set(Number(item.product_id), {
+            product_id: Number(item.product_id),
+            product_name: item.product_name || "",
+            new_stock: Number(item.new_stock),
+            low_stock_threshold: Number(
+              item.low_stock_threshold || 0
+            ),
+            location_code: item.location_code || ""
+          });
+        }
+      }
+
+      const items = Array.from(itemMap.values());
+
+      if (items.length === 0) {
+        return;
+      }
+
+      const batchKey = String(
+        event.client_event_id ||
+        responseData?.client_event_id ||
+        responseData?.ticket_id ||
+        `${Date.now()}-${Math.random()}`
+      );
+
+      setNegativeStockSaleQueue(current => {
+        if (current.some(batch => batch.key === batchKey)) {
+          return current;
+        }
+
+        return [
+          ...current,
+          {
+            key: batchKey,
+            ticket_number: responseData?.ticket_number,
+            items
+          }
+        ];
+      });
+    },
+    []
+  );
+
+  const closeNegativeStockSale = useCallback(batchKey => {
+    setNegativeStockSaleQueue(current =>
+      current.filter(batch => batch.key !== batchKey)
+    );
+  }, []);
+
   useEffect(() => {
     const handleSynchronizedEvent =
       browserEvent => {
@@ -333,6 +402,11 @@ function App() {
           browserEvent.detail?.responseData
             ?.reorder_reminders
         );
+
+        queueNegativeStockSale(
+          syncedEvent,
+          browserEvent.detail?.responseData
+        );
       };
 
     window.addEventListener(
@@ -346,7 +420,12 @@ function App() {
         handleSynchronizedEvent
       );
     };
-  }, [storeId, queueReorderCleanup, queueReorderReminders]);
+  }, [
+    storeId,
+    queueReorderCleanup,
+    queueReorderReminders,
+    queueNegativeStockSale
+  ]);
 
   const loadTransferAttention = useCallback(
     async () => {
@@ -2445,39 +2524,108 @@ const finalizeIntake = async () => {
         }
       />
 
-      {reorderCleanupItems.length > 0 && (
-        <ReorderCleanupModal
+      {negativeStockSaleQueue.length > 0 && (
+        <NegativeStockSalePrompt
+          key={negativeStockSaleQueue[0].key}
           storeId={storeId}
-          replenishedItems={
-            reorderCleanupItems
+          batch={negativeStockSaleQueue[0]}
+          onClose={() =>
+            closeNegativeStockSale(
+              negativeStockSaleQueue[0].key
+            )
           }
-          onClose={closeReorderCleanup}
+          onAdjusted={async completed => {
+            const resolvedIds = new Set(
+              completed
+                .filter(item => Number(item.new_stock) >= 0)
+                .map(item => Number(item.product_id))
+            );
+
+            setProducts(current =>
+              current.map(product => {
+                const adjustment = completed.find(
+                  item => Number(item.product_id) ===
+                    Number(product.product_id)
+                );
+
+                return adjustment
+                  ? {
+                      ...product,
+                      stock: adjustment.new_stock
+                    }
+                  : product;
+              })
+            );
+
+            setNegativeStockSaleQueue(current =>
+              current
+                .map(batch => ({
+                  ...batch,
+                  items: batch.items.filter(
+                    item => !resolvedIds.has(
+                      Number(item.product_id)
+                    )
+                  )
+                }))
+                .filter(batch => batch.items.length > 0)
+            );
+
+            setReorderReminderQueue(current =>
+              current.filter(reminder => {
+                const adjustment = completed.find(
+                  item => Number(item.product_id) ===
+                    Number(reminder.product_id)
+                );
+
+                return !adjustment ||
+                  Number(adjustment.new_stock) <=
+                    Number(reminder.low_stock_threshold || 0);
+              })
+            );
+
+            if (completed.every(item => item.synchronized)) {
+              await loadPriorityLowStock();
+            }
+          }}
         />
       )}
 
-      {reorderReminderQueue.length > 0 && (
-        <ProductMovementOptions
-          key={`${reorderReminderQueue[0].product_id}:${reorderReminderQueue[0].trigger}`}
-          storeId={storeId}
-          product={{
-            product_id:
-              reorderReminderQueue[0].product_id,
-            product:
-              reorderReminderQueue[0].product_name,
-            current_stock:
-              reorderReminderQueue[0].new_stock,
-            low_stock_threshold:
-              reorderReminderQueue[0]
-                .low_stock_threshold,
-            is_active: true
-          }}
-          initialView="reorder"
-          reminderTrigger={
-            reorderReminderQueue[0].trigger
-          }
-          onClose={closeReorderReminder}
-        />
-      )}
+      {negativeStockSaleQueue.length === 0 &&
+        reorderCleanupItems.length > 0 && (
+          <ReorderCleanupModal
+            storeId={storeId}
+            replenishedItems={
+              reorderCleanupItems
+            }
+            onClose={closeReorderCleanup}
+          />
+        )}
+
+      {negativeStockSaleQueue.length === 0 &&
+        reorderCleanupItems.length === 0 &&
+        reorderReminderQueue.length > 0 && (
+          <ProductMovementOptions
+            key={`${reorderReminderQueue[0].product_id}:${reorderReminderQueue[0].trigger}`}
+            storeId={storeId}
+            product={{
+              product_id:
+                reorderReminderQueue[0].product_id,
+              product:
+                reorderReminderQueue[0].product_name,
+              current_stock:
+                reorderReminderQueue[0].new_stock,
+              low_stock_threshold:
+                reorderReminderQueue[0]
+                  .low_stock_threshold,
+              is_active: true
+            }}
+            initialView="reorder"
+            reminderTrigger={
+              reorderReminderQueue[0].trigger
+            }
+            onClose={closeReorderReminder}
+          />
+        )}
     </div>
   );
 }

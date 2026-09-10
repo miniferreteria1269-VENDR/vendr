@@ -136,6 +136,19 @@ organization_report_load_failed:
       "This event brought the product to or below its low-stock threshold. Add it to the reorder list or update its existing entry.",
     reorder_reminder_zero:
       "This event brought the product to stock 0 or below. Add it to the reorder list or update its existing entry.",
+    negative_stock_sale_alert:
+      "Sale produced negative stock",
+    negative_stock_sale_help:
+      "One or more sold products now have negative recorded stock. Close this reminder or review the physical counts now.",
+    negative_stock_review_title:
+      "Review negative stock",
+    negative_stock_review_help:
+      "Enter a confirmed physical count for each product you reviewed. Leave a row blank to skip it. Each completed row is saved as its own auditable adjustment.",
+    negative_stock_enter_count:
+      "Enter at least one confirmed count.",
+    negative_stock_some_not_queued:
+      "Some adjustments could not be queued or require another count. Review the remaining rows below.",
+    queue_adjustments: "Queue adjustments",
 
     open: "Open",
     completed: "Completed",
@@ -967,6 +980,19 @@ organization_report_load_failed:
       "Este evento llevó el producto a su mínimo de existencias o por debajo. Agréguelo a la lista de reposición o actualice su registro existente.",
     reorder_reminder_zero:
       "Este evento llevó el producto a existencia 0 o menos. Agréguelo a la lista de reposición o actualice su registro existente.",
+    negative_stock_sale_alert:
+      "La venta produjo existencias negativas",
+    negative_stock_sale_help:
+      "Uno o más productos vendidos ahora tienen existencias negativas registradas. Cierre este recordatorio o revise los conteos físicos ahora.",
+    negative_stock_review_title:
+      "Revisar existencias negativas",
+    negative_stock_review_help:
+      "Ingrese un conteo físico confirmado para cada producto revisado. Deje una fila vacía para omitirla. Cada fila completada se guarda como un ajuste auditable independiente.",
+    negative_stock_enter_count:
+      "Ingrese al menos un conteo confirmado.",
+    negative_stock_some_not_queued:
+      "Algunos ajustes no se pudieron encolar o requieren otro conteo. Revise las filas restantes abajo.",
+    queue_adjustments: "Encolar ajustes",
 
     open: "Pendientes",
     completed: "Completados",
