@@ -4,6 +4,7 @@ import {
   useState
 } from "react";
 import { useLang } from "./LanguageContext";
+import LanguageToggle from "./LanguageToggle";
 import {
   COLORS,
   card,
@@ -400,6 +401,7 @@ export default function Signup({
   if (verificationToken) {
     return (
       <div style={shellStyle}>
+        <LanguageToggle style={signupLanguageToggle} />
         <div
           style={{
             ...card,
@@ -451,6 +453,7 @@ export default function Signup({
   if (verificationState === "sent") {
     return (
       <div style={shellStyle}>
+        <LanguageToggle style={signupLanguageToggle} />
         <div
           style={{
             ...card,
@@ -494,6 +497,7 @@ export default function Signup({
 
   return (
     <div style={shellStyle}>
+        <LanguageToggle style={signupLanguageToggle} />
       <form
         onSubmit={handleSignup}
         style={{
@@ -724,3 +728,11 @@ export default function Signup({
     </div>
   );
 }
+
+
+const signupLanguageToggle = {
+  position: "fixed",
+  top: 16,
+  right: 16,
+  zIndex: 20,
+};

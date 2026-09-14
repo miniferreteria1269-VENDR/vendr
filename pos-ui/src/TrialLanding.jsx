@@ -1,4 +1,5 @@
 import { useLang } from "./LanguageContext";
+import LanguageToggle from "./LanguageToggle";
 
 const palette = {
   bg: "#0b0d12",
@@ -33,7 +34,10 @@ export default function TrialLanding({ onStart, onLogin }) {
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
         <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
           <strong style={{ fontSize: 24, letterSpacing: ".04em" }}>VENDR</strong>
-          <button onClick={onLogin} style={secondaryButton}>{t("login")}</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <LanguageToggle />
+            <button onClick={onLogin} style={secondaryButton}>{t("login")}</button>
+          </div>
         </nav>
 
         <section style={{
