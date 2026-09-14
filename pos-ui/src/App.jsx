@@ -8,6 +8,9 @@ import apiClient from "./apiClient";
 import { useLang } from "./LanguageContext";
 import Login from "./Login";
 import Signup from "./Signup";
+import TrialLanding from "./TrialLanding";
+import TrialOnboarding from "./TrialOnboarding";
+import TrialAdminPanel from "./TrialAdminPanel";
 import SyncStatus from "./components/SyncStatus";
 
 import ProductPanel from "./components/ProductPanel";
@@ -154,7 +157,19 @@ function App() {
 
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
-  const [authMode, setAuthMode] = useState("login");
+  const [authMode, setAuthMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("trial_token")) return "signup";
+    return params.has("trial") ||
+      window.location.pathname.replace(/\/+$/, "") === "/trial"
+      ? "trial"
+      : "login";
+  });
+  const [trialAdminRoute, setTrialAdminRoute] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("trial_admin") ||
+      window.location.pathname.replace(/\/+$/, "") === "/trial-admin";
+  });
 
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
@@ -202,6 +217,11 @@ function App() {
     useState([]);
 
   const storeId = user?.store_id;
+  const trialExpiresAt = user?.trial_expires_at ? new Date(user.trial_expires_at) : null;
+  const trialReadOnly = user?.account_type === "trial" && trialExpiresAt && trialExpiresAt.getTime() <= Date.now();
+  const trialDaysRemaining = user?.account_type === "trial" && trialExpiresAt
+    ? Math.max(0, Math.ceil((trialExpiresAt.getTime() - Date.now()) / 86400000))
+    : null;
 
   const queueReorderCleanup = useCallback(
     items => {
@@ -2046,6 +2066,15 @@ const finalizeIntake = async () => {
   // -------------------------------------------------
 
   if (!user) {
+    if (authMode === "trial") {
+      return (
+        <TrialLanding
+          onStart={() => setAuthMode("signup")}
+          onLogin={() => setAuthMode("login")}
+        />
+      );
+    }
+
     return authMode === "login" ? (
       <Login
         onLogin={setUser}
@@ -2073,6 +2102,17 @@ const finalizeIntake = async () => {
       >
         {t("loading")}
       </div>
+    );
+  }
+
+  if (trialAdminRoute) {
+    return (
+      <TrialAdminPanel
+        onBack={() => {
+          window.history.replaceState({}, "", "/");
+          setTrialAdminRoute(false);
+        }}
+      />
     );
   }
 
@@ -2105,6 +2145,12 @@ const finalizeIntake = async () => {
         boxSizing: "border-box"
       }}
     >
+      {user?.account_type === "trial" && (
+        <TrialOnboarding
+          storeId={storeId}
+          onNavigate={setView}
+        />
+      )}
       {/* HEADER */}
       <div
         style={{
@@ -2170,6 +2216,21 @@ const finalizeIntake = async () => {
         </button>
       </div>
 
+      {user?.account_type === "trial" && (
+        <div style={{
+          margin: "10px 12px 0",
+          padding: "10px 12px",
+          borderRadius: 8,
+          border: `1px solid ${trialReadOnly ? "#ef4444" : "#f59e0b"}`,
+          color: trialReadOnly ? "#fecaca" : "#fde68a",
+          background: trialReadOnly ? "rgba(127, 29, 29, 0.35)" : "rgba(120, 53, 15, 0.28)",
+          fontWeight: 700,
+        }}>
+          {trialReadOnly
+            ? t("trial_banner_read_only")
+            : t("trial_banner_days").replace("{days}", String(trialDaysRemaining))}
+        </div>
+      )}
       {/* NAVIGATION */}
       <div
         style={{

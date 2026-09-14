@@ -18,6 +18,11 @@ import secrets
 import json
 from fastapi.encoders import jsonable_encoder
 from psycopg2.extras import Json
+from pos_backend.trials import (
+    router as trial_router,
+    ensure_trial_schema,
+    enforce_trial_write_access
+)
 
 
 from enum import Enum
@@ -29,6 +34,10 @@ from fastapi.security import (
 )
 
 app = FastAPI()
+app.include_router(trial_router)
+app.middleware("http")(
+    enforce_trial_write_access
+)
 
 REQUIRED_COLUMNS = [
     "name",
@@ -269,7 +278,9 @@ class AIWeeklyBusinessReport(BaseModel):
     
 def create_access_token(
     user_id: int,
-    store_id: int
+    store_id: int,
+    account_type: str = "legacy",
+    trial_expires_at: Optional[datetime] = None
 ) -> str:
     now = datetime.now(
         timezone.utc
@@ -288,6 +299,18 @@ def create_access_token(
         "sub": str(user_id),
 
         "store_id": int(store_id),
+
+        # Legacy stores receive an explicit non-trial
+        # claim and therefore bypass all trial controls.
+        "account_type": str(
+            account_type or "legacy"
+        ),
+
+        "trial_expires_at": (
+            trial_expires_at.isoformat()
+            if trial_expires_at
+            else None
+        ),
 
         "iat": now,
 
@@ -3502,6 +3525,7 @@ def build_review_queue_data(alerts):
 @app.on_event("startup")
 def startup():
     init_db()
+    ensure_trial_schema()
 
 class SaleItem(BaseModel):
     product_id: int
@@ -13976,7 +14000,9 @@ class SignupRequest(BaseModel):
     store_name: str
 
 
-@app.post("/signup")
+# The former unrestricted /signup route is deliberately
+# not registered. Public account creation now goes through
+# /trial/request and creates no store until verification.
 def signup(
     data: SignupRequest
 ):
@@ -14194,7 +14220,9 @@ def login(
                 u.password,
                 u.password_hash,
                 u.store_id,
-                s.name
+                s.name,
+                s.account_type,
+                s.trial_expires_at
             FROM users u
             JOIN stores s
               ON u.store_id = s.store_id
@@ -14217,7 +14245,9 @@ def login(
             legacy_password,
             stored_hash,
             store_id,
-            store_name
+            store_name,
+            account_type,
+            trial_expires_at
         ) = user
 
         authenticated = False
@@ -14278,7 +14308,11 @@ def login(
         # ---------------------------------------------
         access_token = create_access_token(
             user_id=user_id,
-            store_id=store_id
+            store_id=store_id,
+            account_type=(
+                account_type or "legacy"
+            ),
+            trial_expires_at=trial_expires_at
         )
 
         return {
@@ -14298,7 +14332,24 @@ def login(
                 store_name,
 
             "email":
-                email
+                email,
+
+            "account_type":
+                account_type or "legacy",
+
+            "trial_expires_at": (
+                trial_expires_at.isoformat()
+                if trial_expires_at
+                else None
+            ),
+
+            "trial_read_only": bool(
+                (account_type or "legacy")
+                == "trial"
+                and trial_expires_at
+                and trial_expires_at
+                <= datetime.now(timezone.utc)
+            )
         }
 
     except HTTPException:
