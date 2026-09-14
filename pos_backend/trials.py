@@ -375,7 +375,33 @@ def send_verification_email(
     except HTTPException:
         raise
 
-    except (HTTPError, URLError, TimeoutError) as error:
+    except HTTPError as error:
+        try:
+            provider_body = error.read().decode(
+                "utf-8",
+                errors="replace",
+            )
+        except Exception:
+            provider_body = "<response body unavailable>"
+
+        # Keep credentials out of logs while retaining the provider's
+        # status and validation message for production diagnosis.
+        print(
+            "RESEND EMAIL HTTP ERROR:",
+            int(error.code),
+            provider_body[:2000],
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to send the verification email.",
+        ) from error
+
+    except (URLError, TimeoutError) as error:
+        print(
+            "RESEND EMAIL CONNECTION ERROR:",
+            type(error).__name__,
+            str(error)[:1000],
+        )
         raise HTTPException(
             status_code=503,
             detail="Unable to send the verification email.",
