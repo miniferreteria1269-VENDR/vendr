@@ -7,8 +7,9 @@ created through the verified `/trial/request` → `/trial/verify` flow receive
 
 ## Routes
 
-- `/trial`: public trial landing page and registration
-- `/trial-admin`: authenticated platform administration for trial review and conversion
+- `/?trial=1`: public trial landing page and registration
+- `/?trial_admin=1`: authenticated platform administration for trial review and conversion
+- `/trial` and `/trial-admin` are also recognized when the host is configured for SPA rewrites
 - `/login` behavior is unchanged; the existing application root still opens normal login
 
 ## Render environment variables
@@ -43,10 +44,10 @@ The existing `JWT_SECRET_KEY` and `JWT_ACCESS_TOKEN_MINUTES` configuration is re
 4. Verify the Resend sender and configure the email variables.
 5. Add the administering legacy store number to `VENDR_PLATFORM_ADMIN_STORE_IDS`.
 6. Deploy the frontend and verify normal login for an existing store.
-7. Open `/trial` and verify the landing page.
+7. Open `/?trial=1` and verify the landing page.
 8. Set `TRIAL_SIGNUP_ENABLED=true`.
 9. Create one test trial with a real email, follow the verification link, and perform one sale.
-10. Open `/trial-admin` while signed in to the allowlisted store and convert the test trial.
+10. Open `/?trial_admin=1` while signed in to the allowlisted store and convert the test trial.
 11. Sign back into the converted test store and confirm normal write access.
 
 ## Expiration behavior

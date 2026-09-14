@@ -31,7 +31,9 @@ export default function TrialAdminPanel({ onBack }) {
   }, [loadStores]);
 
   const convertStore = async (store) => {
-    if (!window.confirm(t("trial_admin_convert_confirm", { store: store.store_name }))) return;
+    if (!window.confirm(
+      t("trial_admin_convert_confirm").replace("{store}", store.store_name)
+    )) return;
 
     setConverting(store.store_id);
     setError("");

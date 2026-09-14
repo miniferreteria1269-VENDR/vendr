@@ -158,12 +158,18 @@ function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
   const [authMode, setAuthMode] = useState(() => {
-    if (new URLSearchParams(window.location.search).has("trial_token")) return "signup";
-    return window.location.pathname.replace(/\/+$/, "") === "/trial" ? "trial" : "login";
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("trial_token")) return "signup";
+    return params.has("trial") ||
+      window.location.pathname.replace(/\/+$/, "") === "/trial"
+      ? "trial"
+      : "login";
   });
-  const [trialAdminRoute, setTrialAdminRoute] = useState(
-    () => window.location.pathname.replace(/\/+$/, "") === "/trial-admin"
-  );
+  const [trialAdminRoute, setTrialAdminRoute] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("trial_admin") ||
+      window.location.pathname.replace(/\/+$/, "") === "/trial-admin";
+  });
 
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
@@ -2222,7 +2228,7 @@ const finalizeIntake = async () => {
         }}>
           {trialReadOnly
             ? t("trial_banner_read_only")
-            : t("trial_banner_days", { days: trialDaysRemaining })}
+            : t("trial_banner_days").replace("{days}", String(trialDaysRemaining))}
         </div>
       )}
       {/* NAVIGATION */}
