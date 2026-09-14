@@ -10,6 +10,7 @@ import Login from "./Login";
 import Signup from "./Signup";
 import TrialLanding from "./TrialLanding";
 import TrialOnboarding from "./TrialOnboarding";
+import TrialAdminPanel from "./TrialAdminPanel";
 import SyncStatus from "./components/SyncStatus";
 
 import ProductPanel from "./components/ProductPanel";
@@ -160,6 +161,9 @@ function App() {
     if (new URLSearchParams(window.location.search).has("trial_token")) return "signup";
     return window.location.pathname.replace(/\/+$/, "") === "/trial" ? "trial" : "login";
   });
+  const [trialAdminRoute, setTrialAdminRoute] = useState(
+    () => window.location.pathname.replace(/\/+$/, "") === "/trial-admin"
+  );
 
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
@@ -2092,6 +2096,17 @@ const finalizeIntake = async () => {
       >
         {t("loading")}
       </div>
+    );
+  }
+
+  if (trialAdminRoute) {
+    return (
+      <TrialAdminPanel
+        onBack={() => {
+          window.history.replaceState({}, "", "/");
+          setTrialAdminRoute(false);
+        }}
+      />
     );
   }
 

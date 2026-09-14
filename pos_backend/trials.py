@@ -908,6 +908,193 @@ def trial_status(
         conn.close()
 
 
+def platform_admin_store_ids() -> set[int]:
+    store_ids = set()
+
+    for value in os.environ.get(
+        "VENDR_PLATFORM_ADMIN_STORE_IDS",
+        "",
+    ).split(","):
+        value = value.strip()
+
+        if not value:
+            continue
+
+        try:
+            store_ids.add(int(value))
+        except ValueError:
+            continue
+
+    return store_ids
+
+
+def require_platform_admin(
+    current_user: TrialAuthenticatedUser = Depends(
+        get_trial_current_user
+    ),
+) -> TrialAuthenticatedUser:
+    if current_user.store_id not in platform_admin_store_ids():
+        raise HTTPException(
+            status_code=403,
+            detail="Platform administrator access is required.",
+        )
+
+    return current_user
+
+
+@router.get("/admin/stores")
+def list_trial_stores(
+    current_user: TrialAuthenticatedUser = Depends(
+        require_platform_admin
+    ),
+):
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                s.store_id,
+                s.name,
+                s.account_type,
+                s.trial_started_at,
+                s.trial_expires_at,
+                s.trial_retention_until,
+                s.trial_converted_at,
+                s.trial_contact_name,
+                s.trial_whatsapp,
+                s.trial_business_type,
+                u.email
+            FROM stores s
+            LEFT JOIN users u
+              ON u.store_id = s.store_id
+            WHERE s.trial_started_at IS NOT NULL
+            ORDER BY s.trial_started_at DESC, s.store_id DESC
+            """
+        )
+
+        stores = []
+
+        for row in cursor.fetchall():
+            expires_at = parse_timestamp(row[4])
+            stores.append(
+                {
+                    "store_id": int(row[0]),
+                    "store_name": row[1],
+                    "account_type": row[2] or "legacy",
+                    "trial_started_at": (
+                        row[3].isoformat() if row[3] else None
+                    ),
+                    "trial_expires_at": (
+                        expires_at.isoformat() if expires_at else None
+                    ),
+                    "trial_retention_until": (
+                        row[5].isoformat() if row[5] else None
+                    ),
+                    "trial_converted_at": (
+                        row[6].isoformat() if row[6] else None
+                    ),
+                    "contact_name": row[7],
+                    "whatsapp": row[8],
+                    "business_type": row[9],
+                    "email": row[10],
+                    "trial_read_only": bool(
+                        row[2] == "trial"
+                        and expires_at
+                        and expires_at <= utc_now()
+                    ),
+                }
+            )
+
+        return {"stores": stores}
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@router.post("/admin/stores/{store_id}/convert")
+def convert_trial_store(
+    store_id: int,
+    current_user: TrialAuthenticatedUser = Depends(
+        require_platform_admin
+    ),
+):
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            UPDATE stores
+            SET
+                account_type = 'paid',
+                trial_converted_at = COALESCE(
+                    trial_converted_at,
+                    %s
+                )
+            WHERE store_id = %s
+              AND account_type = 'trial'
+            RETURNING store_id, name, trial_converted_at
+            """,
+            (utc_now(), store_id),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            cursor.execute(
+                """
+                SELECT account_type
+                FROM stores
+                WHERE store_id = %s
+                """,
+                (store_id,),
+            )
+            existing = cursor.fetchone()
+
+            if not existing:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Trial store not found.",
+                )
+
+            if existing[0] == "paid":
+                conn.commit()
+                return {
+                    "store_id": store_id,
+                    "account_type": "paid",
+                    "already_converted": True,
+                }
+
+            raise HTTPException(
+                status_code=409,
+                detail="Only trial stores can be converted.",
+            )
+
+        conn.commit()
+
+        return {
+            "store_id": int(row[0]),
+            "store_name": row[1],
+            "account_type": "paid",
+            "trial_converted_at": row[2].isoformat(),
+            "already_converted": False,
+        }
+
+    except HTTPException:
+        conn.rollback()
+        raise
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
 async def enforce_trial_write_access(request: Request, call_next):
     if (
         request.method in SAFE_METHODS
@@ -937,6 +1124,31 @@ async def enforce_trial_write_access(request: Request, call_next):
     expires_at = parse_timestamp(payload.get("trial_expires_at"))
 
     if expires_at and expires_at <= utc_now():
+        # A converted store may still be using the trial token issued
+        # before conversion. Confirm only in this expired-trial path;
+        # legacy and active sessions incur no extra database query.
+        conn = db()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                SELECT account_type
+                FROM stores
+                WHERE store_id = %s
+                """,
+                (int(payload.get("store_id")),),
+            )
+            row = cursor.fetchone()
+        except (TypeError, ValueError):
+            row = None
+        finally:
+            cursor.close()
+            conn.close()
+
+        if row and row[0] != "trial":
+            return await call_next(request)
+
         return JSONResponse(
             status_code=403,
             content={
