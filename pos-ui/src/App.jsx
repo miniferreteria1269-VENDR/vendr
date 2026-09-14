@@ -8,6 +8,8 @@ import apiClient from "./apiClient";
 import { useLang } from "./LanguageContext";
 import Login from "./Login";
 import Signup from "./Signup";
+import TrialLanding from "./TrialLanding";
+import TrialOnboarding from "./TrialOnboarding";
 import SyncStatus from "./components/SyncStatus";
 
 import ProductPanel from "./components/ProductPanel";
@@ -154,7 +156,10 @@ function App() {
 
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
-  const [authMode, setAuthMode] = useState(() => new URLSearchParams(window.location.search).has("trial_token") ? "signup" : "login");
+  const [authMode, setAuthMode] = useState(() => {
+    if (new URLSearchParams(window.location.search).has("trial_token")) return "signup";
+    return window.location.pathname.replace(/\/+$/, "") === "/trial" ? "trial" : "login";
+  });
 
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
@@ -2051,6 +2056,15 @@ const finalizeIntake = async () => {
   // -------------------------------------------------
 
   if (!user) {
+    if (authMode === "trial") {
+      return (
+        <TrialLanding
+          onStart={() => setAuthMode("signup")}
+          onLogin={() => setAuthMode("login")}
+        />
+      );
+    }
+
     return authMode === "login" ? (
       <Login
         onLogin={setUser}
@@ -2110,6 +2124,12 @@ const finalizeIntake = async () => {
         boxSizing: "border-box"
       }}
     >
+      {user?.account_type === "trial" && (
+        <TrialOnboarding
+          storeId={storeId}
+          onNavigate={setView}
+        />
+      )}
       {/* HEADER */}
       <div
         style={{
