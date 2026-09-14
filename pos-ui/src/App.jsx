@@ -154,7 +154,7 @@ function App() {
 
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
-  const [authMode, setAuthMode] = useState("login");
+  const [authMode, setAuthMode] = useState(() => new URLSearchParams(window.location.search).has("trial_token") ? "signup" : "login");
 
   const [tickets, setTickets] = useState(() => {
     const saved = localStorage.getItem("tickets");
@@ -202,6 +202,11 @@ function App() {
     useState([]);
 
   const storeId = user?.store_id;
+  const trialExpiresAt = user?.trial_expires_at ? new Date(user.trial_expires_at) : null;
+  const trialReadOnly = user?.account_type === "trial" && trialExpiresAt && trialExpiresAt.getTime() <= Date.now();
+  const trialDaysRemaining = user?.account_type === "trial" && trialExpiresAt
+    ? Math.max(0, Math.ceil((trialExpiresAt.getTime() - Date.now()) / 86400000))
+    : null;
 
   const queueReorderCleanup = useCallback(
     items => {
@@ -2170,6 +2175,21 @@ const finalizeIntake = async () => {
         </button>
       </div>
 
+      {user?.account_type === "trial" && (
+        <div style={{
+          margin: "10px 12px 0",
+          padding: "10px 12px",
+          borderRadius: 8,
+          border: `1px solid ${trialReadOnly ? "#ef4444" : "#f59e0b"}`,
+          color: trialReadOnly ? "#fecaca" : "#fde68a",
+          background: trialReadOnly ? "rgba(127, 29, 29, 0.35)" : "rgba(120, 53, 15, 0.28)",
+          fontWeight: 700,
+        }}>
+          {trialReadOnly
+            ? t("trial_banner_read_only")
+            : t("trial_banner_days", { days: trialDaysRemaining })}
+        </div>
+      )}
       {/* NAVIGATION */}
       <div
         style={{

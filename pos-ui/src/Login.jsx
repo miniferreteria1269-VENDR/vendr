@@ -277,7 +277,7 @@ export default function Login({
           }
         >
           {t(
-            "create_account"
+            "start_free_trial"
           )}
         </button>
       </form>
