@@ -23,6 +23,10 @@ from pos_backend.trials import (
     ensure_trial_schema,
     enforce_trial_write_access
 )
+from pos_backend.subscriptions import (
+    subscription_access_state,
+    subscription_display_status
+)
 
 
 from enum import Enum
@@ -280,7 +284,10 @@ def create_access_token(
     user_id: int,
     store_id: int,
     account_type: str = "legacy",
-    trial_expires_at: Optional[datetime] = None
+    trial_expires_at: Optional[datetime] = None,
+    subscription_paid_through: Optional[datetime] = None,
+    subscription_grace_until: Optional[datetime] = None,
+    subscription_canceled_at: Optional[datetime] = None
 ) -> str:
     now = datetime.now(
         timezone.utc
@@ -309,6 +316,24 @@ def create_access_token(
         "trial_expires_at": (
             trial_expires_at.isoformat()
             if trial_expires_at
+            else None
+        ),
+
+        "subscription_paid_through": (
+            subscription_paid_through.isoformat()
+            if subscription_paid_through
+            else None
+        ),
+
+        "subscription_grace_until": (
+            subscription_grace_until.isoformat()
+            if subscription_grace_until
+            else None
+        ),
+
+        "subscription_canceled_at": (
+            subscription_canceled_at.isoformat()
+            if subscription_canceled_at
             else None
         ),
 
@@ -14222,7 +14247,11 @@ def login(
                 u.store_id,
                 s.name,
                 s.account_type,
-                s.trial_expires_at
+                s.trial_expires_at,
+                s.subscription_paid_through,
+                s.subscription_grace_until,
+                s.subscription_canceled_at,
+                s.subscription_monthly_price
             FROM users u
             JOIN stores s
               ON u.store_id = s.store_id
@@ -14247,7 +14276,11 @@ def login(
             store_id,
             store_name,
             account_type,
-            trial_expires_at
+            trial_expires_at,
+            subscription_paid_through,
+            subscription_grace_until,
+            subscription_canceled_at,
+            subscription_monthly_price
         ) = user
 
         authenticated = False
@@ -14312,7 +14345,18 @@ def login(
             account_type=(
                 account_type or "legacy"
             ),
-            trial_expires_at=trial_expires_at
+            trial_expires_at=trial_expires_at,
+            subscription_paid_through=subscription_paid_through,
+            subscription_grace_until=subscription_grace_until,
+            subscription_canceled_at=subscription_canceled_at
+        )
+
+        access = subscription_access_state(
+            account_type=account_type or "legacy",
+            trial_expires_at=trial_expires_at,
+            paid_through=subscription_paid_through,
+            grace_until=subscription_grace_until,
+            canceled_at=subscription_canceled_at,
         )
 
         return {
@@ -14346,10 +14390,39 @@ def login(
             "trial_read_only": bool(
                 (account_type or "legacy")
                 == "trial"
-                and trial_expires_at
-                and trial_expires_at
-                <= datetime.now(timezone.utc)
-            )
+                and access["read_only"]
+            ),
+
+            "subscription_paid_through": (
+                subscription_paid_through.isoformat()
+                if subscription_paid_through
+                else None
+            ),
+
+            "subscription_grace_until": (
+                subscription_grace_until.isoformat()
+                if subscription_grace_until
+                else None
+            ),
+
+            "subscription_canceled_at": (
+                subscription_canceled_at.isoformat()
+                if subscription_canceled_at
+                else None
+            ),
+
+            "subscription_monthly_price": (
+                str(subscription_monthly_price)
+                if subscription_monthly_price is not None
+                else None
+            ),
+
+            "subscription_status": subscription_display_status(
+                access,
+                subscription_paid_through,
+            ),
+
+            "account_read_only": access["read_only"]
         }
 
     except HTTPException:

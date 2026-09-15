@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 import hashlib
 import hmac
 import json
@@ -14,9 +15,16 @@ import psycopg2
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pwdlib import PasswordHash
 from jwt.exceptions import InvalidTokenError
+from pos_backend.subscriptions import (
+    calculate_subscription_period,
+    parse_timestamp,
+    subscription_access_state,
+    subscription_display_status,
+    utc_now,
+)
 
 
 router = APIRouter(prefix="/trial", tags=["trial"])
@@ -31,6 +39,12 @@ WRITE_GUARD_EXEMPT_PATHS = {
     "/trial/verify",
     "/health",
 }
+SUBSCRIPTION_PAYMENT_METHODS = {
+    "cash",
+    "bank_transfer",
+    "wompi",
+    "other",
+}
 
 
 def db():
@@ -44,23 +58,6 @@ def env_enabled(name: str, default: str = "false") -> bool:
         "yes",
         "on",
     }
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def parse_timestamp(value):
-    if value is None or isinstance(value, datetime):
-        return value
-
-    normalized = str(value).replace("Z", "+00:00")
-    parsed = datetime.fromisoformat(normalized)
-
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-
-    return parsed
 
 
 def public_trial_config():
@@ -144,6 +141,41 @@ def ensure_trial_schema():
         )
         cursor.execute(
             """
+            ALTER TABLE stores
+            ADD COLUMN IF NOT EXISTS
+                subscription_started_at TIMESTAMPTZ
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE stores
+            ADD COLUMN IF NOT EXISTS
+                subscription_paid_through TIMESTAMPTZ
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE stores
+            ADD COLUMN IF NOT EXISTS
+                subscription_grace_until TIMESTAMPTZ
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE stores
+            ADD COLUMN IF NOT EXISTS
+                subscription_canceled_at TIMESTAMPTZ
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE stores
+            ADD COLUMN IF NOT EXISTS
+                subscription_monthly_price NUMERIC(12, 2)
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS trial_signup_requests (
                 trial_signup_id BIGSERIAL PRIMARY KEY,
                 email TEXT NOT NULL,
@@ -179,6 +211,52 @@ def ensure_trial_schema():
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS subscription_payments (
+                subscription_payment_id BIGSERIAL PRIMARY KEY,
+                client_payment_id TEXT NOT NULL UNIQUE,
+                store_id INTEGER NOT NULL REFERENCES stores(store_id),
+                amount NUMERIC(12, 2) NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'USD',
+                payment_method TEXT NOT NULL,
+                payment_reference TEXT,
+                note TEXT,
+                paid_at TIMESTAMPTZ NOT NULL,
+                period_start TIMESTAMPTZ NOT NULL,
+                period_end TIMESTAMPTZ NOT NULL,
+                months_granted INTEGER NOT NULL,
+                recorded_by_user_id INTEGER NOT NULL REFERENCES users(user_id),
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_subscription_payments_store_created
+            ON subscription_payments (store_id, created_at DESC)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS subscription_admin_events (
+                subscription_admin_event_id BIGSERIAL PRIMARY KEY,
+                store_id INTEGER NOT NULL REFERENCES stores(store_id),
+                event_type TEXT NOT NULL,
+                note TEXT,
+                recorded_by_user_id INTEGER NOT NULL REFERENCES users(user_id),
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_subscription_admin_events_store_created
+            ON subscription_admin_events (store_id, created_at DESC)
+            """
+        )
 
         conn.commit()
 
@@ -204,6 +282,20 @@ class TrialSignupRequest(BaseModel):
 
 class TrialVerificationRequest(BaseModel):
     token: str
+
+
+class SubscriptionPaymentRequest(BaseModel):
+    client_payment_id: str = Field(min_length=8, max_length=100)
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    months: int = Field(default=1, ge=1, le=24)
+    payment_method: str
+    payment_reference: str | None = Field(default=None, max_length=200)
+    note: str | None = Field(default=None, max_length=1000)
+    paid_at: datetime | None = None
+
+
+class SubscriptionActionRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=1000)
 
 
 class TrialAuthenticatedUser(BaseModel):
@@ -884,7 +976,12 @@ def trial_status(
                 trial_started_at,
                 trial_expires_at,
                 trial_retention_until,
-                trial_converted_at
+                trial_converted_at,
+                subscription_started_at,
+                subscription_paid_through,
+                subscription_grace_until,
+                subscription_canceled_at,
+                subscription_monthly_price
             FROM stores
             WHERE store_id = %s
             """,
@@ -895,19 +992,26 @@ def trial_status(
         if not row:
             raise HTTPException(status_code=404, detail="Store not found.")
 
+        now = utc_now()
         account_type = row[0] or "legacy"
         expires_at = parse_timestamp(row[2])
-        read_only = bool(
-            account_type == "trial"
-            and expires_at
-            and expires_at <= utc_now()
+        paid_through = parse_timestamp(row[6])
+        grace_until = parse_timestamp(row[7])
+        canceled_at = parse_timestamp(row[8])
+        access = subscription_access_state(
+            account_type=account_type,
+            trial_expires_at=expires_at,
+            paid_through=paid_through,
+            grace_until=grace_until,
+            canceled_at=canceled_at,
+            now=now,
         )
         days_remaining = None
 
         if account_type == "trial" and expires_at:
             seconds = max(
                 0,
-                (expires_at - utc_now()).total_seconds(),
+                (expires_at - now).total_seconds(),
             )
             days_remaining = int((seconds + 86399) // 86400)
 
@@ -927,7 +1031,30 @@ def trial_status(
                 row[4].isoformat() if row[4] else None
             ),
             "trial_days_remaining": days_remaining,
-            "trial_read_only": read_only,
+            "trial_read_only": bool(
+                account_type == "trial" and access["read_only"]
+            ),
+            "subscription_started_at": (
+                row[5].isoformat() if row[5] else None
+            ),
+            "subscription_paid_through": (
+                paid_through.isoformat() if paid_through else None
+            ),
+            "subscription_grace_until": (
+                grace_until.isoformat() if grace_until else None
+            ),
+            "subscription_canceled_at": (
+                canceled_at.isoformat() if canceled_at else None
+            ),
+            "subscription_monthly_price": (
+                str(row[9]) if row[9] is not None else None
+            ),
+            "subscription_status": subscription_display_status(
+                access,
+                paid_through,
+                now,
+            ),
+            "account_read_only": access["read_only"],
         }
 
     finally:
@@ -1046,19 +1173,52 @@ def list_trial_stores(
                 s.trial_contact_name,
                 s.trial_whatsapp,
                 s.trial_business_type,
-                u.email
+                u.email,
+                s.subscription_started_at,
+                s.subscription_paid_through,
+                s.subscription_grace_until,
+                s.subscription_canceled_at,
+                s.subscription_monthly_price,
+                last_payment.amount,
+                last_payment.paid_at,
+                last_payment.payment_method,
+                COALESCE(payment_totals.payment_count, 0)
             FROM stores s
             LEFT JOIN users u
               ON u.store_id = s.store_id
+            LEFT JOIN LATERAL (
+                SELECT amount, paid_at, payment_method
+                FROM subscription_payments
+                WHERE store_id = s.store_id
+                ORDER BY paid_at DESC, subscription_payment_id DESC
+                LIMIT 1
+            ) last_payment ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS payment_count
+                FROM subscription_payments
+                WHERE store_id = s.store_id
+            ) payment_totals ON TRUE
             WHERE s.trial_started_at IS NOT NULL
             ORDER BY s.trial_started_at DESC, s.store_id DESC
             """
         )
 
         stores = []
+        now = utc_now()
 
         for row in cursor.fetchall():
             expires_at = parse_timestamp(row[4])
+            paid_through = parse_timestamp(row[12])
+            grace_until = parse_timestamp(row[13])
+            canceled_at = parse_timestamp(row[14])
+            access = subscription_access_state(
+                account_type=row[2] or "legacy",
+                trial_expires_at=expires_at,
+                paid_through=paid_through,
+                grace_until=grace_until,
+                canceled_at=canceled_at,
+                now=now,
+            )
             stores.append(
                 {
                     "store_id": int(row[0]),
@@ -1080,16 +1240,420 @@ def list_trial_stores(
                     "whatsapp": row[8],
                     "business_type": row[9],
                     "email": row[10],
-                    "trial_read_only": bool(
-                        row[2] == "trial"
-                        and expires_at
-                        and expires_at <= utc_now()
+                    "subscription_started_at": (
+                        row[11].isoformat() if row[11] else None
                     ),
+                    "subscription_paid_through": (
+                        paid_through.isoformat() if paid_through else None
+                    ),
+                    "subscription_grace_until": (
+                        grace_until.isoformat() if grace_until else None
+                    ),
+                    "subscription_canceled_at": (
+                        canceled_at.isoformat() if canceled_at else None
+                    ),
+                    "subscription_monthly_price": (
+                        str(row[15])
+                        if row[15] is not None
+                        else os.environ.get("VENDR_MONTHLY_PRICE", "20.00")
+                    ),
+                    "subscription_status": subscription_display_status(
+                        access,
+                        paid_through,
+                        now,
+                    ),
+                    "account_read_only": access["read_only"],
+                    "trial_read_only": bool(
+                        (row[2] or "legacy") == "trial"
+                        and access["read_only"]
+                    ),
+                    "last_payment_amount": (
+                        str(row[16]) if row[16] is not None else None
+                    ),
+                    "last_payment_at": (
+                        row[17].isoformat() if row[17] else None
+                    ),
+                    "last_payment_method": row[18],
+                    "payment_count": int(row[19]),
                 }
             )
 
         return {"stores": stores}
 
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def serialize_subscription_payment(row) -> dict:
+    return {
+        "subscription_payment_id": int(row[0]),
+        "client_payment_id": row[1],
+        "amount": str(row[2]),
+        "currency": row[3],
+        "payment_method": row[4],
+        "payment_reference": row[5],
+        "note": row[6],
+        "paid_at": row[7].isoformat(),
+        "period_start": row[8].isoformat(),
+        "period_end": row[9].isoformat(),
+        "months_granted": int(row[10]),
+        "recorded_by_email": row[11],
+        "created_at": row[12].isoformat(),
+    }
+
+
+@router.get("/admin/stores/{store_id}/payments")
+def list_subscription_payments(
+    store_id: int,
+    current_user: TrialAuthenticatedUser = Depends(
+        require_platform_admin
+    ),
+):
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                p.subscription_payment_id,
+                p.client_payment_id,
+                p.amount,
+                p.currency,
+                p.payment_method,
+                p.payment_reference,
+                p.note,
+                p.paid_at,
+                p.period_start,
+                p.period_end,
+                p.months_granted,
+                u.email,
+                p.created_at
+            FROM subscription_payments p
+            JOIN users u
+              ON u.user_id = p.recorded_by_user_id
+            WHERE p.store_id = %s
+            ORDER BY p.paid_at DESC, p.subscription_payment_id DESC
+            """,
+            (store_id,),
+        )
+        return {
+            "payments": [
+                serialize_subscription_payment(row)
+                for row in cursor.fetchall()
+            ]
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@router.post("/admin/stores/{store_id}/payments")
+def record_subscription_payment(
+    store_id: int,
+    data: SubscriptionPaymentRequest,
+    current_user: TrialAuthenticatedUser = Depends(
+        require_platform_admin
+    ),
+):
+    payment_method = data.payment_method.strip().lower()
+
+    if payment_method not in SUBSCRIPTION_PAYMENT_METHODS:
+        raise HTTPException(status_code=400, detail="Invalid payment method.")
+
+    client_payment_id = data.client_payment_id.strip()
+    reference = (data.payment_reference or "").strip() or None
+    note = (data.note or "").strip() or None
+    paid_at = parse_timestamp(data.paid_at) or utc_now()
+    now = utc_now()
+    grace_days = max(
+        0,
+        int(os.environ.get("SUBSCRIPTION_GRACE_DAYS", "3")),
+    )
+    monthly_price = Decimal(
+        os.environ.get("VENDR_MONTHLY_PRICE", "20.00")
+    )
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                subscription_payment_id,
+                store_id,
+                period_end
+            FROM subscription_payments
+            WHERE client_payment_id = %s
+            """,
+            (client_payment_id,),
+        )
+        duplicate = cursor.fetchone()
+
+        if duplicate:
+            if int(duplicate[1]) != store_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Payment identifier is already in use.",
+                )
+
+            return {
+                "subscription_payment_id": int(duplicate[0]),
+                "store_id": store_id,
+                "subscription_paid_through": duplicate[2].isoformat(),
+                "already_recorded": True,
+            }
+
+        cursor.execute(
+            """
+            SELECT
+                name,
+                account_type,
+                trial_started_at,
+                trial_expires_at,
+                subscription_paid_through
+            FROM stores
+            WHERE store_id = %s
+            FOR UPDATE
+            """,
+            (store_id,),
+        )
+        store = cursor.fetchone()
+
+        if not store or not store[2]:
+            raise HTTPException(status_code=404, detail="Trial store not found.")
+
+        if (store[1] or "legacy") not in {"trial", "paid"}:
+            raise HTTPException(
+                status_code=409,
+                detail="This store cannot receive subscription payments.",
+            )
+
+        current_paid_through = parse_timestamp(store[4])
+        trial_expires_at = parse_timestamp(store[3])
+        period_start, period_end = calculate_subscription_period(
+            now=now,
+            months=data.months,
+            trial_expires_at=trial_expires_at,
+            current_paid_through=current_paid_through,
+        )
+        grace_until = period_end + timedelta(days=grace_days)
+
+        cursor.execute(
+            """
+            INSERT INTO subscription_payments (
+                client_payment_id,
+                store_id,
+                amount,
+                currency,
+                payment_method,
+                payment_reference,
+                note,
+                paid_at,
+                period_start,
+                period_end,
+                months_granted,
+                recorded_by_user_id,
+                created_at
+            )
+            VALUES (%s, %s, %s, 'USD', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING subscription_payment_id
+            """,
+            (
+                client_payment_id,
+                store_id,
+                data.amount,
+                payment_method,
+                reference,
+                note,
+                paid_at,
+                period_start,
+                period_end,
+                data.months,
+                current_user.user_id,
+                now,
+            ),
+        )
+        payment_id = int(cursor.fetchone()[0])
+        cursor.execute(
+            """
+            UPDATE stores
+            SET
+                account_type = 'paid',
+                trial_converted_at = COALESCE(trial_converted_at, %s),
+                subscription_started_at = COALESCE(subscription_started_at, %s),
+                subscription_paid_through = %s,
+                subscription_grace_until = %s,
+                subscription_canceled_at = NULL,
+                subscription_monthly_price = COALESCE(
+                    subscription_monthly_price,
+                    %s
+                )
+            WHERE store_id = %s
+            """,
+            (now, period_start, period_end, grace_until, monthly_price, store_id),
+        )
+        conn.commit()
+
+        return {
+            "subscription_payment_id": payment_id,
+            "store_id": store_id,
+            "store_name": store[0],
+            "account_type": "paid",
+            "subscription_status": "active",
+            "subscription_paid_through": period_end.isoformat(),
+            "subscription_grace_until": grace_until.isoformat(),
+            "already_recorded": False,
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        cursor.execute(
+            """
+            SELECT subscription_payment_id, store_id, period_end
+            FROM subscription_payments
+            WHERE client_payment_id = %s
+            """,
+            (client_payment_id,),
+        )
+        duplicate = cursor.fetchone()
+
+        if duplicate and int(duplicate[1]) == store_id:
+            return {
+                "subscription_payment_id": int(duplicate[0]),
+                "store_id": store_id,
+                "subscription_paid_through": duplicate[2].isoformat(),
+                "already_recorded": True,
+            }
+
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@router.post("/admin/stores/{store_id}/cancel")
+def cancel_subscription(
+    store_id: int,
+    data: SubscriptionActionRequest,
+    current_user: TrialAuthenticatedUser = Depends(
+        require_platform_admin
+    ),
+):
+    conn = db()
+    cursor = conn.cursor()
+    now = utc_now()
+
+    try:
+        cursor.execute(
+            """
+            UPDATE stores
+            SET subscription_canceled_at = COALESCE(subscription_canceled_at, %s)
+            WHERE store_id = %s
+              AND account_type = 'paid'
+              AND subscription_paid_through IS NOT NULL
+              AND subscription_paid_through > %s
+            RETURNING subscription_paid_through, subscription_canceled_at
+            """,
+            (now, store_id, now),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Paid store not found.")
+
+        cursor.execute(
+            """
+            INSERT INTO subscription_admin_events (
+                store_id, event_type, note, recorded_by_user_id, created_at
+            )
+            VALUES (%s, 'subscription_canceled', %s, %s, %s)
+            """,
+            (store_id, (data.note or "").strip() or None, current_user.user_id, now),
+        )
+        conn.commit()
+        return {
+            "store_id": store_id,
+            "subscription_paid_through": (
+                row[0].isoformat() if row[0] else None
+            ),
+            "subscription_canceled_at": row[1].isoformat(),
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@router.post("/admin/stores/{store_id}/resume")
+def resume_subscription(
+    store_id: int,
+    data: SubscriptionActionRequest,
+    current_user: TrialAuthenticatedUser = Depends(
+        require_platform_admin
+    ),
+):
+    conn = db()
+    cursor = conn.cursor()
+    now = utc_now()
+
+    try:
+        cursor.execute(
+            """
+            UPDATE stores
+            SET subscription_canceled_at = NULL
+            WHERE store_id = %s
+              AND account_type = 'paid'
+              AND subscription_canceled_at IS NOT NULL
+            RETURNING subscription_paid_through, subscription_grace_until
+            """,
+            (store_id,),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Canceled subscription not found.",
+            )
+
+        cursor.execute(
+            """
+            INSERT INTO subscription_admin_events (
+                store_id, event_type, note, recorded_by_user_id, created_at
+            )
+            VALUES (%s, 'subscription_resumed', %s, %s, %s)
+            """,
+            (store_id, (data.note or "").strip() or None, current_user.user_id, now),
+        )
+        conn.commit()
+        return {
+            "store_id": store_id,
+            "subscription_paid_through": (
+                row[0].isoformat() if row[0] else None
+            ),
+            "subscription_grace_until": (
+                row[1].isoformat() if row[1] else None
+            ),
+            "subscription_canceled_at": None,
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cursor.close()
         conn.close()
@@ -1102,78 +1666,10 @@ def convert_trial_store(
         require_platform_admin
     ),
 ):
-    conn = db()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(
-            """
-            UPDATE stores
-            SET
-                account_type = 'paid',
-                trial_converted_at = COALESCE(
-                    trial_converted_at,
-                    %s
-                )
-            WHERE store_id = %s
-              AND account_type = 'trial'
-            RETURNING store_id, name, trial_converted_at
-            """,
-            (utc_now(), store_id),
-        )
-        row = cursor.fetchone()
-
-        if not row:
-            cursor.execute(
-                """
-                SELECT account_type
-                FROM stores
-                WHERE store_id = %s
-                """,
-                (store_id,),
-            )
-            existing = cursor.fetchone()
-
-            if not existing:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Trial store not found.",
-                )
-
-            if existing[0] == "paid":
-                conn.commit()
-                return {
-                    "store_id": store_id,
-                    "account_type": "paid",
-                    "already_converted": True,
-                }
-
-            raise HTTPException(
-                status_code=409,
-                detail="Only trial stores can be converted.",
-            )
-
-        conn.commit()
-
-        return {
-            "store_id": int(row[0]),
-            "store_name": row[1],
-            "account_type": "paid",
-            "trial_converted_at": row[2].isoformat(),
-            "already_converted": False,
-        }
-
-    except HTTPException:
-        conn.rollback()
-        raise
-
-    except Exception:
-        conn.rollback()
-        raise
-
-    finally:
-        cursor.close()
-        conn.close()
+    raise HTTPException(
+        status_code=410,
+        detail="Record a subscription payment to activate this store.",
+    )
 
 
 async def enforce_trial_write_access(request: Request, call_next):
@@ -1199,22 +1695,42 @@ async def enforce_trial_write_access(request: Request, call_next):
     except InvalidTokenError:
         return await call_next(request)
 
-    if payload.get("account_type") != "trial":
+    account_type = payload.get("account_type") or "legacy"
+
+    if account_type not in {"trial", "paid"}:
         return await call_next(request)
 
-    expires_at = parse_timestamp(payload.get("trial_expires_at"))
+    now = utc_now()
+    token_access = subscription_access_state(
+        account_type=account_type,
+        trial_expires_at=payload.get("trial_expires_at"),
+        paid_through=payload.get("subscription_paid_through"),
+        grace_until=payload.get("subscription_grace_until"),
+        canceled_at=payload.get("subscription_canceled_at"),
+        now=now,
+    )
 
-    if expires_at and expires_at <= utc_now():
-        # A converted store may still be using the trial token issued
-        # before conversion. Confirm only in this expired-trial path;
-        # legacy and active sessions incur no extra database query.
+    paid_claim_missing = bool(
+        account_type == "paid"
+        and "subscription_paid_through" not in payload
+    )
+
+    if token_access["read_only"] or paid_claim_missing:
+        # Recheck only when a token says access ended or predates the
+        # subscription claims. A renewal may have extended the database
+        # state without forcing the store to sign in again.
         conn = db()
         cursor = conn.cursor()
 
         try:
             cursor.execute(
                 """
-                SELECT account_type
+                SELECT
+                    account_type,
+                    trial_expires_at,
+                    subscription_paid_through,
+                    subscription_grace_until,
+                    subscription_canceled_at
                 FROM stores
                 WHERE store_id = %s
                 """,
@@ -1227,17 +1743,38 @@ async def enforce_trial_write_access(request: Request, call_next):
             cursor.close()
             conn.close()
 
-        if row and row[0] != "trial":
+        if row:
+            database_access = subscription_access_state(
+                account_type=row[0] or "legacy",
+                trial_expires_at=row[1],
+                paid_through=row[2],
+                grace_until=row[3],
+                canceled_at=row[4],
+                now=now,
+            )
+        else:
+            database_access = token_access
+
+        if not database_access["read_only"]:
             return await call_next(request)
 
+        is_trial = database_access["status"] == "trial_expired"
         return JSONResponse(
             status_code=403,
             content={
                 "detail": (
-                    "The trial has ended. Store data remains "
+                    "The trial has ended. Store data remains available "
+                    "in read-only mode."
+                    if is_trial
+                    else
+                    "The subscription is not active. Store data remains "
                     "available in read-only mode."
                 ),
-                "code": "trial_expired_read_only",
+                "code": (
+                    "trial_expired_read_only"
+                    if is_trial
+                    else "subscription_inactive_read_only"
+                ),
             },
         )
 
