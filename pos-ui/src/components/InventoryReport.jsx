@@ -19,15 +19,17 @@ function InventoryReport({
   storeId,
   priorityLowStockCount = 0,
   onPriorityLowStockChanged,
+  initialView = "stock",
+  initialLowStockView = "lowstock",
 }) {
   const { t } = useLang();
 
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [inventoryView, setInventoryView] = useState("stock");
+  const [inventoryView, setInventoryView] = useState(initialView);
 
   const [lowStockItems, setLowStockItems] = useState([]);
-  const [lowStockView, setLowStockView] = useState("lowstock");
+  const [lowStockView, setLowStockView] = useState(initialLowStockView);
   const [showZeroStockOnly, setShowZeroStockOnly] = useState(false);
   const [reorderItems, setReorderItems] = useState([]);
   const [reorderFilter, setReorderFilter] = useState("master");

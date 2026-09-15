@@ -12,6 +12,7 @@ import TrialLanding from "./TrialLanding";
 import TrialOnboarding from "./TrialOnboarding";
 import TrialAdminPanel from "./TrialAdminPanel";
 import SyncStatus from "./components/SyncStatus";
+import HelpPanel from "./components/HelpPanel";
 
 import ProductPanel from "./components/ProductPanel";
 import TicketPanel from "./components/TicketPanel";
@@ -157,6 +158,10 @@ function App() {
 
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
+  const [helpReturnView, setHelpReturnView] =
+    useState("pos");
+  const [inventoryHelpTarget, setInventoryHelpTarget] =
+    useState(null);
   const [authMode, setAuthMode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("trial_token")) return "signup";
@@ -246,6 +251,27 @@ function App() {
     },
     [user?.account_type]
   );
+
+  const openHelp = () => {
+    if (view !== "help") {
+      setHelpReturnView(view);
+    }
+
+    setView("help");
+  };
+
+  const navigateFromHelp = target => {
+    if (!target?.view) {
+      return;
+    }
+
+    setInventoryHelpTarget(
+      target.view === "inventory"
+        ? target
+        : null
+    );
+    setView(target.view);
+  };
 
   const queueReorderCleanup = useCallback(
     items => {
@@ -2227,26 +2253,52 @@ const finalizeIntake = async () => {
           />
         </div>
 
-        <button
-          type="button"
-          onClick={handleLogout}
+        <div
           style={{
-            background:
-              COLORS.panelAlt,
-
-            border: "none",
-            color: COLORS.text,
-
-            padding: "6px 10px",
-            borderRadius: 6,
-            cursor: "pointer",
-
-            flex: "0 0 auto",
-            whiteSpace: "nowrap"
+            display: "flex",
+            gap: 8,
+            flex: "0 0 auto"
           }}
         >
-          {t("logout")}
-        </button>
+          <button
+            type="button"
+            onClick={openHelp}
+            style={{
+              background:
+                view === "help"
+                  ? COLORS.primary
+                  : COLORS.panelAlt,
+              border: "none",
+              color: COLORS.text,
+              padding: "6px 10px",
+              borderRadius: 6,
+              cursor: "pointer",
+              whiteSpace: "nowrap"
+            }}
+          >
+            ? {t("help")}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            style={{
+              background:
+                COLORS.panelAlt,
+
+              border: "none",
+              color: COLORS.text,
+
+              padding: "6px 10px",
+              borderRadius: 6,
+              cursor: "pointer",
+
+              whiteSpace: "nowrap"
+            }}
+          >
+            {t("logout")}
+          </button>
+        </div>
       </div>
 
       {user?.account_type === "trial" && (
@@ -2326,9 +2378,10 @@ const finalizeIntake = async () => {
               className="app-navigation-button"
               key={navView}
               type="button"
-              onClick={() =>
-                setView(navView)
-              }
+              onClick={() => {
+                setInventoryHelpTarget(null);
+                setView(navView);
+              }}
               style={{
                 background:
                   view === navView
@@ -2500,6 +2553,16 @@ const finalizeIntake = async () => {
         </div>
       )}
 
+      {/* HELP */}
+      {view === "help" && (
+        <HelpPanel
+          onBack={() =>
+            setView(helpReturnView)
+          }
+          onNavigate={navigateFromHelp}
+        />
+      )}
+
       {/* AGENDA */}
       {view === "agenda" && (
         <AgendaPanel
@@ -2521,7 +2584,21 @@ const finalizeIntake = async () => {
       {/* INVENTORY */}
       {view === "inventory" && (
         <InventoryReport
+          key={[
+            inventoryHelpTarget?.inventoryView ||
+              "stock",
+            inventoryHelpTarget?.lowStockView ||
+              "lowstock"
+          ].join(":")}
           storeId={storeId}
+          initialView={
+            inventoryHelpTarget?.inventoryView ||
+            "stock"
+          }
+          initialLowStockView={
+            inventoryHelpTarget?.lowStockView ||
+            "lowstock"
+          }
           priorityLowStockCount={
             priorityLowStockCount
           }
