@@ -2,7 +2,8 @@ import { useState } from "react";
 import apiClient from "../apiClient";
 
 function ProductImporter({
-  storeId
+  storeId,
+  onCompleted
 }) {
   const [
     file,
@@ -98,6 +99,10 @@ function ProductImporter({
       setResult(
         response.data
       );
+
+      if (onCompleted) {
+        await onCompleted(response.data);
+      }
     } catch (error) {
       console.error(
         "PRODUCT IMPORT ERROR:",

@@ -935,6 +935,60 @@ def trial_status(
         conn.close()
 
 
+@router.get("/onboarding-status")
+def trial_onboarding_status(
+    current_user: TrialAuthenticatedUser = Depends(
+        get_trial_current_user
+    ),
+):
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM products
+                    WHERE store_id = %s
+                      AND is_active = 1
+                ),
+                EXISTS (
+                    SELECT 1
+                    FROM cash_events
+                    WHERE store_id = %s
+                      AND type IN (
+                          'cash_adjustment_positive',
+                          'cash_adjustment_negative'
+                      )
+                ),
+                EXISTS (
+                    SELECT 1
+                    FROM events
+                    WHERE store_id = %s
+                      AND event_type = 'sale'
+                )
+            """,
+            (
+                current_user.store_id,
+                current_user.store_id,
+                current_user.store_id,
+            ),
+        )
+        row = cursor.fetchone() or (False, False, False)
+
+        return {
+            "products": bool(row[0]),
+            "cash": bool(row[1]),
+            "sale": bool(row[2]),
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def platform_admin_store_ids() -> set[int]:
     store_ids = set()
 

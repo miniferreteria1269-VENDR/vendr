@@ -215,6 +215,14 @@ function App() {
     useState([]);
   const [negativeStockSaleQueue, setNegativeStockSaleQueue] =
     useState([]);
+  const [
+    trialOnboardingLocalSteps,
+    setTrialOnboardingLocalSteps
+  ] = useState({});
+  const [
+    trialOnboardingActiveStep,
+    setTrialOnboardingActiveStep
+  ] = useState(null);
 
   const storeId = user?.store_id;
   const trialExpiresAt = user?.trial_expires_at ? new Date(user.trial_expires_at) : null;
@@ -222,6 +230,22 @@ function App() {
   const trialDaysRemaining = user?.account_type === "trial" && trialExpiresAt
     ? Math.max(0, Math.ceil((trialExpiresAt.getTime() - Date.now()) / 86400000))
     : null;
+
+  const markTrialOnboardingStep = useCallback(
+    step => {
+      if (user?.account_type !== "trial") {
+        return;
+      }
+
+      setTrialOnboardingLocalSteps(current => {
+        return {
+          ...current,
+          [step]: true
+        };
+      });
+    },
+    [user?.account_type]
+  );
 
   const queueReorderCleanup = useCallback(
     items => {
@@ -911,6 +935,8 @@ function App() {
   setTickets([]);
   setActiveTicket(null);
   setReorderCleanupItems([]);
+  setTrialOnboardingLocalSteps({});
+  setTrialOnboardingActiveStep(null);
 };
 
   useEffect(() => {
@@ -1715,6 +1741,7 @@ function App() {
         );
 
       saleSavedLocally = true;
+      markTrialOnboardingStep("sale");
 
       /*
        * Apply the local inventory change only when
@@ -2149,6 +2176,12 @@ const finalizeIntake = async () => {
         <TrialOnboarding
           storeId={storeId}
           onNavigate={setView}
+          localCompletedSteps={
+            trialOnboardingLocalSteps
+          }
+          onActiveStepChange={
+            setTrialOnboardingActiveStep
+          }
         />
       )}
       {/* HEADER */}
@@ -2528,6 +2561,16 @@ const finalizeIntake = async () => {
       {view === "products" && (
         <ProductManagement
           storeId={storeId}
+          onboardingActive={
+            trialOnboardingActiveStep ===
+            "products"
+          }
+          onProductsChanged={async () => {
+            await loadProducts();
+            markTrialOnboardingStep(
+              "products"
+            );
+          }}
           onReorderReminder={
             queueReorderReminders
           }
@@ -2575,6 +2618,13 @@ const finalizeIntake = async () => {
         <CashPanel
           storeId={storeId}
           products={products}
+          onboardingActive={
+            trialOnboardingActiveStep ===
+            "cash"
+          }
+          onRegisterAdjusted={() =>
+            markTrialOnboardingStep("cash")
+          }
         />
       )}
 
