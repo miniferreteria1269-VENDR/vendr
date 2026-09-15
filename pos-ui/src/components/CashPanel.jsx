@@ -32,7 +32,9 @@ import {
 
 function CashPanel({
   storeId,
-  products
+  products,
+  onboardingActive = false,
+  onRegisterAdjusted
 }) {
   const { t } = useLang();
 
@@ -403,7 +405,18 @@ function CashPanel({
               mode: "adjustment"
             })
           }
-          style={btnSecondary}
+          style={{
+            ...btnSecondary,
+            ...(onboardingActive
+              ? {
+                  outline:
+                    "3px solid #f59e0b",
+                  outlineOffset: 3,
+                  boxShadow:
+                    "0 0 16px rgba(245, 158, 11, .55)"
+                }
+              : {})
+          }}
         >
           {t("adjust_register")}
         </button>
@@ -500,7 +513,16 @@ function CashPanel({
           onClose={() =>
             setCashMovementMode(null)
           }
-          onSuccess={loadBalances}
+          onSuccess={async () => {
+            await loadBalances();
+
+            if (
+              cashMovementMode.mode ===
+              "adjustment"
+            ) {
+              onRegisterAdjusted?.();
+            }
+          }}
         />
       )}
     </div>

@@ -30,7 +30,8 @@ import {
 function ProductManagement({
   storeId,
   onProductsChanged,
-  onReorderReminder
+  onReorderReminder,
+  onboardingActive = false
 }) {
   const { t } = useLang();
   const [pmView, setPmView] = useState("menu");
@@ -193,7 +194,21 @@ function ProductManagement({
             key={key}
             type="button"
             onClick={() => chooseTool(key)}
-            style={pmView === key ? btnPrimary : btnSecondary}
+            style={{
+              ...(pmView === key
+                ? btnPrimary
+                : btnSecondary),
+              ...(onboardingActive &&
+              key === "create"
+                ? {
+                    outline:
+                      "3px solid #f59e0b",
+                    outlineOffset: 3,
+                    boxShadow:
+                      "0 0 16px rgba(245, 158, 11, .55)"
+                  }
+                : {})
+            }}
           >
             {t(label)}
           </button>
@@ -272,7 +287,10 @@ function ProductManagement({
 
       {pmView === "import" && (
         <ToolModal onClose={() => setPmView("menu")} wide>
-          <ProductImporter storeId={storeId} />
+          <ProductImporter
+            storeId={storeId}
+            onCompleted={refreshProducts}
+          />
         </ToolModal>
       )}
 
