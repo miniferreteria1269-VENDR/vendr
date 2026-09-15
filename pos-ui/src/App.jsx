@@ -235,6 +235,39 @@ function App() {
   const trialDaysRemaining = user?.account_type === "trial" && trialExpiresAt
     ? Math.max(0, Math.ceil((trialExpiresAt.getTime() - Date.now()) / 86400000))
     : null;
+  const subscriptionStatus = user?.subscription_status;
+  const subscriptionPaidThrough = user?.subscription_paid_through
+    ? new Date(user.subscription_paid_through)
+    : null;
+  const subscriptionGraceUntil = user?.subscription_grace_until
+    ? new Date(user.subscription_grace_until)
+    : null;
+
+  useEffect(() => {
+    if (!storeId) return undefined;
+    let cancelled = false;
+
+    const refreshAccountStatus = async () => {
+      try {
+        const response = await apiClient.get("/trial/status");
+        if (cancelled) return;
+        setUser(current => {
+          const updated = { ...current, ...response.data };
+          localStorage.setItem("user", JSON.stringify(updated));
+          return updated;
+        });
+      } catch (error) {
+        console.warn("Unable to refresh account status:", error);
+      }
+    };
+
+    refreshAccountStatus();
+    window.addEventListener("focus", refreshAccountStatus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refreshAccountStatus);
+    };
+  }, [storeId]);
 
   const markTrialOnboardingStep = useCallback(
     step => {
@@ -2301,19 +2334,27 @@ const finalizeIntake = async () => {
         </div>
       </div>
 
-      {user?.account_type === "trial" && (
+      {(user?.account_type === "trial" || ["due_soon", "grace", "past_due", "canceled_active", "canceled"].includes(subscriptionStatus)) && (
         <div style={{
           margin: "10px 12px 0",
           padding: "10px 12px",
           borderRadius: 8,
-          border: `1px solid ${trialReadOnly ? "#ef4444" : "#f59e0b"}`,
-          color: trialReadOnly ? "#fecaca" : "#fde68a",
-          background: trialReadOnly ? "rgba(127, 29, 29, 0.35)" : "rgba(120, 53, 15, 0.28)",
+          border: `1px solid ${(trialReadOnly || ["past_due", "canceled"].includes(subscriptionStatus)) ? "#ef4444" : "#f59e0b"}`,
+          color: (trialReadOnly || ["past_due", "canceled"].includes(subscriptionStatus)) ? "#fecaca" : "#fde68a",
+          background: (trialReadOnly || ["past_due", "canceled"].includes(subscriptionStatus)) ? "rgba(127, 29, 29, 0.35)" : "rgba(120, 53, 15, 0.28)",
           fontWeight: 700,
         }}>
-          {trialReadOnly
-            ? t("trial_banner_read_only")
-            : t("trial_banner_days").replace("{days}", String(trialDaysRemaining))}
+          {user?.account_type === "trial"
+            ? (trialReadOnly
+                ? t("trial_banner_read_only")
+                : t("trial_banner_days").replace("{days}", String(trialDaysRemaining)))
+            : subscriptionStatus === "due_soon"
+              ? t("subscription_banner_due_soon").replace("{date}", subscriptionPaidThrough?.toLocaleDateString() || "—")
+              : subscriptionStatus === "grace"
+                ? t("subscription_banner_grace").replace("{date}", subscriptionGraceUntil?.toLocaleDateString() || "—")
+                : subscriptionStatus === "canceled_active"
+                  ? t("subscription_banner_canceled").replace("{date}", subscriptionPaidThrough?.toLocaleDateString() || "—")
+                  : t("subscription_banner_read_only")}
         </div>
       )}
       {/* NAVIGATION */}
