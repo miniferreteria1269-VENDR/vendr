@@ -33,6 +33,8 @@ Optional:
 | `TRIAL_LENGTH_DAYS` | `14` | Trial write-access duration |
 | `TRIAL_RETENTION_DAYS` | `30` | Recorded retention target after expiry |
 | `TRIAL_RATE_LIMIT_SECRET` | JWT secret | Key used to hash signup IP addresses |
+| `VENDR_MONTHLY_PRICE` | `20.00` | Default monthly subscription price shown when recording a payment |
+| `SUBSCRIPTION_GRACE_DAYS` | `3` | Write-access grace period after a paid period ends |
 
 The existing `JWT_SECRET_KEY` and `JWT_ACCESS_TOKEN_MINUTES` configuration is reused.
 
@@ -56,9 +58,31 @@ Trial expiry does not delete data. Expired trial users may sign in and read thei
 store history, but authenticated mutation requests return HTTP 403 with
 `code=trial_expired_read_only`. Legacy stores and paid stores bypass this guard.
 
-Converting a trial changes its store to `paid`. The middleware rechecks the
-database only when an expired trial token attempts a write, so conversion restores
-access immediately without adding queries to normal legacy-store operations.
+Recording a subscription payment changes a trial store to `paid`, preserves any
+unused trial days, and grants the selected number of calendar months. Early
+renewals extend the current paid-through date; late renewals start from the date
+the payment is recorded. After the configured grace period, a paid store becomes
+read-only until another payment is recorded.
+
+The middleware rechecks the database when an expired token attempts a write, so
+recording a payment restores access without requiring an immediate new login.
+Legacy stores bypass all subscription controls. Paid stores converted before the
+payment ledger was introduced remain active until their first tracked payment,
+preventing migration-time lockouts.
+
+## Manual subscription administration
+
+Open `/?trial_admin=1` from a platform-admin store to:
+
+- review active trials and subscriptions that need attention;
+- record cash, bank transfer, Wompi, or other payments;
+- grant one or more calendar months and view the resulting paid-through date;
+- review the complete payment history for a store; and
+- cancel or resume renewal without deleting store data.
+
+Payment recording is idempotent and updates the payment ledger and store access
+period in one database transaction. Payment-provider automation can later write
+to the same contract after a verified webhook.
 
 ## Abuse controls
 
@@ -71,7 +95,7 @@ access immediately without adding queries to normal legacy-store operations.
 
 ## Current scope
 
-This rollout intentionally does not collect card details or bill users
-automatically. Conversion is a deliberate admin action after the customer agrees
-to become paid. Automated billing can be added later without changing the legacy
-store classification.
+This rollout intentionally does not collect or store card details and does not
+charge users automatically. Payments are confirmed manually by a platform
+administrator. Automated Wompi billing can be added later without changing the
+ledger or legacy-store classification.
