@@ -13,7 +13,16 @@ const palette = {
 };
 
 export default function TrialLanding({ onStart, onLogin }) {
-  const { t } = useLang();
+  const { lang, t } = useLang();
+  const deviceCopy = lang === "es"
+    ? {
+        title: "Funciona en teléfono, tablet y computadora",
+        body: "Para mayor visibilidad, comodidad y rapidez durante toda la jornada, recomendamos una tablet o computadora.",
+      }
+    : {
+        title: "Works on phone, tablet, and computer",
+        body: "For better visibility, comfort, and speed during a full workday, we recommend a tablet or computer.",
+      };
 
   const features = [
     ["✓", t("trial_landing_feature_sales")],
@@ -61,6 +70,16 @@ export default function TrialLanding({ onStart, onLogin }) {
               <button onClick={onStart} style={primaryButton}>{t("start_free_trial")}</button>
               <span style={{ color: palette.muted, fontSize: 14 }}>{t("trial_landing_no_card")}</span>
             </div>
+
+            <div style={deviceCard}>
+              <DeviceIcons />
+              <div style={{ flex: "1 1 260px" }}>
+                <strong>{deviceCopy.title}</strong>
+                <div style={{ color: palette.muted, fontSize: 14, lineHeight: 1.45, marginTop: 4 }}>
+                  {deviceCopy.body}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div style={{
@@ -89,6 +108,30 @@ export default function TrialLanding({ onStart, onLogin }) {
   );
 }
 
+function DeviceIcons() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 118 34"
+      width="94"
+      height="28"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={deviceIcons}
+    >
+      <rect x="2" y="3" width="18" height="28" rx="3" />
+      <path d="M9 27h4" />
+      <rect x="34" y="4" width="30" height="24" rx="3" />
+      <path d="M46 24h6" />
+      <rect x="78" y="3" width="38" height="23" rx="3" />
+      <path d="M97 26v5M88 31h18" />
+    </svg>
+  );
+}
+
 const primaryButton = {
   border: 0,
   borderRadius: 10,
@@ -108,4 +151,22 @@ const secondaryButton = {
   padding: "10px 16px",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const deviceCard = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: 14,
+  marginTop: 26,
+  maxWidth: 690,
+  border: "1px solid #303747",
+  borderRadius: 12,
+  background: "rgba(23, 26, 34, .72)",
+  padding: "14px 16px",
+};
+
+const deviceIcons = {
+  color: "#3ba4f7",
+  flex: "0 0 auto",
 };
