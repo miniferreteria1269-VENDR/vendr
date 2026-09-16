@@ -13,15 +13,23 @@ export default defineConfig({
       injectRegister: "auto",
 
       manifest: {
-        name: "VENDR",
+        name: "VENDR POS",
         short_name: "VENDR",
         description: "Offline-capable point of sale system",
-        theme_color: "#0f1115",
-        background_color: "#0f1115",
+        theme_color: "#1a1d24",
+        background_color: "#ffffff",
         display: "standalone",
+        orientation: "landscape",
         start_url: "/",
         scope: "/",
-        icons: []
+        icons: [
+          {
+            src: "/vendr.svg",
+            sizes: "any",
+            type: "image/svg+xml",
+            purpose: "any maskable"
+          }
+        ]
       },
 
       workbox: {
