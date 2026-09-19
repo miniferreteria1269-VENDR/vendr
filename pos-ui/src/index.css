@@ -218,6 +218,60 @@ textarea {
     color: #e6edf3;
     cursor: pointer;
   }
+
+  /* Keep all sale controls on one short row so ticket lines remain visible. */
+  .ticket-header-controls {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .ticket-header-title {
+    flex: 0 0 auto;
+    font-size: 16px;
+    white-space: nowrap;
+  }
+
+  .ticket-client-select {
+    width: clamp(125px, 25vw, 170px) !important;
+    min-width: 0 !important;
+    padding-right: 24px !important;
+  }
+
+  .ticket-discount-controls {
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    margin-left: auto !important;
+  }
+
+  .ticket-discount-type {
+    width: 46px !important;
+  }
+
+  .ticket-discount-value {
+    width: 58px !important;
+  }
+
+  .ticket-discount-total {
+    font-size: 11px !important;
+  }
+
+  .movement-summary-modal-overlay {
+    padding: 8px !important;
+  }
+
+  .movement-summary-modal {
+    width: min(760px, 100%) !important;
+    height: calc(100dvh - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    padding: 12px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .ticket-discount-total {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {

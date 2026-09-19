@@ -435,11 +435,7 @@ function CashPanel({
 
         <button
           type="button"
-          onClick={() =>
-            setShowSummary(
-              previous => !previous
-            )
-          }
+          onClick={() => setShowSummary(true)}
           style={btnSecondary}
         >
           {t("movement_summary")}
@@ -448,15 +444,29 @@ function CashPanel({
 
       {showSummary && (
         <div
+          className="movement-summary-modal-overlay"
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) {
+              setShowSummary(false);
+            }
+          }}
           style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
             display: "flex",
-            flexDirection: "column",
-            flex: 1,
-            minHeight: 0
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            boxSizing: "border-box",
+            background: "rgba(0, 0, 0, 0.68)"
           }}
         >
           <MovementSummary
             storeId={storeId}
+            modal
+            onClose={() => setShowSummary(false)}
           />
         </div>
       )}

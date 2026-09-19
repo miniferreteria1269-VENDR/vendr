@@ -321,6 +321,7 @@ function TicketPanel({
         >
           {/* TICKET HEADER */}
           <div
+            className="ticket-header-controls"
             style={{
               display: "flex",
               justifyContent:
@@ -333,6 +334,7 @@ function TicketPanel({
             }}
           >
             <h3
+              className="ticket-header-title"
               style={{
                 margin: 0
               }}
@@ -353,6 +355,7 @@ function TicketPanel({
               "sale" && (
               <>
                 <select
+                  className="ticket-client-select"
                   aria-label={
                     t("select_client")
                   }
@@ -445,6 +448,7 @@ function TicketPanel({
 
                 {/* DISCOUNT */}
                 <div
+                  className="ticket-discount-controls"
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -455,6 +459,7 @@ function TicketPanel({
                   }}
                 >
                   <select
+                    className="ticket-discount-type"
                     value={
                       discountType
                     }
@@ -478,6 +483,7 @@ function TicketPanel({
                   </select>
 
                   <input
+                    className="ticket-discount-value"
                     type="number"
                     min="0"
                     value={
@@ -498,6 +504,7 @@ function TicketPanel({
                   />
 
                   <span
+                    className="ticket-discount-total"
                     style={{
                       fontSize: 12,
                       color:

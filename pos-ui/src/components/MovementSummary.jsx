@@ -62,7 +62,9 @@ const formatDateTime = value => {
 };
 
 function MovementSummary({
-  storeId
+  storeId,
+  modal = false,
+  onClose
 }) {
   const { t } = useLang();
 
@@ -160,24 +162,84 @@ function MovementSummary({
     }
   }, [storeId]);
 
+  useEffect(() => {
+    if (!modal || !onClose) {
+      return undefined;
+    }
+
+    const handleKeyDown = event => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [modal, onClose]);
+
   return (
     <div
+      className={modal ? "movement-summary-modal" : ""}
+      role={modal ? "dialog" : undefined}
+      aria-modal={modal ? "true" : undefined}
+      aria-label={modal ? t("movement_summary") : undefined}
       style={{
         ...card,
-        marginTop: 16,
+        marginTop: modal ? 0 : 16,
         display: "flex",
         flexDirection: "column",
         flex: 1,
-        minHeight: 0
+        minHeight: 0,
+        ...(modal
+          ? {
+              width: "min(760px, 100%)",
+              height: "min(680px, 88dvh)",
+              maxHeight: "88dvh",
+              boxSizing: "border-box",
+              boxShadow: "0 18px 60px rgba(0, 0, 0, 0.48)"
+            }
+          : {})
       }}
     >
-      <h3
+      <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
           marginBottom: 12
         }}
       >
-        {t("movement_summary")}
-      </h3>
+        <h3 style={{ margin: 0 }}>
+          {t("movement_summary")}
+        </h3>
+
+        {modal && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close movement summary"
+            style={{
+              width: 36,
+              height: 36,
+              padding: 0,
+              border: "none",
+              borderRadius: 8,
+              background: COLORS.panelAlt,
+              color: COLORS.text,
+              fontSize: 24,
+              lineHeight: 1,
+              cursor: "pointer",
+              flex: "0 0 auto"
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
 
       {/* DATE FILTER */}
       <div
