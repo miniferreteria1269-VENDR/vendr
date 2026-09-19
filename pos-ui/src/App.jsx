@@ -152,11 +152,38 @@ const COLORS = {
   danger: "#ff5c5c"
 };
 
+const getPublicAuthMode = () => {
+  const params = new URLSearchParams(window.location.search);
+  const pathname =
+    window.location.pathname.replace(/\/+$/, "") || "/";
+
+  if (params.has("trial_token")) return "signup";
+  if (pathname === "/login") return "login";
+  if (pathname === "/signup") return "signup";
+  if (pathname === "/trial" || params.has("trial")) return "trial";
+
+  return "trial";
+};
+
+const getStoredUser = () => {
+  const stored = localStorage.getItem("user");
+
+  if (!stored) return null;
+
+  try {
+    return JSON.parse(stored);
+  } catch (error) {
+    console.error("Unable to load saved user:", error);
+    localStorage.removeItem("user");
+    return null;
+  }
+};
+
 function App() {
   // POS client assignment and fiado state are stored per ticket.
   const { t } = useLang();
 
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(getStoredUser);
   const [view, setView] = useState("pos");
   const [mobileNavigationOpen, setMobileNavigationOpen] =
     useState(false);
@@ -164,14 +191,7 @@ function App() {
     useState("pos");
   const [inventoryHelpTarget, setInventoryHelpTarget] =
     useState(null);
-  const [authMode, setAuthMode] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("trial_token")) return "signup";
-    return params.has("trial") ||
-      window.location.pathname.replace(/\/+$/, "") === "/trial"
-      ? "trial"
-      : "login";
-  });
+  const [authMode, setAuthMode] = useState(getPublicAuthMode);
   const [trialAdminRoute, setTrialAdminRoute] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.has("trial_admin") ||
@@ -998,20 +1018,34 @@ function App() {
   setReorderCleanupItems([]);
   setTrialOnboardingLocalSteps({});
   setTrialOnboardingActiveStep(null);
+  setAuthMode("login");
+  window.history.replaceState({}, document.title, "/login");
 };
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
+    const handlePopState = () => {
+      setAuthMode(getPublicAuthMode());
+    };
 
-    if (!stored) return;
+    window.addEventListener("popstate", handlePopState);
 
-    try {
-      setUser(JSON.parse(stored));
-    } catch (error) {
-      console.error("Unable to load saved user:", error);
-      localStorage.removeItem("user");
-    }
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
   }, []);
+
+  const navigateAuth = (mode, pathname) => {
+    window.history.pushState({}, document.title, pathname);
+    setAuthMode(mode);
+  };
+
+  const completeAuthentication = authenticatedUser => {
+    if (!trialAdminRoute) {
+      window.history.replaceState({}, document.title, "/");
+    }
+
+    setUser(authenticatedUser);
+  };
 
   // -------------------------------------------------
   // LOCAL TICKET PERSISTENCE
@@ -2157,24 +2191,24 @@ const finalizeIntake = async () => {
     if (authMode === "trial") {
       return (
         <TrialLanding
-          onStart={() => setAuthMode("signup")}
-          onLogin={() => setAuthMode("login")}
+          onStart={() => navigateAuth("signup", "/signup")}
+          onLogin={() => navigateAuth("login", "/login")}
         />
       );
     }
 
     return authMode === "login" ? (
       <Login
-        onLogin={setUser}
+        onLogin={completeAuthentication}
         switchToSignup={() =>
-          setAuthMode("signup")
+          navigateAuth("signup", "/signup")
         }
       />
     ) : (
       <Signup
-        onSignup={setUser}
+        onSignup={completeAuthentication}
         switchToLogin={() =>
-          setAuthMode("login")
+          navigateAuth("login", "/login")
         }
       />
     );
