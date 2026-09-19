@@ -190,14 +190,42 @@ function TicketPanel({
         color: COLORS.text
       }}
     >
-      {/* CREATE BUTTONS */}
-      <div
-        style={{
-          marginBottom: 10,
-          display: "flex",
-          gap: 8
-        }}
-      >
+      <div className="ticket-toolbar">
+        {/* Mobile ticket selector */}
+        <select
+          className="mobile-ticket-selector"
+          aria-label="Select active ticket"
+          value={activeTicket ?? ""}
+          onChange={event => {
+            const selectedTicket = tickets.find(
+              ticket => String(ticket.id) === event.target.value
+            );
+
+            if (selectedTicket) {
+              setActiveTicket(selectedTicket.id);
+            }
+          }}
+          disabled={finalizingIntake || tickets.length === 0}
+        >
+          {tickets.length === 0 && (
+            <option value="">—</option>
+          )}
+          {tickets.map((ticket, index) => (
+            <option key={ticket.id} value={ticket.id}>
+              {ticket.label || `${ticket.type} ${index + 1}`}
+            </option>
+          ))}
+        </select>
+
+        {/* CREATE BUTTONS */}
+        <div
+          className="ticket-create-buttons"
+          style={{
+            marginBottom: 10,
+            display: "flex",
+            gap: 8
+          }}
+        >
         <button
           type="button"
           onClick={() =>
@@ -243,17 +271,18 @@ function TicketPanel({
         >
           + {t("intake")}
         </button>
-      </div>
+        </div>
 
-      {/* TICKET TABS */}
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          marginBottom: 12,
-          flexWrap: "wrap"
-        }}
-      >
+        {/* TICKET TABS */}
+        <div
+          className="ticket-tabs"
+          style={{
+            display: "flex",
+            gap: 6,
+            marginBottom: 12,
+            flexWrap: "wrap"
+          }}
+        >
         {tickets.map(
           (ticket, index) => (
             <button
@@ -305,6 +334,7 @@ function TicketPanel({
             </button>
           )
         )}
+        </div>
       </div>
 
       {/* ACTIVE TICKET */}
