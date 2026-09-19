@@ -334,6 +334,18 @@ textarea {
     flex: 0 0 auto;
     white-space: nowrap;
   }
+
+  .supplier-create-card {
+    padding: 12px !important;
+    scrollbar-gutter: stable;
+  }
+
+  .supplier-create-form {
+    width: 100%;
+    max-width: 100% !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
+  }
 }
 
 @media (max-width: 520px) {
