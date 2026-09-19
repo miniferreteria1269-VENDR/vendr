@@ -158,6 +158,8 @@ function App() {
 
   const [user, setUser] = useState(null);
   const [view, setView] = useState("pos");
+  const [mobileNavigationOpen, setMobileNavigationOpen] =
+    useState(false);
   const [helpReturnView, setHelpReturnView] =
     useState("pos");
   const [inventoryHelpTarget, setInventoryHelpTarget] =
@@ -2205,6 +2207,91 @@ const finalizeIntake = async () => {
 // UI
 // -------------------------------------------------
 
+  const navigationViews = [
+    "pos",
+    "agenda",
+    "sales",
+    "inventory",
+    ...(organizationAvailability.organizationId
+      ? ["transfers"]
+      : []),
+    "suppliers",
+    "clients",
+    "products",
+    "analysis",
+    ...(organizationAvailability.available
+      ? ["organization"]
+      : []),
+    "diagnostics",
+    "cash"
+  ];
+
+  const navigationLabel = navView =>
+    t(
+      navView === "sales"
+        ? "history"
+        : navView === "transfers"
+          ? "transfer"
+          : navView
+    ).toUpperCase();
+
+  const navigateTo = navView => {
+    setInventoryHelpTarget(null);
+    setView(navView);
+    setMobileNavigationOpen(false);
+  };
+
+  const navigationIndicator = navView => (
+    <>
+      {navView === "agenda" && (
+        <span
+          aria-hidden="true"
+          className="navigation-status-dot"
+          style={{
+            background:
+              agendaIndicator === "red"
+                ? "#ff5c5c"
+                : agendaIndicator === "yellow"
+                  ? "#f5c542"
+                  : "#3ddc84",
+            boxShadow:
+              `0 0 6px ${
+                agendaIndicator === "red"
+                  ? "#ff5c5c"
+                  : agendaIndicator === "yellow"
+                    ? "#f5c542"
+                    : "#3ddc84"
+              }`
+          }}
+        />
+      )}
+
+      {navView === "transfers" && transferAttention && (
+        <span
+          aria-hidden="true"
+          title={t("transfer_attention")}
+          className="navigation-status-dot"
+          style={{
+            background: "#f5c542",
+            boxShadow: "0 0 6px #f5c542"
+          }}
+        />
+      )}
+
+      {navView === "inventory" && priorityLowStockCount > 0 && (
+        <span
+          aria-hidden="true"
+          title={t("priority_low_stock_alert")}
+          className="navigation-status-dot"
+          style={{
+            background: "#ff8c42",
+            boxShadow: "0 0 6px #ff8c42"
+          }}
+        />
+      )}
+    </>
+  );
+
   return (
     <div
       className="vendr-app"
@@ -2245,6 +2332,7 @@ const finalizeIntake = async () => {
       )}
       {/* HEADER */}
       <div
+        className="desktop-app-header"
         style={{
           padding: 12,
 
@@ -2334,6 +2422,94 @@ const finalizeIntake = async () => {
         </div>
       </div>
 
+      {/* COMPACT PHONE HEADER */}
+      <div className="mobile-app-toolbar">
+        <button
+          type="button"
+          className="mobile-menu-button"
+          onClick={() => setMobileNavigationOpen(true)}
+          aria-label="Open navigation"
+          aria-expanded={mobileNavigationOpen}
+          aria-controls="mobile-navigation-drawer"
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+
+        <div className="mobile-toolbar-context">
+          <span className="mobile-current-view">
+            {view === "help" ? t("help").toUpperCase() : navigationLabel(view)}
+          </span>
+          <span className="mobile-store-name">
+            {user.store_name || `${t("store")} ${storeId}`}
+          </span>
+        </div>
+
+        <SyncStatus storeId={storeId} compact />
+      </div>
+
+      {mobileNavigationOpen && (
+        <div
+          className="mobile-navigation-overlay is-open"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) {
+              setMobileNavigationOpen(false);
+            }
+          }}
+        >
+          <aside
+            id="mobile-navigation-drawer"
+            className="mobile-navigation-drawer"
+            aria-label="VENDR navigation"
+          >
+          <div className="mobile-drawer-header">
+            <div className="mobile-drawer-store">
+              {user.store_name || `${t("store")} ${storeId}`}
+            </div>
+            <SyncStatus storeId={storeId} />
+            <button
+              type="button"
+              className="mobile-drawer-close"
+              onClick={() => setMobileNavigationOpen(false)}
+              aria-label="Close navigation"
+            >
+              ×
+            </button>
+          </div>
+
+          <nav className="mobile-navigation-list">
+            {navigationViews.map(navView => (
+              <button
+                key={navView}
+                type="button"
+                className={`mobile-navigation-item${view === navView ? " is-active" : ""}`}
+                onClick={() => navigateTo(navView)}
+              >
+                <span className="mobile-navigation-item-label">
+                  {navigationIndicator(navView)}
+                  {navigationLabel(navView)}
+                </span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="mobile-drawer-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileNavigationOpen(false);
+                openHelp();
+              }}
+            >
+              ? {t("help")}
+            </button>
+            <button type="button" onClick={handleLogout}>
+              {t("logout")}
+            </button>
+          </div>
+          </aside>
+        </div>
+      )}
+
       {(user?.account_type === "trial" || ["due_soon", "grace", "past_due", "canceled_active", "canceled"].includes(subscriptionStatus)) && (
         <div style={{
           margin: "10px 12px 0",
@@ -2359,6 +2535,7 @@ const finalizeIntake = async () => {
       )}
       {/* NAVIGATION */}
       <div
+        className="desktop-navigation-scroll"
         style={{
           width: "100%",
           maxWidth: "100%",
@@ -2397,31 +2574,13 @@ const finalizeIntake = async () => {
             boxSizing: "border-box"
           }}
         >
-          {[
-            "pos",
-            "agenda",
-            "sales",
-            "inventory",
-            ...(organizationAvailability.organizationId
-              ? ["transfers"]
-              : []),
-            "suppliers",
-            "clients",
-            "products",
-            "analysis",
-            ...(organizationAvailability.available
-              ? ["organization"]
-              : []),
-            "diagnostics",
-            "cash"
-          ].map(navView => (
+          {navigationViews.map(navView => (
             <button
               className="app-navigation-button"
               key={navView}
               type="button"
               onClick={() => {
-                setInventoryHelpTarget(null);
-                setView(navView);
+                navigateTo(navView);
               }}
               style={{
                 background:
@@ -2453,77 +2612,8 @@ const finalizeIntake = async () => {
                   gap: 6
                 }}
               >
-                {navView === "agenda" && (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 8,
-                      height: 8,
-                      flex: "0 0 auto",
-                      borderRadius: "50%",
-                      background:
-                        agendaIndicator === "red"
-                          ? "#ff5c5c"
-                          : agendaIndicator === "yellow"
-                            ? "#f5c542"
-                            : "#3ddc84",
-                      boxShadow:
-                        `0 0 6px ${
-                          agendaIndicator === "red"
-                            ? "#ff5c5c"
-                            : agendaIndicator === "yellow"
-                              ? "#f5c542"
-                              : "#3ddc84"
-                        }`
-                    }}
-                  />
-                )}
-
-                {navView === "transfers" &&
-                  transferAttention && (
-                    <span
-                      aria-hidden="true"
-                      title={t(
-                        "transfer_attention"
-                      )}
-                      style={{
-                        width: 8,
-                        height: 8,
-                        flex: "0 0 auto",
-                        borderRadius: "50%",
-                        background: "#f5c542",
-                        boxShadow:
-                          "0 0 6px #f5c542"
-                      }}
-                    />
-                  )}
-
-                {navView === "inventory" &&
-                  priorityLowStockCount > 0 && (
-                    <span
-                      aria-hidden="true"
-                      title={t(
-                        "priority_low_stock_alert"
-                      )}
-                      style={{
-                        width: 8,
-                        height: 8,
-                        flex: "0 0 auto",
-                        borderRadius: "50%",
-                        background: "#ff8c42",
-                        boxShadow:
-                          "0 0 6px #ff8c42"
-                      }}
-                    />
-                  )}
-
-                {t(
-                  navView === "sales"
-                    ? "history"
-                    : navView === "transfers"
-                      ? "transfer"
-                    : navView
-                ).toUpperCase()}
+                {navigationIndicator(navView)}
+                {navigationLabel(navView)}
               </span>
             </button>
           ))}
