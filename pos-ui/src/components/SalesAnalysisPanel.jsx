@@ -182,6 +182,7 @@ function SalesAnalysisPanel({
       }}
     >
       <h2
+        className="analysis-desktop-title"
         style={{
           marginBottom: 12
         }}
@@ -192,6 +193,7 @@ function SalesAnalysisPanel({
       </h2>
 
       <div
+        className="analysis-desktop-view-tabs"
         style={{
           display: "flex",
           gap: 8,
@@ -228,6 +230,54 @@ function SalesAnalysisPanel({
         </button>
       </div>
 
+      <div className="analysis-mobile-toolbar">
+        {analysisView === "sales" && (
+          <>
+            <input
+              type="date"
+              aria-label="Start date"
+              value={startDate}
+              onChange={event => setStartDate(event.target.value)}
+              style={input}
+            />
+            <input
+              type="date"
+              aria-label="End date"
+              value={endDate}
+              onChange={event => setEndDate(event.target.value)}
+              style={input}
+            />
+            <button
+              type="button"
+              onClick={loadAnalysis}
+              disabled={loading || invalidDateRange}
+              style={{
+                ...btnPrimary,
+                opacity: loading || invalidDateRange ? 0.6 : 1,
+                cursor: loading || invalidDateRange ? "not-allowed" : "pointer"
+              }}
+            >
+              {loading ? t("loading") || "Loading..." : t("apply")}
+            </button>
+          </>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setAnalysisView("sales")}
+          style={analysisView === "sales" ? btnPrimary : btnSecondary}
+        >
+          {t("sales_analysis")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setAnalysisView("weekly")}
+          style={analysisView === "weekly" ? btnPrimary : btnSecondary}
+        >
+          {t("weekly_brief")}
+        </button>
+      </div>
+
       {analysisView === "weekly" ? (
         <AIWeeklyBriefPanel
           storeId={storeId}
@@ -245,6 +295,7 @@ function SalesAnalysisPanel({
 
       {/* DATE RANGE */}
       <div
+        className="analysis-desktop-date-range"
         style={{
           display: "flex",
           gap: 10,
