@@ -50,7 +50,8 @@ const formatDateTime = value => {
 };
 
 function SyncStatus({
-  storeId
+  storeId,
+  compact = false
 }) {
   const [online, setOnline] =
     useState(navigator.onLine);
@@ -240,7 +241,7 @@ function SyncStatus({
           display: "flex",
           alignItems: "center",
           gap: 6,
-          marginTop: 3,
+          marginTop: compact ? 0 : 3,
           padding: 0,
           border: "none",
           background: "transparent",
@@ -261,9 +262,11 @@ function SyncStatus({
           }}
         />
 
-        <span>
-          {statusText}
-        </span>
+        {!compact && (
+          <span>
+            {statusText}
+          </span>
+        )}
       </button>
 
       {panelOpen && (
