@@ -510,8 +510,21 @@ function SupplierManagement() {
 
       {/* CREATE SUPPLIER */}
       {supplierView === "create" && (
-        <div style={card}>
-          <div style={{ maxWidth: 500 }}>
+        <div
+          className="supplier-create-card"
+          style={{
+            ...card,
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            WebkitOverflowScrolling: "touch"
+          }}
+        >
+          <div
+            className="supplier-create-form"
+            style={{ maxWidth: 500 }}
+          >
             <h3>
               {t("new_supplier")}
             </h3>
