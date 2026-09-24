@@ -801,6 +801,25 @@ organization_report_load_failed:
     // REVENUE / EXPENSE MODALS
     add_revenue: "Add Revenue",
     add_expense: "Add Expense",
+    add_custom_category: "+ Add custom category",
+    add_custom_expense_category:
+      "Add custom expense category",
+    add_custom_revenue_category:
+      "Add custom revenue category",
+    category_name: "Category name",
+    counts_as_operating_expense:
+      "Counts as operating expense",
+    custom_category_name_required:
+      "Category name is required.",
+    custom_category_name_too_long:
+      "Category name must be 80 characters or fewer.",
+    custom_category_duplicate:
+      "A custom category with this name already exists.",
+    custom_category_requires_connection:
+      "Creating a category requires a connection. Saved categories remain available offline.",
+    custom_category_save_failed:
+      "Unable to save the custom category.",
+    select_category: "Select a category.",
     note_optional: "Note (optional)",
     failed_add_revenue: "Failed to add revenue",
     failed_add_expense: "Failed to add expense",
@@ -1887,6 +1906,25 @@ organization_report_load_failed:
     // REVENUE / EXPENSE MODALS
     add_revenue: "Agregar ingreso",
     add_expense: "Agregar gasto",
+    add_custom_category: "+ Agregar categoría personalizada",
+    add_custom_expense_category:
+      "Agregar categoría de gasto",
+    add_custom_revenue_category:
+      "Agregar categoría de ingreso",
+    category_name: "Nombre de la categoría",
+    counts_as_operating_expense:
+      "Cuenta como gasto operativo",
+    custom_category_name_required:
+      "El nombre de la categoría es obligatorio.",
+    custom_category_name_too_long:
+      "El nombre debe tener 80 caracteres o menos.",
+    custom_category_duplicate:
+      "Ya existe una categoría personalizada con este nombre.",
+    custom_category_requires_connection:
+      "Se necesita conexión para crear una categoría. Las categorías guardadas siguen disponibles sin conexión.",
+    custom_category_save_failed:
+      "No se pudo guardar la categoría personalizada.",
+    select_category: "Seleccione una categoría.",
     note_optional: "Nota (opcional)",
     failed_add_revenue: "Error al agregar ingreso",
     failed_add_expense: "Error al agregar gasto",
