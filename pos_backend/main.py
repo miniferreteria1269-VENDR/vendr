@@ -27,6 +27,11 @@ from pos_backend.subscriptions import (
     subscription_access_state,
     subscription_display_status
 )
+from pos_backend.cash_categories import (
+    normalize_cash_category_label,
+    normalize_cash_category_type,
+    normalize_operating_expense_flag,
+)
 
 
 from enum import Enum
@@ -570,6 +575,66 @@ def init_db():
     """)
 
     # ---------------------------------------------
+    # CUSTOM CASH CATEGORIES
+    #
+    # Cash workflows and authentication are store-scoped,
+    # so private category ownership follows store_id too.
+    # cash_events continues snapshotting the display label.
+    # ---------------------------------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS custom_cash_categories (
+        category_id BIGSERIAL PRIMARY KEY,
+        store_id INTEGER NOT NULL,
+        category_type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        counts_as_operating_expense BOOLEAN,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (
+            category_type IN (
+                'expense',
+                'revenue'
+            )
+        ),
+        CHECK (
+            LENGTH(TRIM(label)) BETWEEN 1 AND 80
+        ),
+        CHECK (
+            (
+                category_type = 'expense'
+                AND counts_as_operating_expense IS NOT NULL
+            )
+            OR
+            (
+                category_type = 'revenue'
+                AND counts_as_operating_expense IS NULL
+            )
+        )
+    )
+    """)
+
+    cursor.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_custom_cash_categories_unique_label
+    ON custom_cash_categories (
+        store_id,
+        category_type,
+        LOWER(TRIM(label))
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_custom_cash_categories_store_active
+    ON custom_cash_categories (
+        store_id,
+        category_type,
+        active,
+        LOWER(label)
+    )
+    """)
+
+    # ---------------------------------------------
     # AI BUSINESS REPORTS
     #
     # The source snapshot preserves the exact VENDR-
@@ -1016,6 +1081,22 @@ def init_db():
             ALTER TABLE cash_events
             ADD COLUMN IF NOT EXISTS
                 external_amount NUMERIC(12, 2);
+
+            ALTER TABLE cash_events
+            ADD COLUMN IF NOT EXISTS
+                custom_category_id BIGINT;
+
+            ALTER TABLE cash_events
+            ADD COLUMN IF NOT EXISTS
+                counts_as_operating_expense BOOLEAN;
+
+            CREATE INDEX IF NOT EXISTS
+                idx_cash_events_custom_category
+            ON cash_events (
+                store_id,
+                custom_category_id
+            )
+            WHERE custom_category_id IS NOT NULL;
         END IF;
     END
     $$
@@ -2646,6 +2727,10 @@ def build_cash_activity_data(
                 SUM(
                     CASE
                         WHEN type = 'expense'
+                         AND COALESCE(
+                                counts_as_operating_expense,
+                                TRUE
+                             ) = TRUE
                         THEN amount
                         ELSE 0
                     END
@@ -2777,6 +2862,10 @@ def build_recorded_expense_data(
         FROM cash_events
         WHERE store_id = %s
           AND type = 'expense'
+          AND COALESCE(
+                counts_as_operating_expense,
+                TRUE
+              ) = TRUE
           AND created_at >= %s
           AND created_at < %s
           AND LOWER(
@@ -3741,6 +3830,7 @@ class CashEventRequest(BaseModel):
     amount: float
     type: str
     category: str
+    custom_category_id: Optional[int] = None
     note: Optional[str] = None
 
     # Full business amount and daily-register impact
@@ -3752,6 +3842,13 @@ class CashEventRequest(BaseModel):
     client_event_id: Optional[str] = None
     device_id: Optional[str] = None
     client_created_at: Optional[str] = None
+
+
+class CustomCashCategoryCreate(BaseModel):
+    store_id: int
+    type: str
+    label: str
+    counts_as_operating_expense: Optional[bool] = None
 
 class ReturnItem(BaseModel):
     product_id: int
@@ -14684,6 +14781,272 @@ def service_report(
             conn.close()
 
 
+def load_custom_cash_category(
+    cursor,
+    store_id: int,
+    category_id: int,
+    expected_type: str,
+    require_active: bool = True,
+):
+    cursor.execute(
+        """
+        SELECT
+            category_id,
+            store_id,
+            category_type,
+            label,
+            counts_as_operating_expense,
+            active,
+            created_at
+        FROM custom_cash_categories
+        WHERE store_id = %s
+          AND category_id = %s
+          AND category_type = %s
+        """,
+        (
+            store_id,
+            category_id,
+            expected_type,
+        )
+    )
+
+    row = cursor.fetchone()
+
+    # Do not reveal whether an ID belongs to another store.
+    if not row:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid custom cash category"
+        )
+
+    if require_active and not row[5]:
+        raise HTTPException(
+            status_code=400,
+            detail="Custom cash category is inactive"
+        )
+
+    return {
+        "id": int(row[0]),
+        "store_id": int(row[1]),
+        "type": str(row[2]),
+        "label": str(row[3]),
+        "counts_as_operating_expense": row[4],
+        "active": bool(row[5]),
+        "created_at": row[6],
+    }
+
+
+@app.get("/cash-categories")
+def get_custom_cash_categories(
+    store_id: int,
+    category_type: str = Query(alias="type"),
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    try:
+        normalized_type = normalize_cash_category_type(
+            category_type
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                category_id,
+                label,
+                counts_as_operating_expense,
+                active,
+                created_at
+            FROM custom_cash_categories
+            WHERE store_id = %s
+              AND category_type = %s
+              AND active = TRUE
+            ORDER BY
+                LOWER(label),
+                category_id
+            """,
+            (
+                store_id,
+                normalized_type,
+            )
+        )
+
+        return {
+            "categories": [
+                {
+                    "id": int(row[0]),
+                    "store_id": store_id,
+                    "type": normalized_type,
+                    "label": str(row[1]),
+                    "counts_as_operating_expense": row[2],
+                    "active": bool(row[3]),
+                    "created_at": row[4],
+                }
+                for row in cursor.fetchall()
+            ]
+        }
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
+@app.post("/cash-categories")
+def create_custom_cash_category(
+    data: CustomCashCategoryCreate,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != data.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    try:
+        category_type = normalize_cash_category_type(
+            data.type
+        )
+        label = normalize_cash_category_label(
+            data.label
+        )
+        operating_expense = (
+            normalize_operating_expense_flag(
+                category_type,
+                data.counts_as_operating_expense,
+            )
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT 1
+            FROM stores
+            WHERE store_id = %s
+            """,
+            (data.store_id,)
+        )
+
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail="Store not found"
+            )
+
+        cursor.execute(
+            """
+            INSERT INTO custom_cash_categories (
+                store_id,
+                category_type,
+                label,
+                counts_as_operating_expense
+            )
+            VALUES (%s, %s, %s, %s)
+            RETURNING
+                category_id,
+                store_id,
+                category_type,
+                label,
+                counts_as_operating_expense,
+                active,
+                created_at
+            """,
+            (
+                data.store_id,
+                category_type,
+                label,
+                operating_expense,
+            )
+        )
+
+        row = cursor.fetchone()
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "category": {
+                "id": int(row[0]),
+                "store_id": int(row[1]),
+                "type": str(row[2]),
+                "label": str(row[3]),
+                "counts_as_operating_expense": row[4],
+                "active": bool(row[5]),
+                "created_at": row[6],
+            }
+        }
+
+    except psycopg2.errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "A custom category with this name "
+                "already exists"
+            )
+        )
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "CREATE CASH CATEGORY ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create custom category"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 
 @app.post("/cash-event")
 def create_cash_event(
@@ -14722,11 +15085,21 @@ def create_cash_event(
             .replace("-", " ")
         )
 
+        is_custom_category = (
+            data.custom_category_id is not None
+        )
+
         # Legacy Cash Panel requests used revenue and
         # expense for register corrections and internal
         # transfers. Normalize them into non-P&L types
         # without breaking queued offline events.
-        if (
+        if is_custom_category:
+            # The server resolves the authoritative label below.
+            # Custom business categories cannot masquerade as
+            # legacy correction or transfer categories.
+            event_type = requested_type
+
+        elif (
             requested_type == "revenue"
             and normalized_category in {
                 "cash adjustment",
@@ -14785,6 +15158,21 @@ def create_cash_event(
                 status_code=400,
                 detail=(
                     "Invalid cash event type"
+                )
+            )
+
+        if (
+            is_custom_category
+            and event_type not in {
+                "expense",
+                "revenue",
+            }
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Custom categories can only be used "
+                    "for expense or revenue movements"
                 )
             )
 
@@ -14993,6 +15381,28 @@ def create_cash_event(
 
         organization_id = store[0]
 
+        custom_category_id = None
+        operating_expense_snapshot = None
+
+        if is_custom_category:
+            custom_category = load_custom_cash_category(
+                cursor=cursor,
+                store_id=data.store_id,
+                category_id=int(
+                    data.custom_category_id
+                ),
+                expected_type=event_type,
+                require_active=True,
+            )
+
+            custom_category_id = custom_category["id"]
+            category = custom_category["label"]
+            operating_expense_snapshot = (
+                custom_category[
+                    "counts_as_operating_expense"
+                ]
+            )
+
         direction = (
             1
             if event_type in {
@@ -15020,6 +15430,8 @@ def create_cash_event(
                 external_amount,
                 category,
                 note,
+                custom_category_id,
+                counts_as_operating_expense,
                 client_event_id,
                 device_id,
                 client_created_at
@@ -15027,7 +15439,7 @@ def create_cash_event(
             VALUES (
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
-                %s, %s, %s
+                %s, %s, %s, %s, %s
             )
             """,
             (
@@ -15041,6 +15453,8 @@ def create_cash_event(
                 external_amount,
                 category,
                 data.note,
+                custom_category_id,
+                operating_expense_snapshot,
                 data.client_event_id,
                 data.device_id,
                 data.client_created_at
@@ -15072,7 +15486,13 @@ def create_cash_event(
                 external_source,
 
             "external_amount":
-                external_amount
+                external_amount,
+
+            "custom_category_id":
+                custom_category_id,
+
+            "counts_as_operating_expense":
+                operating_expense_snapshot
         }
 
     except psycopg2.errors.UniqueViolation:

@@ -1,9 +1,27 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useState
+} from "react";
 import { useLang } from "../LanguageContext";
 import {
   savePendingEvent,
   submitPendingEvent
 } from "../offlineEvents";
+import {
+  getCachedCashCategories,
+  loadCashCategories
+} from "../cashCategories";
+import CustomCashCategoryModal from
+  "./CustomCashCategoryModal";
+
+const ADD_CUSTOM_CATEGORY =
+  "__add_custom_cash_category__";
+
+const builtInKey = value =>
+  `builtin:${value}`;
+
+const customKey = id =>
+  `custom:${id}`;
 
 const sources = [
   ["Strongbox", "strongbox"],
@@ -52,11 +70,77 @@ function BusinessCashModal({
     useState(registerLocked);
   const [externalSource, setExternalSource] =
     useState(initialExternalSource);
-  const [category, setCategory] =
-    useState(categories[0].value);
+  const [customCategories, setCustomCategories] =
+    useState(() =>
+      getCachedCashCategories(storeId, type)
+    );
+  const [categoryKey, setCategoryKey] =
+    useState(
+      builtInKey(categories[0].value)
+    );
+  const [showCustomCategory, setShowCustomCategory] =
+    useState(false);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] =
     useState(false);
+
+  const builtInCategories = categories.map(
+    item => ({
+      key: builtInKey(item.value),
+      value: item.value,
+      label: item.label,
+      customCategoryId: null,
+      isCustom: false
+    })
+  );
+
+  const customCategoryOptions =
+    customCategories.map(item => ({
+      key: customKey(item.id),
+      value: item.label,
+      label: item.label,
+      customCategoryId: item.id,
+      isCustom: true
+    }));
+
+  const categoryOptions = [
+    ...builtInCategories,
+    ...customCategoryOptions
+  ];
+
+  const selectedCategory =
+    categoryOptions.find(
+      item => item.key === categoryKey
+    ) || builtInCategories[0];
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!storeId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    loadCashCategories(storeId, type)
+      .then(loadedCategories => {
+        if (!cancelled) {
+          setCustomCategories(
+            loadedCategories
+          );
+        }
+      })
+      .catch(error => {
+        console.warn(
+          "CUSTOM CASH CATEGORY LOAD ERROR:",
+          error
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId, type]);
 
   const total = Number(amount);
   const register = Number(registerAmount);
@@ -114,6 +198,11 @@ function BusinessCashModal({
       return;
     }
 
+    if (!selectedCategory) {
+      alert(t("select_category"));
+      return;
+    }
+
     const clientEventId =
       crypto.randomUUID?.() ||
       type + "-" + Date.now() + "-" +
@@ -134,7 +223,9 @@ function BusinessCashModal({
           ? externalSource
           : null,
       type,
-      category,
+      category: selectedCategory.value,
+      custom_category_id:
+        selectedCategory.customCategoryId,
       note: note.trim(),
       client_event_id: clientEventId,
       device_id: deviceId,
@@ -235,21 +326,36 @@ function BusinessCashModal({
         </Field>
 
         <select
-          value={category}
-          onChange={event =>
-            setCategory(event.target.value)
-          }
+          value={categoryKey}
+          onChange={event => {
+            if (
+              event.target.value ===
+              ADD_CUSTOM_CATEGORY
+            ) {
+              setShowCustomCategory(true);
+              return;
+            }
+
+            setCategoryKey(event.target.value);
+          }}
           disabled={submitting}
           style={inputStyle}
         >
-          {categories.map(item => (
+          {categoryOptions.map(item => (
             <option
-              key={item.value}
-              value={item.value}
+              key={item.key}
+              value={item.key}
             >
-              {t(item.label)}
+              {item.isCustom
+                ? item.label
+                : t(item.label)}
             </option>
           ))}
+          <option
+            value={ADD_CUSTOM_CATEGORY}
+          >
+            {t("add_custom_category")}
+          </option>
         </select>
 
         <Field
@@ -360,6 +466,38 @@ function BusinessCashModal({
           </button>
         </div>
       </div>
+
+      {showCustomCategory && (
+        <CustomCashCategoryModal
+          storeId={storeId}
+          type={type}
+          onClose={() =>
+            setShowCustomCategory(false)
+          }
+          onCreated={createdCategory => {
+            setCustomCategories(current =>
+              [
+                ...current.filter(
+                  item =>
+                    item.id !==
+                    createdCategory.id
+                ),
+                createdCategory
+              ].sort((left, right) =>
+                left.label.localeCompare(
+                  right.label,
+                  undefined,
+                  { sensitivity: "base" }
+                )
+              )
+            );
+            setCategoryKey(
+              customKey(createdCategory.id)
+            );
+            setShowCustomCategory(false);
+          }}
+        />
+      )}
     </div>
   );
 }
