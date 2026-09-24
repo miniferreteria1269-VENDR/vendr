@@ -60,6 +60,30 @@ def rebuild_products(store_id: int):
         conn = db()
         cursor = conn.cursor()
 
+        # Review metadata records an intentional human
+        # action and cannot be reconstructed from the
+        # inventory event stream. Preserve it across a
+        # projection rebuild instead of guessing from
+        # create/update activity.
+        cursor.execute(
+            """
+            SELECT
+                product_id,
+                last_reviewed_at,
+                last_reviewed_by
+            FROM products
+            WHERE store_id = %s
+            """,
+            (
+                store_id,
+            )
+        )
+
+        review_metadata = {
+            row[0]: (row[1], row[2])
+            for row in cursor.fetchall()
+        }
+
         # ---------------------------------------------
         # LOAD ALL EVENTS FOR THIS STORE
         # ---------------------------------------------
@@ -387,6 +411,14 @@ def rebuild_products(store_id: int):
                 else 0
             )
 
+            (
+                last_reviewed_at,
+                last_reviewed_by
+            ) = review_metadata.get(
+                product_id,
+                (None, None)
+            )
+
             cursor.execute(
                 """
                 INSERT INTO products (
@@ -400,7 +432,9 @@ def rebuild_products(store_id: int):
                     low_stock_threshold,
                     lst_reviewed,
                     is_active,
-                    created_at
+                    created_at,
+                    last_reviewed_at,
+                    last_reviewed_by
                 )
                 VALUES (
                     %s,
@@ -413,7 +447,9 @@ def rebuild_products(store_id: int):
                     %s,
                     %s,
                     %s,
-                    NOW()
+                    NOW(),
+                    %s,
+                    %s
                 )
                 """,
                 (
@@ -435,7 +471,9 @@ def rebuild_products(store_id: int):
                     tracks_stock_value,
                     low_stock_threshold,
                     lst_reviewed,
-                    1
+                    1,
+                    last_reviewed_at,
+                    last_reviewed_by
                 )
             )
 

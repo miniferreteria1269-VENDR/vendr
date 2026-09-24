@@ -662,6 +662,42 @@ organization_report_load_failed:
     recommended_action: "Recommended Action",
     reviewed: "Reviewed",
 
+    // MASTER REVIEW
+    diagnostic_issues: "Product Issues",
+    master_review: "Master Review",
+    master_review_subtitle:
+      "Verify each active product's core information and supplier relationships.",
+    review_range: "Review range",
+    hide_reviewed: "Hide Reviewed",
+    due_for_review: "Due for review",
+    never_reviewed: "Never reviewed",
+    reviewed_today: "Reviewed today",
+    reviewed_days_ago: "Reviewed {days} days ago",
+    master_review_search: "Search active products...",
+    review_progress:
+      "{reviewed} / {total} active products reviewed within {days} days",
+    review_due_count: "{due} due for review",
+    no_master_review_products: "No active products found.",
+    no_products_due: "No products are due in this review range.",
+    master_review_offline_read_only:
+      "Offline: the cached review list is available read-only. Reconnect to edit, archive, or mark products reviewed.",
+    master_review_load_failed: "Could not load Master Review.",
+    master_review_save_failed: "Could not save this review.",
+    master_review_partial_failure:
+      "Some product changes may have saved, but the product was not marked reviewed. Check the fields and try again.",
+    master_review_whole_numbers:
+      "Stock and low-stock threshold must be whole numbers equal to or greater than zero.",
+    untracked_stock_review_error:
+      "Stock cannot be adjusted while stock tracking is disabled.",
+    master_review_stock_note: "Physical count verified in Master Review.",
+    save_mark_reviewed: "Save & Mark Reviewed",
+    product_marked_reviewed: "Product marked reviewed.",
+    archive_from_review: "Archive Product",
+    confirm_archive_review:
+      "Archive {product}? Historical transactions will be preserved.",
+    product_archived_from_review: "Product archived.",
+    review_archive_failed: "Could not archive this product.",
+
     // CASH PANEL
     cash_balance: "Cash Balance",
     strongbox_balance: "Strongbox Balance",
@@ -1729,6 +1765,42 @@ organization_report_load_failed:
     issue: "Problema",
     recommended_action: "Acción recomendada",
     reviewed: "Revisado",
+
+    // REVISIÓN MAESTRA
+    diagnostic_issues: "Problemas de productos",
+    master_review: "Revisión maestra",
+    master_review_subtitle:
+      "Verifique la información principal y los proveedores de cada producto activo.",
+    review_range: "Período de revisión",
+    hide_reviewed: "Ocultar revisados",
+    due_for_review: "Pendiente de revisión",
+    never_reviewed: "Nunca revisado",
+    reviewed_today: "Revisado hoy",
+    reviewed_days_ago: "Revisado hace {days} días",
+    master_review_search: "Buscar productos activos...",
+    review_progress:
+      "{reviewed} / {total} productos activos revisados en los últimos {days} días",
+    review_due_count: "{due} pendientes de revisión",
+    no_master_review_products: "No se encontraron productos activos.",
+    no_products_due: "No hay productos pendientes en este período.",
+    master_review_offline_read_only:
+      "Sin conexión: la lista guardada está disponible solo para consulta. Reconéctese para editar, archivar o marcar productos como revisados.",
+    master_review_load_failed: "No se pudo cargar la Revisión maestra.",
+    master_review_save_failed: "No se pudo guardar esta revisión.",
+    master_review_partial_failure:
+      "Es posible que algunos cambios se hayan guardado, pero el producto no se marcó como revisado. Verifique los campos e inténtelo nuevamente.",
+    master_review_whole_numbers:
+      "El inventario y el mínimo deben ser números enteros iguales o mayores que cero.",
+    untracked_stock_review_error:
+      "No se puede ajustar el inventario mientras el control de inventario esté desactivado.",
+    master_review_stock_note: "Conteo físico verificado en Revisión maestra.",
+    save_mark_reviewed: "Guardar y marcar revisado",
+    product_marked_reviewed: "Producto marcado como revisado.",
+    archive_from_review: "Archivar producto",
+    confirm_archive_review:
+      "¿Archivar {product}? Las transacciones históricas se conservarán.",
+    product_archived_from_review: "Producto archivado.",
+    review_archive_failed: "No se pudo archivar este producto.",
 
     // CASH PANEL
     cash_balance: "Saldo de caja",

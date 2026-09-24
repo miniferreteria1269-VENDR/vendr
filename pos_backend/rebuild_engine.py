@@ -7,6 +7,22 @@ def rebuild_products(store_id):
     conn = db()
     cursor = conn.cursor()
 
+    # Review state is explicit human metadata, not an
+    # inventory projection. Preserve it if this legacy
+    # rebuild utility is run directly.
+    cursor.execute(
+        """
+        SELECT product_id, last_reviewed_at, last_reviewed_by
+        FROM products
+        WHERE store_id = %s
+        """,
+        (store_id,)
+    )
+    review_metadata = {
+        row[0]: (row[1], row[2])
+        for row in cursor.fetchall()
+    }
+
     # -----------------------------
     # Load only events for this store
     # -----------------------------
@@ -63,6 +79,9 @@ def rebuild_products(store_id):
     for product_id, p in engine.products.items():
 
         name = product_names.get(product_id, "Unknown")
+        last_reviewed_at, last_reviewed_by = (
+            review_metadata.get(product_id, (None, None))
+        )
 
         cursor.execute("""
             INSERT INTO products (
@@ -74,9 +93,13 @@ def rebuild_products(store_id):
                 price,
                 tracks_stock,
                 is_active,
-                created_at
+                created_at,
+                last_reviewed_at,
+                last_reviewed_by
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s
+            )
         """, (
             product_id,
             store_id,
@@ -85,7 +108,9 @@ def rebuild_products(store_id):
             p["cost"],
             p["price"],
             1,
-            1
+            1,
+            last_reviewed_at,
+            last_reviewed_by
         ))
 
     conn.commit()
