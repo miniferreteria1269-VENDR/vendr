@@ -27,6 +27,11 @@ from pos_backend.subscriptions import (
     subscription_access_state,
     subscription_display_status
 )
+from pos_backend.product_review import (
+    IMPORTED_PRODUCT_CREATION,
+    MANUAL_PRODUCT_CREATION,
+    product_creation_review_metadata,
+)
 
 
 from enum import Enum
@@ -631,7 +636,33 @@ def init_db():
         is_active INTEGER,
         low_stock_threshold INTEGER DEFAULT 0,
         lst_reviewed BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TEXT
+        created_at TEXT,
+        last_reviewed_at TIMESTAMPTZ,
+        last_reviewed_by INTEGER
+    )
+    """)
+
+    # Existing products intentionally begin as never reviewed.
+    # Review state is not inferred from created_at or activity.
+    cursor.execute("""
+    ALTER TABLE products
+    ADD COLUMN IF NOT EXISTS
+        last_reviewed_at TIMESTAMPTZ
+    """)
+
+    cursor.execute("""
+    ALTER TABLE products
+    ADD COLUMN IF NOT EXISTS
+        last_reviewed_by INTEGER
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+        idx_products_master_review
+    ON products (
+        store_id,
+        is_active,
+        last_reviewed_at
     )
     """)
 
@@ -3765,6 +3796,11 @@ class ReviewLSTRequest(BaseModel):
     product_id: int
     low_stock_threshold: int
 
+
+class MarkProductReviewedRequest(BaseModel):
+    store_id: int
+    product_id: int
+
 class ReturnRequest(BaseModel):
     store_id: int
     amount: float
@@ -4058,6 +4094,15 @@ def create_product(
             timezone.utc
         )
 
+        (
+            last_reviewed_at,
+            last_reviewed_by
+        ) = product_creation_review_metadata(
+            MANUAL_PRODUCT_CREATION,
+            user_id=current_user.user_id,
+            created_at=event_datetime
+        )
+
         # ---------------------------------------------
         # WRITE CREATE EVENT
         #
@@ -4125,7 +4170,9 @@ def create_product(
                 location_code,
                 lst_reviewed,
                 is_active,
-                created_at
+                created_at,
+                last_reviewed_at,
+                last_reviewed_by
             )
             VALUES (
                 %s,
@@ -4139,7 +4186,9 @@ def create_product(
                 %s,
                 %s,
                 %s,
-                NOW()
+                NOW(),
+                %s,
+                %s
             )
             RETURNING
                 product_id,
@@ -4152,7 +4201,9 @@ def create_product(
                 location_code,
                 lst_reviewed,
                 is_active,
-                created_at
+                created_at,
+                last_reviewed_at,
+                last_reviewed_by
             """,
             (
                 product_id,
@@ -4165,7 +4216,9 @@ def create_product(
                 normalized_threshold,
                 normalized_location_code,
                 lst_reviewed,
-                1
+                1,
+                last_reviewed_at,
+                last_reviewed_by
             )
         )
 
@@ -4220,7 +4273,13 @@ def create_product(
                 ),
 
                 "created_at":
-                    product_row[10]
+                    product_row[10],
+
+                "last_reviewed_at":
+                    product_row[11],
+
+                "last_reviewed_by":
+                    product_row[12]
             }
         }
 
@@ -6454,7 +6513,9 @@ def get_products(
                 low_stock_threshold,
                 location_code,
                 is_active,
-                created_at
+                created_at,
+                last_reviewed_at,
+                last_reviewed_by
 
             FROM products
 
@@ -6508,7 +6569,16 @@ def get_products(
                     bool(row[8]),
 
                 "created_at":
-                    row[9]
+                    row[9],
+
+                "last_reviewed_at": (
+                    row[10].isoformat()
+                    if row[10]
+                    else None
+                ),
+
+                "last_reviewed_by":
+                    row[11]
             })
 
         return {
@@ -12236,6 +12306,91 @@ def edit_product(
 
         if conn:
             conn.close()
+
+@app.post("/master-review/mark-reviewed")
+def mark_product_reviewed(
+    data: MarkProductReviewedRequest,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    )
+):
+    if current_user.store_id != data.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE products
+            SET
+                last_reviewed_at = NOW(),
+                last_reviewed_by = %s
+            WHERE store_id = %s
+              AND product_id = %s
+              AND is_active = 1
+            RETURNING
+                product_id,
+                last_reviewed_at,
+                last_reviewed_by
+            """,
+            (
+                current_user.user_id,
+                data.store_id,
+                data.product_id
+            )
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Active product not found"
+            )
+
+        conn.commit()
+
+        return {
+            "status": "accepted",
+            "product_id": row[0],
+            "last_reviewed_at": row[1].isoformat(),
+            "last_reviewed_by": row[2]
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+
+        print(
+            "MARK PRODUCT REVIEWED ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to mark product reviewed"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
             
 @app.get("/cash-balance")
 def cash_balance(
@@ -13662,6 +13817,15 @@ async def import_products(
                     timezone.utc
                 )
 
+                (
+                    last_reviewed_at,
+                    last_reviewed_by
+                ) = product_creation_review_metadata(
+                    IMPORTED_PRODUCT_CREATION,
+                    user_id=current_user.user_id,
+                    created_at=event_datetime
+                )
+
                 # -------------------------------------
                 # INSERT CREATE EVENT
                 #
@@ -13725,7 +13889,9 @@ async def import_products(
                         low_stock_threshold,
                         lst_reviewed,
                         is_active,
-                        created_at
+                        created_at,
+                        last_reviewed_at,
+                        last_reviewed_by
                     )
                     VALUES (
                         %s,
@@ -13738,7 +13904,9 @@ async def import_products(
                         %s,
                         %s,
                         %s,
-                        NOW()
+                        NOW(),
+                        %s,
+                        %s
                     )
                     """,
                     (
@@ -13751,7 +13919,9 @@ async def import_products(
                         tracks_stock_product_value,
                         low_stock_threshold,
                         lst_reviewed,
-                        1
+                        1,
+                        last_reviewed_at,
+                        last_reviewed_by
                     )
                 )
 

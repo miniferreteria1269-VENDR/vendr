@@ -18,7 +18,7 @@ import ProductPanel from "./components/ProductPanel";
 import TicketPanel from "./components/TicketPanel";
 import HistoryPanel from "./components/HistoryPanel";
 import InventoryReport from "./components/InventoryReport";
-import ProductDiagnostics from "./components/ProductDiagnostics";
+import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import ProductManagement from "./components/ProductManagement";
 import SalesAnalysisPanel from "./components/SalesAnalysisPanel";
 import CashPanel from "./components/CashPanel";
@@ -2794,8 +2794,12 @@ const finalizeIntake = async () => {
 
       {/* DIAGNOSTICS */}
       {view === "diagnostics" && (
-        <ProductDiagnostics
+        <DiagnosticsPanel
           storeId={storeId}
+          onProductsChanged={async () => {
+            await loadProducts();
+            await loadPriorityLowStock();
+          }}
         />
       )}
 
