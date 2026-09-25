@@ -2657,6 +2657,7 @@ const finalizeIntake = async () => {
       {/* POS */}
       {view === "pos" && (
         <div
+          className="pos-workspace"
           style={{
             display: "flex",
             flex: 1,

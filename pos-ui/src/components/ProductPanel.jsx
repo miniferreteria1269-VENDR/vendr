@@ -74,6 +74,7 @@ function ProductPanel({
 
   return (
     <div
+      className="product-panel"
       style={{
         width: "34%",
         minWidth: 240,
