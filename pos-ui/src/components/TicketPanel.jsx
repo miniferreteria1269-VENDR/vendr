@@ -172,6 +172,7 @@ function TicketPanel({
 
   return (
     <div
+      className="ticket-panel"
       style={{
         flex: 1,
         minWidth: 0,
@@ -340,6 +341,7 @@ function TicketPanel({
       {/* ACTIVE TICKET */}
       {currentTicket && (
         <div
+          className="ticket-active"
           style={{
             flex: 1,
             display: "flex",
@@ -655,6 +657,7 @@ function TicketPanel({
 
           {/* ITEMS */}
           <div
+            className="ticket-items-scroll"
             style={{
               flex: 1,
               minHeight: 0,
@@ -832,6 +835,7 @@ function TicketPanel({
 
           {/* FOOTER */}
           <div
+            className="ticket-footer"
             style={{
               marginTop: 12,
               display: "flex",
@@ -844,6 +848,7 @@ function TicketPanel({
             }}
           >
             <div
+              className="ticket-footer-actions"
               style={{
                 display: "flex",
                 gap: 8,
@@ -987,6 +992,7 @@ function TicketPanel({
 
             {/* TICKET TOTAL */}
             <div
+              className="ticket-total-display"
               style={{
                 minWidth: 180,
                 padding: "10px 16px",

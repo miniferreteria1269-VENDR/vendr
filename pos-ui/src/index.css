@@ -21,6 +21,14 @@ html, body, #root {
   padding: 0;
 }
 
+html {
+  /* Keep Android WebView/Chrome from inflating text independently of the
+     layout viewport. User pinch zoom remains available through the viewport
+     configuration. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 /* Clean body (no centering, no flex interference) */
 body {
   min-width: 320px;
@@ -345,6 +353,172 @@ textarea {
     max-width: 100% !important;
     padding-bottom: max(16px, env(safe-area-inset-bottom));
     box-sizing: border-box;
+  }
+}
+
+/*
+ * Phone-sized landscape viewports vary substantially between Android
+ * manufacturers even when the physical screens are similar. Compact by
+ * available height and touch input, not by model or raw screen resolution.
+ */
+@media (orientation: landscape) and (max-height: 600px) and (pointer: coarse) {
+  .pos-workspace {
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+
+  .product-panel,
+  .ticket-panel {
+    padding: 10px !important;
+    border-radius: 10px !important;
+  }
+
+  .product-panel {
+    min-width: 210px !important;
+  }
+
+  .ticket-toolbar {
+    gap: 5px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .mobile-ticket-selector {
+    width: clamp(92px, 18vw, 128px);
+    height: 34px;
+    padding: 4px 24px 4px 8px;
+    font-size: 14px;
+  }
+
+  .ticket-create-buttons {
+    gap: 5px !important;
+  }
+
+  .ticket-create-buttons > button {
+    min-height: 34px;
+    padding: 5px 9px !important;
+    font-size: 14px !important;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  .ticket-header-controls {
+    gap: 5px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .ticket-header-title {
+    font-size: 14px;
+  }
+
+  .ticket-client-select {
+    width: clamp(116px, 24vw, 154px) !important;
+    height: 34px;
+    padding: 4px 22px 4px 7px !important;
+    font-size: 14px !important;
+  }
+
+  .ticket-discount-controls {
+    gap: 3px !important;
+  }
+
+  .ticket-discount-type {
+    width: 42px !important;
+    height: 34px;
+    padding: 4px 18px 4px 6px !important;
+    font-size: 14px !important;
+  }
+
+  .ticket-discount-value {
+    width: 52px !important;
+    height: 34px;
+    padding: 4px 6px !important;
+    font-size: 14px !important;
+  }
+
+  .ticket-discount-total {
+    display: none !important;
+  }
+
+  .ticket-items-scroll {
+    min-height: 88px !important;
+  }
+
+  .ticket-footer {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    margin-top: 6px !important;
+    min-width: 0;
+  }
+
+  .ticket-footer-actions {
+    flex: 1 1 auto;
+    flex-wrap: nowrap !important;
+    gap: 5px !important;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .ticket-footer-actions > button {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 5px 9px !important;
+    font-size: 14px !important;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  .ticket-footer-actions > input[type="date"] {
+    flex: 0 0 124px;
+    width: 124px !important;
+    height: 34px;
+    padding: 4px 6px !important;
+    font-size: 14px !important;
+  }
+
+  .ticket-total-display {
+    flex: 0 0 auto;
+    min-width: 112px !important;
+    padding: 6px 10px !important;
+    font-size: 18px !important;
+  }
+}
+
+/* Extra compression for unusually short landscape browser/PWA viewports. */
+@media (orientation: landscape) and (max-height: 420px) and (pointer: coarse) {
+  .mobile-app-toolbar {
+    min-height: 42px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
+  .mobile-menu-button {
+    width: 34px;
+    height: 34px;
+    font-size: 20px;
+  }
+
+  .pos-workspace {
+    gap: 6px !important;
+    padding: 6px !important;
+  }
+
+  .product-panel,
+  .ticket-panel {
+    padding: 8px !important;
+  }
+
+  .ticket-toolbar,
+  .ticket-header-controls {
+    margin-bottom: 3px !important;
+  }
+
+  .ticket-items-scroll {
+    min-height: 80px !important;
+  }
+
+  .ticket-footer {
+    margin-top: 4px !important;
   }
 }
 
