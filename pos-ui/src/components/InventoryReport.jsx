@@ -838,7 +838,7 @@ function InventoryReport({
 
       {inventoryView === "stock" && (
         <div
-          className="low-stock-card"
+          className="low-stock-card inventory-stock-toolbar"
           style={{
             display: "flex",
             alignItems: "center",
@@ -888,6 +888,7 @@ function InventoryReport({
       {/* STOCK */}
       {inventoryView === "stock" && (
         <div
+          className="inventory-stock-card"
           style={{
             ...card,
             display: "flex",
@@ -897,7 +898,7 @@ function InventoryReport({
           }}
         >
           <div
-            className="low-stock-view-tabs"
+            className="low-stock-view-tabs inventory-totals"
             style={{
               display: "flex",
               gap: 30,
@@ -921,6 +922,7 @@ function InventoryReport({
           </div>
 
           <div
+            className="inventory-table-scroll"
             style={{
               flex: 1,
               overflow: "auto",
