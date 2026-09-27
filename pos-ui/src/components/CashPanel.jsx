@@ -219,6 +219,7 @@ function CashPanel({
 
   return (
     <div
+      className="cash-panel"
       style={{
         padding: 16,
         display: "flex",
@@ -228,6 +229,7 @@ function CashPanel({
       }}
     >
       <div
+        className="cash-balance-grid"
         style={{
           display: "grid",
           gridTemplateColumns:
@@ -237,12 +239,14 @@ function CashPanel({
         }}
       >
         <div
+          className="cash-balance-card"
           style={{
             ...card,
             textAlign: "center"
           }}
         >
           <div
+            className="cash-balance-label"
             style={{
               color: COLORS.textDim
             }}
@@ -251,6 +255,7 @@ function CashPanel({
           </div>
 
           <div
+            className="cash-balance-amount"
             style={{
               fontSize: 32,
               fontWeight: "bold",
@@ -266,12 +271,14 @@ function CashPanel({
         </div>
 
         <div
+          className="cash-balance-card"
           style={{
             ...card,
             textAlign: "center"
           }}
         >
           <div
+            className="cash-balance-label"
             style={{
               color: COLORS.textDim
             }}
@@ -280,6 +287,7 @@ function CashPanel({
           </div>
 
           <div
+            className="cash-balance-amount cash-strongbox-amount"
             style={{
               fontSize: 32,
               fontWeight: "bold",
@@ -296,6 +304,7 @@ function CashPanel({
           </div>
 
           <div
+            className="cash-strongbox-actions"
             style={{
               display: "flex",
               gap: 8,
@@ -361,6 +370,7 @@ function CashPanel({
       </div>
 
       <div
+        className="cash-primary-actions"
         style={{
           display: "flex",
           gap: 10,

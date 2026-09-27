@@ -171,6 +171,7 @@ function SalesAnalysisPanel({
 
   return (
     <div
+      className="sales-analysis-panel"
       style={{
         padding: 16,
         flex: 1,
@@ -284,6 +285,7 @@ function SalesAnalysisPanel({
         />
       ) : (
         <div
+          className="sales-analysis-scroll"
           style={{
             flex: 1,
             minHeight: 0,
@@ -373,6 +375,7 @@ function SalesAnalysisPanel({
 
       {/* SUMMARY CARDS */}
       <div
+        className="analysis-metrics-grid"
         style={{
           display: "grid",
           gridTemplateColumns:
@@ -430,6 +433,7 @@ function SalesAnalysisPanel({
 
       {/* TOP LISTS */}
       <div
+        className="analysis-top-lists"
         style={{
           display: "grid",
           gridTemplateColumns:
@@ -470,6 +474,7 @@ function Metric({
 }) {
   return (
     <div
+      className="analysis-metric-card"
       style={{
         background:
           COLORS.panel,
@@ -518,6 +523,7 @@ function ProductList({
 
   return (
     <div
+      className="analysis-product-list"
       style={{
         ...card,
         height:

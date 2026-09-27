@@ -522,6 +522,271 @@ textarea {
   }
 }
 
+/*
+ * Ultra-compact phone tier. The 600px short-landscape rules above are the
+ * tablet/compact tier; this tighter tier is reserved for touch viewports that
+ * have phone-like usable height after Android's system bars are deducted.
+ */
+@media (orientation: landscape) and (max-height: 480px) and (pointer: coarse) {
+  .cash-panel,
+  .sales-analysis-panel {
+    padding: 7px !important;
+  }
+
+  .cash-balance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .cash-balance-card {
+    padding: 7px !important;
+    border-radius: 9px !important;
+  }
+
+  .cash-balance-card > div:first-child {
+    font-size: 12px !important;
+    line-height: 1.15;
+  }
+
+  .cash-balance-amount {
+    margin-top: 2px !important;
+    font-size: 22px !important;
+    line-height: 1.1;
+  }
+
+  .cash-strongbox-amount {
+    margin-bottom: 5px !important;
+  }
+
+  .cash-strongbox-actions {
+    flex-wrap: nowrap !important;
+    gap: 3px !important;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .cash-strongbox-actions > button {
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 4px 6px !important;
+    font-size: 11px !important;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .cash-primary-actions {
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .cash-primary-actions > button {
+    min-width: 0;
+    min-height: 34px;
+    padding: 4px 5px !important;
+    font-size: 11px !important;
+    line-height: 1.08;
+  }
+
+  .analysis-mobile-toolbar {
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+
+  .analysis-mobile-toolbar > input {
+    width: 112px !important;
+    min-width: 112px !important;
+    height: 32px;
+    padding: 4px 6px !important;
+    font-size: 12px !important;
+  }
+
+  .analysis-mobile-toolbar > button {
+    min-height: 32px;
+    padding: 4px 7px !important;
+    font-size: 11px !important;
+  }
+
+  .sales-analysis-scroll {
+    padding-right: 2px !important;
+  }
+
+  .analysis-metrics-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    margin-bottom: 7px !important;
+  }
+
+  .analysis-metric-card {
+    padding: 5px 6px !important;
+    border-radius: 7px !important;
+  }
+
+  .analysis-metric-card > div:first-child {
+    font-size: 9px !important;
+    line-height: 1.1 !important;
+  }
+
+  .analysis-metric-card > div:last-child {
+    font-size: 14px !important;
+    line-height: 1.1 !important;
+  }
+
+  .analysis-top-lists {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  .analysis-product-list {
+    height: clamp(130px, 43vh, 190px) !important;
+    padding: 7px !important;
+    border-radius: 9px !important;
+  }
+
+  .analysis-product-list > h4 {
+    margin-bottom: 5px !important;
+    font-size: 13px;
+  }
+
+  .analysis-product-list > div > div {
+    margin-bottom: 3px !important;
+    padding: 5px !important;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .inventory-report {
+    padding: 6px !important;
+  }
+
+  .inventory-view-tabs {
+    gap: 3px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .inventory-view-tabs > button {
+    min-height: 30px;
+    padding: 4px 7px !important;
+    font-size: 11px !important;
+    line-height: 1.1;
+  }
+
+  .inventory-stock-toolbar {
+    gap: 5px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .inventory-stock-toolbar > input {
+    width: min(42vw, 260px) !important;
+    height: 32px;
+    padding: 4px 7px !important;
+    font-size: 12px !important;
+  }
+
+  .inventory-stock-toolbar > button {
+    min-height: 32px;
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .inventory-stock-card {
+    padding: 7px !important;
+    border-radius: 9px !important;
+  }
+
+  .inventory-totals {
+    gap: 12px !important;
+    margin-bottom: 5px !important;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+
+  .inventory-table-scroll th,
+  .inventory-table-scroll td {
+    padding: 4px 6px !important;
+    font-size: 11px !important;
+    line-height: 1.15;
+  }
+
+  .product-management {
+    padding: 6px !important;
+  }
+
+  .product-management-title {
+    margin: 0 0 4px !important;
+    font-size: 16px !important;
+    line-height: 1.15;
+  }
+
+  .product-count-summary {
+    gap: 4px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .product-count-card {
+    gap: 6px !important;
+    padding: 4px 7px !important;
+    border-radius: 8px !important;
+  }
+
+  .product-count-card > div:first-child {
+    font-size: 10px !important;
+  }
+
+  .product-count-card > div:last-child {
+    font-size: 15px !important;
+  }
+
+  .product-management-actions {
+    gap: 3px !important;
+    margin-bottom: 3px !important;
+  }
+
+  .product-management-actions > button {
+    min-height: 29px;
+    padding: 4px 7px !important;
+    font-size: 11px !important;
+    line-height: 1.1;
+  }
+
+  .product-selection-help {
+    margin-bottom: 3px !important;
+    font-size: 10px !important;
+    line-height: 1.1;
+  }
+
+  .product-master-controls {
+    gap: 4px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .product-master-controls > input {
+    height: 32px;
+    padding: 4px 7px !important;
+    font-size: 12px !important;
+  }
+
+  .product-master-controls > button {
+    min-height: 32px;
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .product-master-table {
+    min-height: 90px !important;
+    max-height: calc(100dvh - 165px) !important;
+  }
+
+  .product-master-table th,
+  .product-master-table td {
+    padding: 4px 7px !important;
+    font-size: 11px !important;
+    line-height: 1.15;
+  }
+}
+
 @media (max-width: 520px) {
   .ticket-discount-total {
     display: none;
