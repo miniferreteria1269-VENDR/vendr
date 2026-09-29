@@ -212,9 +212,7 @@ function AIWeeklyBriefPanel({
       style={{
         flex: 1,
         minHeight: 0,
-        height: "calc(100dvh - 210px)",
-        maxHeight: "calc(100dvh - 210px)",
-        overflowY: "scroll",
+        overflowY: "auto",
         overscrollBehavior: "contain",
         paddingRight: 4,
         scrollbarGutter: "stable",
