@@ -93,6 +93,7 @@ function ProductPanel({
     >
       {/* SEARCH */}
       <div
+        className="product-search-row"
         style={{
           display: "flex",
           gap: 6,
@@ -100,6 +101,7 @@ function ProductPanel({
         }}
       >
         <input
+          className="product-search-input"
           type="text"
           placeholder={t("search_products")}
           value={searchTerm}
@@ -130,6 +132,7 @@ function ProductPanel({
 
         {searchTerm.trim() !== "" && (
           <button
+            className="product-search-clear"
             type="button"
             onClick={() =>
               setSearchTerm("")
@@ -169,6 +172,7 @@ function ProductPanel({
       {/* QUICK ITEMS LABEL */}
       {searchTerm.trim() === "" && (
         <div
+          className="quick-items-label"
           style={{
             marginBottom: 8,
             color: COLORS.textDim,
@@ -181,6 +185,7 @@ function ProductPanel({
 
       {/* PRODUCT LIST */}
       <div
+        className="quick-items-list"
         style={{
           flex: 1,
           minHeight: 0,
@@ -195,6 +200,7 @@ function ProductPanel({
         {displayProducts.map(
           product => (
             <div
+              className="quick-item-card"
               key={
                 product.product_id
               }
@@ -240,6 +246,7 @@ function ProductPanel({
                 }}
               >
                 <div
+                  className="quick-item-name"
                   style={{
                     fontWeight: 500,
                     overflow: "hidden",
@@ -251,6 +258,7 @@ function ProductPanel({
                 </div>
 
                 <div
+                  className="quick-item-meta"
                   style={{
                     marginTop: 3,
 
@@ -303,6 +311,7 @@ function ProductPanel({
 
               {/* RIGHT SIDE */}
               <div
+                className="quick-item-price"
                 style={{
                   flex: "0 0 auto",
 

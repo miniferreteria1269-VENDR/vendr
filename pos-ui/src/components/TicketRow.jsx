@@ -163,6 +163,7 @@ function TicketRow({
 
   return (
     <div
+      className="ticket-item-row"
       style={{
         display: "grid",
 
@@ -197,6 +198,7 @@ function TicketRow({
 
       {/* QUANTITY */}
       <div
+        className="ticket-quantity-controls"
         style={{
           display: "grid",
 
@@ -210,6 +212,7 @@ function TicketRow({
         }}
       >
         <input
+          className="ticket-row-field"
           type="number"
           min="1"
           step="1"
@@ -238,6 +241,7 @@ function TicketRow({
         />
 
         <button
+          className="ticket-quantity-button"
           type="button"
           onClick={() =>
             changeQuantity(-1)
@@ -257,6 +261,7 @@ function TicketRow({
         </button>
 
         <button
+          className="ticket-quantity-button"
           type="button"
           onClick={() =>
             changeQuantity(1)
@@ -280,6 +285,7 @@ function TicketRow({
       {ticketType ===
       "intake" ? (
         <input
+          className="ticket-row-field"
           type="number"
           min="0"
           step="0.01"
@@ -305,6 +311,7 @@ function TicketRow({
         />
       ) : (
         <input
+          className="ticket-row-field"
           type="number"
           min="0"
           step="0.001"
@@ -336,6 +343,7 @@ function TicketRow({
       {ticketType ===
       "intake" ? (
         <input
+          className="ticket-row-field"
           type="number"
           min="0"
           step="0.01"
@@ -376,6 +384,7 @@ function TicketRow({
 
       {/* REMOVE */}
       <button
+        className="ticket-remove-button"
         type="button"
         onClick={() =>
           removeItem(index)
