@@ -1016,6 +1016,7 @@ function InventoryReport({
       {/* LOW STOCK */}
       {inventoryView === "lowstock" && (
         <div
+          className="low-stock-workspace"
           style={{
             ...card,
             display: "flex",
@@ -1025,6 +1026,7 @@ function InventoryReport({
           }}
         >
           <div
+            className="low-stock-view-switcher"
             style={{
               display: "flex",
               gap: 8,
@@ -1297,6 +1299,7 @@ function InventoryReport({
           {lowStockView === "reorder" && (
             <>
               <div
+                className="reorder-toolbar"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1305,30 +1308,32 @@ function InventoryReport({
                   flexWrap: "wrap",
                 }}
               >
-                {[
-                  ["master", t("master_list")],
-                  ["supplier", t("by_supplier")],
-                  ["unassigned", t("unassigned")],
-                ].map(([filter, label]) => (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => {
-                      setReorderFilter(filter);
+                <div className="reorder-scope-filters">
+                  {[
+                    ["master", t("master_list")],
+                    ["supplier", t("by_supplier")],
+                    ["unassigned", t("unassigned")],
+                  ].map(([filter, label]) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => {
+                        setReorderFilter(filter);
 
-                      if (filter !== "supplier") {
-                        setReorderSupplierId("");
+                        if (filter !== "supplier") {
+                          setReorderSupplierId("");
+                        }
+                      }}
+                      style={
+                        reorderFilter === filter
+                          ? btnPrimary
+                          : btnSecondary
                       }
-                    }}
-                    style={
-                      reorderFilter === filter
-                        ? btnPrimary
-                        : btnSecondary
-                    }
-                  >
-                    {label}
-                  </button>
-                ))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
 
                 {reorderFilter === "supplier" && (
                   <select
@@ -1357,6 +1362,7 @@ function InventoryReport({
                 )}
 
                 <div
+                  className="reorder-priority-filters"
                   style={{
                     display: "flex",
                     gap: 6,
@@ -1387,27 +1393,27 @@ function InventoryReport({
                   ))}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={loadReorderItems}
-                  style={{
-                    ...btnSecondary,
-                    marginLeft: "auto",
-                  }}
-                >
-                  {t("refresh")}
-                </button>
+                <div className="reorder-toolbar-actions">
+                  <button
+                    type="button"
+                    onClick={loadReorderItems}
+                    style={btnSecondary}
+                  >
+                    {t("refresh")}
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={openReorderProductPicker}
-                  style={btnPrimary}
-                >
-                  + {t("add_product")}
-                </button>
+                  <button
+                    type="button"
+                    onClick={openReorderProductPicker}
+                    style={btnPrimary}
+                  >
+                    + {t("add_product")}
+                  </button>
+                </div>
               </div>
 
               <div
+                className="reorder-table-scroll"
                 style={{
                   flex: 1,
                   overflow: "auto",
@@ -1586,6 +1592,7 @@ function InventoryReport({
               </div>
 
               <div
+                className="reorder-summary"
                 style={{
                   marginTop: 14,
                   display: "flex",

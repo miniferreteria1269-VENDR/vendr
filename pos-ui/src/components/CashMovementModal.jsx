@@ -239,6 +239,7 @@ function CashMovementModal({
 
   return (
     <div
+      className="cash-movement-modal-overlay"
       role="presentation"
       onMouseDown={event => {
         if (
@@ -260,6 +261,7 @@ function CashMovementModal({
       }}
     >
       <div
+        className="cash-movement-modal"
         role="dialog"
         aria-modal="true"
         style={{
@@ -268,7 +270,7 @@ function CashMovementModal({
           color: COLORS.text
         }}
       >
-        <h3 style={{ marginTop: 0 }}>
+        <h3 className="cash-movement-modal-title" style={{ marginTop: 0 }}>
           {titleKey
             ? t(titleKey)
             : isTransfer
@@ -278,7 +280,9 @@ function CashMovementModal({
                 : t("adjust_register")}
         </h3>
 
+        <div className="cash-movement-modal-body">
         <label
+          className="cash-movement-field"
           style={{
             display: "block",
             marginBottom: 12
@@ -332,6 +336,7 @@ function CashMovementModal({
         </label>
 
         <label
+          className="cash-movement-field"
           style={{
             display: "block",
             marginBottom: 12
@@ -367,6 +372,7 @@ function CashMovementModal({
 
         {isTransfer && !fixedCashLocation && (
           <label
+            className="cash-movement-field"
             style={{
               display: "block",
               marginBottom: 12
@@ -413,6 +419,7 @@ function CashMovementModal({
         )}
 
         <label
+          className="cash-movement-field"
           style={{
             display: "block",
             marginBottom: 12
@@ -446,6 +453,7 @@ function CashMovementModal({
 
         {!isTransfer && !isStrongboxAdjustment && (
           <div
+            className="cash-movement-explanation"
             style={{
               color: COLORS.textDim,
               marginBottom: 12
@@ -459,6 +467,7 @@ function CashMovementModal({
 
         {isTransfer && (
           <div
+            className="cash-movement-explanation"
             style={{
               color: COLORS.textDim,
               marginBottom: 12
@@ -472,6 +481,7 @@ function CashMovementModal({
 
         {isStrongboxAdjustment && (
           <div
+            className="cash-movement-explanation"
             style={{
               color: COLORS.textDim,
               marginBottom: 12
@@ -485,6 +495,7 @@ function CashMovementModal({
 
         {error && (
           <div
+            className="cash-movement-error"
             style={{
               color: COLORS.danger,
               marginBottom: 12
@@ -493,8 +504,10 @@ function CashMovementModal({
             {error}
           </div>
         )}
+        </div>
 
         <div
+          className="cash-movement-modal-actions"
           style={{
             display: "flex",
             justifyContent: "flex-end",
