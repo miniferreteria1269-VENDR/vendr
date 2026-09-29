@@ -56,6 +56,35 @@ textarea {
   border-radius: 50%;
 }
 
+.cash-movement-modal {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+}
+
+.cash-movement-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.cash-movement-modal-actions {
+  flex: 0 0 auto;
+}
+
+.reorder-scope-filters,
+.reorder-priority-filters,
+.reorder-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reorder-toolbar-actions {
+  margin-left: auto;
+}
+
 @media (max-width: 720px),
        (orientation: landscape) and (max-height: 600px) and (pointer: coarse) {
   .desktop-app-header,
@@ -671,6 +700,177 @@ textarea {
     padding: 4px 7px !important;
     font-size: 11px !important;
     line-height: 1.1;
+  }
+
+  .low-stock-workspace {
+    padding: 7px !important;
+    border-radius: 9px !important;
+  }
+
+  .low-stock-view-switcher {
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .low-stock-view-switcher > button {
+    min-height: 30px;
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+    line-height: 1.1;
+  }
+
+  .reorder-toolbar {
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    margin-bottom: 5px !important;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .reorder-scope-filters,
+  .reorder-priority-filters,
+  .reorder-toolbar-actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap !important;
+    gap: 3px !important;
+  }
+
+  .reorder-priority-filters {
+    padding-left: 4px !important;
+  }
+
+  .reorder-toolbar-actions {
+    margin-left: auto;
+  }
+
+  .reorder-toolbar button {
+    min-height: 29px;
+    padding: 4px 7px !important;
+    font-size: 10px !important;
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+
+  .reorder-toolbar > select {
+    min-width: 150px !important;
+    height: 29px;
+    padding: 3px 22px 3px 6px !important;
+    font-size: 11px !important;
+  }
+
+  .reorder-table-scroll {
+    min-height: 82px !important;
+  }
+
+  .reorder-table-scroll th,
+  .reorder-table-scroll td {
+    padding: 4px 6px !important;
+    font-size: 10px !important;
+    line-height: 1.1;
+  }
+
+  .reorder-table-scroll button {
+    min-height: 27px;
+    padding: 3px 6px !important;
+    font-size: 10px !important;
+  }
+
+  .reorder-summary {
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-top: 5px !important;
+  }
+
+  .reorder-summary > div {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .reorder-summary > div > div {
+    margin-top: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .reorder-summary > div > div:first-child {
+    font-size: 14px !important;
+  }
+
+  .reorder-summary > button {
+    flex: 0 0 auto;
+    min-height: 29px;
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+  }
+
+  .cash-movement-modal-overlay {
+    align-items: center !important;
+    padding: 6px !important;
+  }
+
+  .cash-movement-modal {
+    width: min(620px, 100%) !important;
+    max-height: calc(100dvh - 12px) !important;
+    padding: 8px !important;
+    border-radius: 9px !important;
+  }
+
+  .cash-movement-modal-title {
+    flex: 0 0 auto;
+    margin: 0 0 5px !important;
+    font-size: 15px;
+    line-height: 1.15;
+  }
+
+  .cash-movement-modal-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px 8px;
+    overflow-y: auto;
+  }
+
+  .cash-movement-field {
+    min-width: 0;
+    margin-bottom: 0 !important;
+  }
+
+  .cash-movement-field > span {
+    margin-bottom: 2px !important;
+    font-size: 11px;
+    line-height: 1.1;
+  }
+
+  .cash-movement-field > input,
+  .cash-movement-field > select {
+    box-sizing: border-box;
+    height: 31px;
+    padding: 4px 7px !important;
+    font-size: 12px !important;
+  }
+
+  .cash-movement-explanation,
+  .cash-movement-error {
+    grid-column: 1 / -1;
+    margin-bottom: 0 !important;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  .cash-movement-modal-actions {
+    gap: 4px !important;
+    padding-top: 5px;
+  }
+
+  .cash-movement-modal-actions > button {
+    min-height: 29px;
+    padding: 4px 9px !important;
+    font-size: 11px !important;
   }
 
   .inventory-stock-toolbar {
