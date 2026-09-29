@@ -687,6 +687,7 @@ function TicketPanel({
               {/* COLUMN HEADERS */}
               {ticketItems.length > 0 && (
                 <div
+                  className="ticket-column-header"
                   style={{
                     display: "grid",
 
@@ -779,6 +780,7 @@ function TicketPanel({
               {ticketItems.map(
                 (item, index) => (
                   <div
+                    className="ticket-item-wrapper"
                     key={
                       `${item.product_id}-${index}`
                     }

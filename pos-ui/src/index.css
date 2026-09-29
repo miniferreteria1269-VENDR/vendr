@@ -557,6 +557,211 @@ textarea {
  * have phone-like usable height after Android's system bars are deducted.
  */
 @media (orientation: landscape) and (max-height: 480px) and (pointer: coarse) {
+  .pos-workspace {
+    gap: 4px !important;
+    padding: 4px !important;
+  }
+
+  .product-panel,
+  .ticket-panel {
+    padding: 6px !important;
+    border-radius: 8px !important;
+  }
+
+  .product-panel {
+    width: 31% !important;
+    min-width: 195px !important;
+  }
+
+  .product-search-row {
+    gap: 3px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .product-search-input {
+    height: 29px;
+    padding: 4px 6px !important;
+    font-size: 11px !important;
+  }
+
+  .product-search-clear {
+    width: 29px !important;
+    min-width: 29px !important;
+    height: 29px;
+    padding: 0 !important;
+    font-size: 13px !important;
+  }
+
+  .quick-items-label {
+    margin-bottom: 3px !important;
+    font-size: 10px !important;
+    line-height: 1.1;
+  }
+
+  .quick-items-list {
+    gap: 4px !important;
+  }
+
+  .quick-item-card {
+    gap: 6px !important;
+    padding: 5px 6px !important;
+    border-radius: 7px !important;
+  }
+
+  .quick-item-name,
+  .quick-item-price {
+    font-size: 11px !important;
+    line-height: 1.15;
+  }
+
+  .quick-item-meta {
+    gap: 5px !important;
+    margin-top: 2px !important;
+    font-size: 9px !important;
+    line-height: 1.1;
+  }
+
+  .ticket-toolbar {
+    gap: 3px !important;
+    margin-bottom: 3px !important;
+  }
+
+  .mobile-ticket-selector {
+    width: clamp(82px, 16vw, 110px);
+    height: 29px;
+    padding: 3px 20px 3px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+
+  .ticket-create-buttons {
+    gap: 3px !important;
+  }
+
+  .ticket-create-buttons > button {
+    min-height: 29px;
+    padding: 4px 7px !important;
+    border-radius: 6px !important;
+    font-size: 10px !important;
+    line-height: 1.05;
+  }
+
+  .ticket-header-controls {
+    gap: 3px !important;
+    margin-bottom: 3px !important;
+  }
+
+  .ticket-header-title {
+    font-size: 11px !important;
+  }
+
+  .ticket-client-select {
+    width: clamp(105px, 22vw, 142px) !important;
+    height: 29px;
+    padding: 3px 19px 3px 6px !important;
+    font-size: 11px !important;
+  }
+
+  .ticket-discount-type {
+    width: 38px !important;
+    height: 29px;
+    padding: 3px 15px 3px 5px !important;
+    font-size: 11px !important;
+  }
+
+  .ticket-discount-value {
+    width: 47px !important;
+    height: 29px;
+    padding: 3px 5px !important;
+    font-size: 11px !important;
+  }
+
+  .ticket-items-scroll {
+    min-height: 96px !important;
+    padding-bottom: 3px !important;
+  }
+
+  .ticket-column-header,
+  .ticket-item-wrapper,
+  .ticket-item-row {
+    width: 540px !important;
+    min-width: 540px !important;
+    grid-template-columns:
+      minmax(130px, 1fr) 120px 74px 90px 34px !important;
+    gap: 4px !important;
+  }
+
+  .ticket-column-header {
+    padding: 0 3px 2px !important;
+    margin-bottom: 1px !important;
+    font-size: 9px !important;
+    line-height: 1.05;
+  }
+
+  .ticket-item-wrapper {
+    padding: 3px !important;
+    margin-bottom: 3px !important;
+    border-radius: 6px !important;
+  }
+
+  .ticket-item-row {
+    margin-bottom: 0 !important;
+    font-size: 10px;
+    line-height: 1.1;
+  }
+
+  .ticket-quantity-controls {
+    grid-template-columns: minmax(48px, 1fr) 30px 30px !important;
+    gap: 3px !important;
+  }
+
+  .ticket-row-field {
+    height: 30px !important;
+    padding: 3px 5px !important;
+    font-size: 11px !important;
+  }
+
+  .ticket-quantity-button,
+  .ticket-remove-button {
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+  }
+
+  .ticket-footer {
+    gap: 4px !important;
+    margin-top: 3px !important;
+  }
+
+  .ticket-footer-actions {
+    gap: 3px !important;
+  }
+
+  .ticket-footer-actions > button {
+    min-height: 29px;
+    padding: 4px 7px !important;
+    border-radius: 6px !important;
+    font-size: 10px !important;
+    line-height: 1.05;
+  }
+
+  .ticket-footer-actions > input[type="date"] {
+    flex-basis: 108px;
+    width: 108px !important;
+    height: 29px;
+    padding: 3px 5px !important;
+    font-size: 10px !important;
+  }
+
+  .ticket-total-display {
+    min-width: 90px !important;
+    padding: 4px 7px !important;
+    border-radius: 7px !important;
+    font-size: 15px !important;
+  }
+
   .cash-panel,
   .sales-analysis-panel {
     padding: 7px !important;
