@@ -1,7 +1,12 @@
 import {
+  useState
+} from "react";
+
+import {
   useLang
 } from "../LanguageContext";
 
+import ChangeCalculatorModal from "./ChangeCalculatorModal";
 import TicketRow from "./TicketRow";
 
 const COLORS = {
@@ -45,9 +50,30 @@ function TicketPanel({
   discountValue,
   setDiscountValue,
   discountType,
-  setDiscountType
+  setDiscountType,
+  storeId
 }) {
   const { t } = useLang();
+  const [changeCalculatorEnabled,
+    setChangeCalculatorEnabled] = useState(() =>
+      Boolean(storeId) &&
+      localStorage.getItem(
+        `vendr_change_calculator_${storeId}`
+      ) === "true"
+    );
+  const [changeCalculatorOpen,
+    setChangeCalculatorOpen] = useState(false);
+
+  const updateChangeCalculatorEnabled = enabled => {
+    setChangeCalculatorEnabled(enabled);
+
+    if (storeId) {
+      localStorage.setItem(
+        `vendr_change_calculator_${storeId}`,
+        String(enabled)
+      );
+    }
+  };
 
   const ticketItems =
     Array.isArray(
@@ -109,6 +135,24 @@ function TicketPanel({
   const intakeIsFinalizing =
     currentTicket?.type === "intake" &&
     finalizingIntake;
+
+  const requestSaleFinalization = () => {
+    if (
+      changeCalculatorEnabled &&
+      !saleIsCredit &&
+      ticketItems.length > 0
+    ) {
+      setChangeCalculatorOpen(true);
+      return;
+    }
+
+    finalizeSale();
+  };
+
+  const confirmCashSale = async () => {
+    setChangeCalculatorOpen(false);
+    await finalizeSale();
+  };
 
   const selectedSaleClient =
     (saleClients || []).find(
@@ -272,6 +316,24 @@ function TicketPanel({
         >
           + {t("intake")}
         </button>
+
+        {currentTicket?.type === "sale" && (
+          <label
+            className="change-calculator-toggle"
+            title={t("change_calculator_help")}
+          >
+            <input
+              type="checkbox"
+              checked={changeCalculatorEnabled}
+              onChange={event =>
+                updateChangeCalculatorEnabled(
+                  event.target.checked
+                )
+              }
+            />
+            <span>{t("change_calculator_toggle")}</span>
+          </label>
+        )}
         </div>
 
         {/* TICKET TABS */}
@@ -864,7 +926,7 @@ function TicketPanel({
                   <button
                     type="button"
                     onClick={
-                      finalizeSale
+                      requestSaleFinalization
                     }
                     style={
                       btnPrimary
@@ -1021,6 +1083,16 @@ function TicketPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {changeCalculatorOpen && (
+        <ChangeCalculatorModal
+          total={total}
+          onCancel={() =>
+            setChangeCalculatorOpen(false)
+          }
+          onConfirm={confirmCashSale}
+        />
       )}
     </div>
   );
