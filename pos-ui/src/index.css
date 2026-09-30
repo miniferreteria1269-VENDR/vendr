@@ -42,6 +42,146 @@ textarea {
   font: inherit;
 }
 
+.change-calculator-toggle {
+  min-height: 34px;
+  padding: 5px 9px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #3a4250;
+  border-radius: 8px;
+  background: #222733;
+  color: #e6edf3;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.change-calculator-toggle input {
+  margin: 0;
+  accent-color: #3aa0ff;
+}
+
+.change-calculator-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  padding: 16px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.76);
+}
+
+.change-calculator-modal {
+  width: min(380px, 100%);
+  max-height: calc(100dvh - 32px);
+  padding: 18px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  border: 1px solid #3a4250;
+  border-radius: 12px;
+  background: #1a1d24;
+  color: #e6edf3;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.58);
+}
+
+.change-calculator-title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.change-calculator-total-row,
+.change-calculator-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.change-calculator-total-row {
+  color: #9da7b3;
+}
+
+.change-calculator-total-row strong {
+  color: #e6edf3;
+  font-size: 20px;
+}
+
+.change-calculator-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #9da7b3;
+}
+
+.change-calculator-field input {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  border: 1px solid #3a4250;
+  border-radius: 8px;
+  background: #222733;
+  color: #e6edf3;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.change-calculator-result {
+  padding: 12px;
+  border: 1px solid rgba(58, 160, 255, 0.55);
+  border-radius: 9px;
+  background: #0b1220;
+  color: #9da7b3;
+}
+
+.change-calculator-result strong {
+  color: #3aa0ff;
+  font-size: 28px;
+}
+
+.change-calculator-result.is-short {
+  border-color: rgba(255, 92, 92, 0.65);
+}
+
+.change-calculator-result.is-short strong {
+  color: #ff5c5c;
+}
+
+.change-calculator-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.change-calculator-actions button {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+}
+
+.change-calculator-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.change-calculator-confirm {
+  background: #3aa0ff;
+}
+
+.change-calculator-cancel {
+  background: #2a2f3a;
+}
+
 .mobile-app-toolbar,
 .mobile-navigation-overlay,
 .mobile-ticket-selector,
@@ -1787,6 +1927,75 @@ button:focus-visible {
   .master-review-save {
     grid-column: 1 / -1;
     grid-row: 1;
+  }
+}
+
+@media (max-width: 720px),
+       (orientation: landscape) and (max-height: 600px) and (pointer: coarse) {
+  .change-calculator-toggle {
+    min-height: 38px;
+    padding: 6px 9px;
+    font-size: 12px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 480px) and (pointer: coarse) {
+  .change-calculator-toggle {
+    min-height: 29px;
+    padding: 3px 6px;
+    gap: 4px;
+    border-radius: 6px;
+    font-size: 10px;
+    line-height: 1.05;
+  }
+
+  .change-calculator-overlay {
+    padding: 6px;
+  }
+
+  .change-calculator-modal {
+    width: min(520px, 100%);
+    max-height: calc(100dvh - 12px);
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .change-calculator-title {
+    font-size: 16px;
+  }
+
+  .change-calculator-field {
+    gap: 3px;
+    font-size: 11px;
+  }
+
+  .change-calculator-field input {
+    min-height: 34px;
+    padding: 5px 8px;
+    font-size: 17px;
+  }
+
+  .change-calculator-total-row,
+  .change-calculator-result {
+    font-size: 11px;
+  }
+
+  .change-calculator-total-row strong {
+    font-size: 16px;
+  }
+
+  .change-calculator-result {
+    padding: 7px 9px;
+  }
+
+  .change-calculator-result strong {
+    font-size: 21px;
+  }
+
+  .change-calculator-actions button {
+    min-height: 32px;
+    padding: 5px 9px;
+    font-size: 12px;
   }
 }
 

@@ -2715,6 +2715,7 @@ const finalizeIntake = async () => {
             setDiscountType={
               updateSaleDiscountType
             }
+            storeId={storeId}
           />
         </div>
       )}
