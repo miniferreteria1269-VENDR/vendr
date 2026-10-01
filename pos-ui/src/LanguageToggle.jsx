@@ -2,46 +2,38 @@ import { useLang } from "./LanguageContext";
 
 export default function LanguageToggle({ style }) {
   const { lang, changeLang } = useLang();
+  const nextLanguage = lang === "es" ? "en" : "es";
+  const nextLanguageLabel =
+    nextLanguage === "es" ? "Español" : "English";
+  const accessibleLabel = lang === "es"
+    ? `Cambiar idioma a ${nextLanguageLabel}`
+    : `Change language to ${nextLanguageLabel}`;
 
   return (
-    <div
-      role="group"
-      aria-label="Language / Idioma"
+    <button
+      type="button"
+      onClick={() => changeLang(nextLanguage)}
+      aria-label={accessibleLabel}
+      title={accessibleLabel}
       style={{
         display: "inline-flex",
-        padding: 3,
-        gap: 2,
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: 38,
+        padding: "7px 11px",
+        gap: 7,
         border: "1px solid #303747",
         borderRadius: 9,
         background: "#171a22",
-        ...style,
+        color: "#e6edf3",
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+        cursor: "pointer",
+        ...style
       }}
     >
-      {["es", "en"].map(option => {
-        const selected = lang === option;
-
-        return (
-          <button
-            key={option}
-            type="button"
-            onClick={() => changeLang(option)}
-            aria-pressed={selected}
-            title={option === "es" ? "Español" : "English"}
-            style={{
-              minWidth: 42,
-              padding: "7px 9px",
-              border: 0,
-              borderRadius: 6,
-              background: selected ? "#3ba4f7" : "transparent",
-              color: selected ? "#08111d" : "#c7cedb",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            {option.toUpperCase()}
-          </button>
-        );
-      })}
-    </div>
+      <span aria-hidden="true">🌐</span>
+      <span>{nextLanguageLabel}</span>
+    </button>
   );
 }
