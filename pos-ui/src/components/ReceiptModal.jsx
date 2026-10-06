@@ -340,6 +340,15 @@ function ReceiptModal({
                         {item.name}
                       </div>
 
+                      {item.combo_components?.map(component => (
+                        <div
+                          key={`${component.slot_id}-${component.product_id}`}
+                          style={{ fontSize: "12px", fontWeight: 500, paddingLeft: "2mm" }}
+                        >
+                          {component.quantity_per_combo} × {component.name}
+                        </div>
+                      ))}
+
                       <div
                         style={
                           lineStyle

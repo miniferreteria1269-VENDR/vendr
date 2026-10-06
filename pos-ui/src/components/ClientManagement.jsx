@@ -673,7 +673,8 @@ function ClientManagement({
             "—",
 
           quantity,
-          price
+          price,
+          combo_components: item.combo_components || []
         };
       }
     );

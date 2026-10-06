@@ -32,6 +32,7 @@ import NegativeStockSalePrompt from "./components/NegativeStockSalePrompt";
 // Client management navigation and view
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
+import ComboSelectionModal from "./components/ComboSelectionModal";
 
 import {
   cacheProducts,
@@ -40,6 +41,14 @@ import {
   applyLocalSaleToCatalog,
   applyLocalIntakeToCatalog
 } from "./offlineCatalog";
+import {
+  cacheProductCombos,
+  getCachedProductCombos
+} from "./productCombos";
+import {
+  comboSelectionSignature,
+  getSaleStockMovements
+} from "./comboSales";
 
 import {
   savePendingEvent,
@@ -215,6 +224,8 @@ function App() {
   });
 
   const [products, setProducts] = useState([]);
+  const [productCombos, setProductCombos] = useState([]);
+  const [pendingComboProduct, setPendingComboProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [intakePaid, setIntakePaid] = useState(false);
   const [intakeSuppliers, setIntakeSuppliers] = useState([]);
@@ -1131,6 +1142,22 @@ function App() {
     }
   };
 
+  const loadProductCombos = async () => {
+    if (!storeId) return;
+
+    try {
+      const response = await apiClient.get("/product-combos", {
+        params: { store_id: storeId }
+      });
+      const combos = response.data?.combos || [];
+      setProductCombos(combos);
+      await cacheProductCombos(storeId, combos);
+    } catch (error) {
+      console.error("COMBO LOAD ERROR:", error);
+      setProductCombos(await getCachedProductCombos(storeId));
+    }
+  };
+
   const searchProducts = async term => {
     if (!storeId) return;
 
@@ -1176,6 +1203,7 @@ function App() {
   };
   useEffect(() => {
     loadProducts();
+    loadProductCombos();
   }, [storeId]);
 
   useEffect(() => {
@@ -1544,7 +1572,7 @@ function App() {
     );
   };
 
-  const addItem = product => {
+  const addResolvedItem = (product, comboData = null) => {
     if (!currentTicket) return;
 
     const fullProduct =
@@ -1559,11 +1587,15 @@ function App() {
         return ticket;
       }
 
+      const selectionSignature = comboData
+        ? comboSelectionSignature(comboData.combo_selections)
+        : "";
       const existing =
         ticket.items.find(
           item =>
             item.product_id ===
-            fullProduct.product_id
+              fullProduct.product_id &&
+            comboSelectionSignature(item.combo_selections) === selectionSignature
         );
 
       if (existing) {
@@ -1572,8 +1604,8 @@ function App() {
           credit_limit_warning_acknowledged:
             false,
           items: ticket.items.map(item =>
-            item.product_id ===
-            fullProduct.product_id
+            item.product_id === fullProduct.product_id &&
+            comboSelectionSignature(item.combo_selections) === selectionSignature
               ? {
                   ...item,
                   quantity:
@@ -1600,13 +1632,41 @@ function App() {
             quantity: 1,
             cost:
               fullProduct.cost ?? 0,
-            price: fullProduct.price
+            price: fullProduct.price,
+            ...(comboData || {})
           }
         ]
       };
     });
 
     setTickets(updated);
+  };
+
+  const addItem = product => {
+    if (!currentTicket) return;
+
+    const combo = productCombos.find(
+      candidate => Number(candidate.product_id) === Number(product.product_id)
+    );
+
+    if (!combo) {
+      const fullProduct = products.find(
+        candidate => Number(candidate.product_id) === Number(product.product_id)
+      ) || product;
+      if (fullProduct.is_combo) {
+        alert(t("combo_definition_unavailable"));
+        return;
+      }
+      addResolvedItem(product);
+      return;
+    }
+
+    if (currentTicket.type !== "sale") {
+      alert(t("combo_sale_only"));
+      return;
+    }
+
+    setPendingComboProduct({ product, combo });
   };
 
   // -------------------------------------------------
@@ -1742,7 +1802,13 @@ function App() {
         product_id: item.product_id,
         quantity: Number(item.quantity),
         price:
-          Number(item.price) * ratio
+          Number(item.price) * ratio,
+        ...(item.combo_version
+          ? {
+              combo_version: item.combo_version,
+              combo_selections: item.combo_selections
+            }
+          : {})
       }));
 
     const clientEventId =
@@ -1802,7 +1868,8 @@ function App() {
         product_id: item.product_id,
         name: item.name,
         quantity: Number(item.quantity),
-        price: Number(item.price)
+        price: Number(item.price),
+        combo_components: item.combo_components || []
       })),
       subtotal,
       discountAmount:
@@ -1849,15 +1916,18 @@ function App() {
       if (saveResult.created) {
         await applyLocalSaleToCatalog(
           storeId,
-          items
+          currentTicket.items
         );
 
+        const stockMovements = getSaleStockMovements(
+          currentTicket.items
+        );
         setProducts(previousProducts =>
           previousProducts.map(product => {
-            const soldItem = items.find(
+            const soldItem = stockMovements.find(
               item =>
-                item.product_id ===
-                product.product_id
+                Number(item.product_id) ===
+                Number(product.product_id)
             );
 
             if (
@@ -2809,12 +2879,14 @@ const finalizeIntake = async () => {
       {view === "products" && (
         <ProductManagement
           storeId={storeId}
+          onCombosChanged={loadProductCombos}
           onboardingActive={
             trialOnboardingActiveStep ===
             "products"
           }
           onProductsChanged={async () => {
             await loadProducts();
+            await loadProductCombos();
             markTrialOnboardingStep(
               "products"
             );
@@ -2882,6 +2954,17 @@ const finalizeIntake = async () => {
           setCompletedReceipt(null)
         }
       />
+
+      {pendingComboProduct && (
+        <ComboSelectionModal
+          combo={pendingComboProduct.combo}
+          onCancel={() => setPendingComboProduct(null)}
+          onConfirm={comboData => {
+            addResolvedItem(pendingComboProduct.product, comboData);
+            setPendingComboProduct(null);
+          }}
+        />
+      )}
 
       {negativeStockSaleQueue.length > 0 && (
         <NegativeStockSalePrompt

@@ -84,19 +84,35 @@ def rebuild_products(store_id: int):
             for row in cursor.fetchall()
         }
 
+        cursor.execute(
+            """
+            SELECT product_id
+            FROM product_combos
+            WHERE store_id = %s
+              AND active = TRUE
+            """,
+            (store_id,),
+        )
+        active_combo_product_ids = {
+            int(row[0])
+            for row in cursor.fetchall()
+        }
+
         # ---------------------------------------------
         # LOAD ALL EVENTS FOR THIS STORE
         # ---------------------------------------------
         cursor.execute(
             """
             SELECT
+                event_id,
                 event_type,
                 product_id,
                 product_name_at_time,
                 quantity,
                 cost_at_time,
                 price_at_time,
-                tracks_stock
+                tracks_stock,
+                original_sale_event_id
             FROM events
             WHERE store_id = %s
             ORDER BY event_id
@@ -107,6 +123,35 @@ def rebuild_products(store_id: int):
         )
 
         events = cursor.fetchall()
+
+        cursor.execute(
+            """
+            SELECT
+                sale_event_id,
+                component_product_id,
+                quantity_per_combo,
+                tracks_stock_at_time
+            FROM sale_combo_components
+            WHERE store_id = %s
+            ORDER BY sale_combo_component_id
+            """,
+            (store_id,),
+        )
+        combo_components = {}
+        for (
+            sale_event_id,
+            component_product_id,
+            quantity_per_combo,
+            tracks_stock_at_time,
+        ) in cursor.fetchall():
+            combo_components.setdefault(
+                int(sale_event_id),
+                [],
+            ).append({
+                "product_id": int(component_product_id),
+                "quantity_per_combo": int(quantity_per_combo),
+                "tracks_stock": bool(tracks_stock_at_time),
+            })
 
         engine = InventoryEngine()
 
@@ -121,32 +166,35 @@ def rebuild_products(store_id: int):
         # ---------------------------------------------
         for event in events:
 
+            event_id = int(event[0])
+
             event_type = str(
-                event[0] or ""
+                event[1] or ""
             ).strip().lower()
 
-            product_id = event[1]
-            product_name = event[2]
+            product_id = event[2]
+            product_name = event[3]
 
             quantity = (
-                event[3]
-                if event[3] is not None
-                else 0
-            )
-
-            cost = (
                 event[4]
                 if event[4] is not None
                 else 0
             )
 
-            price = (
+            cost = (
                 event[5]
                 if event[5] is not None
                 else 0
             )
 
-            event_tracks_stock = event[6]
+            price = (
+                event[6]
+                if event[6] is not None
+                else 0
+            )
+
+            event_tracks_stock = event[7]
+            original_sale_event_id = event[8]
 
             # -----------------------------------------
             # CREATE
@@ -206,6 +254,24 @@ def rebuild_products(store_id: int):
             # -----------------------------------------
             elif event_type == "sale":
 
+                components = combo_components.get(
+                    event_id,
+                    [],
+                )
+
+                if components:
+                    for component in components:
+                        if component["tracks_stock"]:
+                            _apply_stock_delta(
+                                engine,
+                                component["product_id"],
+                                -(
+                                    quantity *
+                                    component["quantity_per_combo"]
+                                ),
+                            )
+                    continue
+
                 if product_id not in engine.products:
                     print(
                         "REBUILD WARNING:",
@@ -223,6 +289,23 @@ def rebuild_products(store_id: int):
             # CUSTOMER RETURN
             # -----------------------------------------
             elif event_type == "return":
+
+                components = combo_components.get(
+                    int(original_sale_event_id)
+                    if original_sale_event_id is not None
+                    else -1,
+                    [],
+                )
+
+                if components:
+                    for component in components:
+                        if component["tracks_stock"]:
+                            _apply_stock_delta(
+                                engine,
+                                component["product_id"],
+                                quantity * component["quantity_per_combo"],
+                            )
+                    continue
 
                 _apply_stock_delta(
                     engine,
@@ -401,7 +484,9 @@ def rebuild_products(store_id: int):
             )
 
             tracks_stock_value = (
-                1
+                0
+                if product_id in active_combo_product_ids
+                else 1
                 if bool(
                     product.get(
                         "tracks_stock",
