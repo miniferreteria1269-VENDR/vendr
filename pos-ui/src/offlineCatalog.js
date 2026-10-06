@@ -1,4 +1,5 @@
 import { offlineDb } from "./offlineDb";
+import { getSaleStockMovements } from "./comboSales";
 
 const isTruthyFlag = value =>
   value === 1 ||
@@ -89,7 +90,7 @@ export const applyLocalSaleToCatalog = async (
     "rw",
     offlineDb.products,
     async () => {
-      for (const item of items) {
+      for (const item of getSaleStockMovements(items)) {
         const key = [
           storeId,
           item.product_id

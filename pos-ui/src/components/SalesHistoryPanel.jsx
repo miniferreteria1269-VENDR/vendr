@@ -282,7 +282,8 @@ const receiptItems = ticketDetails.map(
         "—",
 
       quantity,
-      price
+      price,
+      combo_components: item.combo_components || []
     };
   }
 );
@@ -660,12 +661,12 @@ marginBottom: 12
                   borderRadius: 6
                 }}
               >
-                {item.name} x
-                {item.quantity} — $
-                {Number(
-                  item.line_total ||
-                    0
-                ).toFixed(2)}
+                <div>{item.name} x{item.quantity} — ${Number(item.line_total || 0).toFixed(2)}</div>
+                {item.combo_components?.length > 0 && (
+                  <small style={{ color: COLORS.textDim }}>
+                    {item.combo_components.map(component => `${component.quantity_per_combo}× ${component.name}`).join(" · ")}
+                  </small>
+                )}
               </div>
             )
           )}

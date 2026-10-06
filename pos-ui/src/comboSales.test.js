@@ -1,0 +1,42 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  buildComboLine,
+  comboSelectionSignature,
+  getSaleStockMovements
+} from "./comboSales.js";
+
+const combo = {
+  version: 3,
+  slots: [
+    {
+      slot_id: 1,
+      label: "Burger",
+      selection_type: "fixed",
+      quantity: 1,
+      options: [{ product_id: 10, product_name: "Burger", cost: 2, tracks_stock: false }]
+    },
+    {
+      slot_id: 2,
+      label: "Drink",
+      selection_type: "choose_one",
+      quantity: 1,
+      options: [{ product_id: 20, product_name: "Cola", cost: 0.5, tracks_stock: true }]
+    }
+  ]
+};
+
+test("builds a versioned combo sale line", () => {
+  const line = buildComboLine(combo, [{ slot_id: 2, product_id: 20 }]);
+  assert.equal(line.combo_version, 3);
+  assert.equal(line.cost, 2.5);
+  assert.equal(comboSelectionSignature(line.combo_selections), "1:10|2:20");
+});
+
+test("combo stock movements use selected tracked components", () => {
+  const line = buildComboLine(combo, [{ slot_id: 2, product_id: 20 }]);
+  assert.deepEqual(
+    getSaleStockMovements([{ ...line, product_id: 99, quantity: 2 }]),
+    [{ product_id: 20, quantity: 2 }]
+  );
+});

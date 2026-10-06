@@ -187,13 +187,19 @@ function TicketRow({
         style={{
           minWidth: 0,
           overflow: "hidden",
-          textOverflow:
-            "ellipsis",
-          whiteSpace: "nowrap",
           fontWeight: 500
         }}
       >
-        {item.name}
+        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {item.name}
+        </div>
+        {item.combo_components?.length > 0 && (
+          <div style={{ color: "#9da7b3", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {item.combo_components.map(component =>
+              `${component.quantity_per_combo}× ${component.name}`
+            ).join(" · ")}
+          </div>
+        )}
       </div>
 
       {/* QUANTITY */}

@@ -551,6 +551,13 @@ function ReturnModal({
                 {ticketItems.map(item => (
                   <div key={item.sale_event_id} style={{ ...selectedProductStyle, marginTop: 8 }}>
                     <div style={{ minWidth: 0 }}><div style={productNameStyle}>{item.name}</div>
+                      {item.combo_components?.length > 0 && (
+                        <div style={productMetaStyle}>
+                          {item.combo_components.map(component =>
+                            `${component.quantity_per_combo}× ${component.name}`
+                          ).join(" · ")}
+                        </div>
+                      )}
                       <div style={productMetaStyle}>{t("purchased")}: {item.quantity} · {t("already_returned")}: {item.quantity_returned} · ${Number(item.price || 0).toFixed(2)}</div></div>
                     <input type="number" min="0" max={item.quantity_returnable} step="1"
                       value={returnQuantities[item.sale_event_id] || ""}

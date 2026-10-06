@@ -37,6 +37,11 @@ from pos_backend.cash_categories import (
     normalize_cash_category_type,
     normalize_operating_expense_flag,
 )
+from pos_backend.combo_logic import (
+    ComboValidationError,
+    resolve_combo_selections,
+    validate_combo_slots,
+)
 
 
 from enum import Enum
@@ -729,6 +734,91 @@ def init_db():
         is_active,
         last_reviewed_at
     )
+    """)
+
+    # ---------------------------------------------
+    # PRODUCT COMBOS
+    #
+    # Definitions are versioned rather than replaced so
+    # offline sales can safely submit the exact recipe the
+    # cashier selected before a later combo edit.
+    # ---------------------------------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS product_combos (
+        combo_id BIGSERIAL PRIMARY KEY,
+        store_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        current_version INTEGER NOT NULL DEFAULT 1,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (store_id, product_id),
+        CHECK (current_version > 0)
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS product_combo_slots (
+        combo_slot_id BIGSERIAL PRIMARY KEY,
+        combo_id BIGINT NOT NULL,
+        version INTEGER NOT NULL,
+        label TEXT NOT NULL,
+        selection_type TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        position INTEGER NOT NULL,
+        CHECK (selection_type IN ('fixed', 'choose_one')),
+        CHECK (quantity > 0),
+        UNIQUE (combo_id, version, position)
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS product_combo_slot_options (
+        combo_option_id BIGSERIAL PRIMARY KEY,
+        combo_slot_id BIGINT NOT NULL,
+        product_id INTEGER NOT NULL,
+        position INTEGER NOT NULL,
+        UNIQUE (combo_slot_id, product_id),
+        UNIQUE (combo_slot_id, position)
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_product_combos_store_active
+    ON product_combos (store_id, active, product_id)
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_product_combo_slots_version
+    ON product_combo_slots (combo_id, version, position)
+    """)
+
+    # Immutable component snapshots preserve historical
+    # costs, names and stock behavior for sales and returns.
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sale_combo_components (
+        sale_combo_component_id BIGSERIAL PRIMARY KEY,
+        store_id INTEGER NOT NULL,
+        sale_event_id INTEGER NOT NULL,
+        combo_product_id INTEGER NOT NULL,
+        combo_version INTEGER NOT NULL,
+        combo_slot_id BIGINT NOT NULL,
+        slot_label TEXT NOT NULL,
+        selection_type TEXT NOT NULL,
+        component_product_id INTEGER NOT NULL,
+        component_name_at_time TEXT NOT NULL,
+        quantity_per_combo INTEGER NOT NULL,
+        cost_at_time NUMERIC(12, 4) NOT NULL,
+        tracks_stock_at_time BOOLEAN NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (quantity_per_combo > 0),
+        UNIQUE (sale_event_id, combo_slot_id)
+    )
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_sale_combo_components_event
+    ON sale_combo_components (store_id, sale_event_id)
     """)
 
     # ---------------------------------------------
@@ -3672,10 +3762,39 @@ def startup():
     init_db()
     ensure_trial_schema()
 
+class ComboSaleSelection(BaseModel):
+    slot_id: int
+    product_id: int
+
+
 class SaleItem(BaseModel):
     product_id: int
     quantity: int
     price: float  # 🔥 REQUIRED
+    combo_version: Optional[int] = None
+    combo_selections: List[
+        ComboSaleSelection
+    ] = Field(default_factory=list)
+
+
+class ComboSlotOptionInput(BaseModel):
+    product_id: int
+
+
+class ComboSlotInput(BaseModel):
+    label: str
+    selection_type: str
+    quantity: int = 1
+    options: List[
+        ComboSlotOptionInput
+    ] = Field(default_factory=list)
+
+
+class ProductComboUpsert(BaseModel):
+    store_id: int
+    slots: List[
+        ComboSlotInput
+    ] = Field(default_factory=list)
 
 class CreditPaymentCreate(BaseModel):
     amount: Decimal
@@ -4639,6 +4758,657 @@ def load_negative_stock_items(
         for row in cursor.fetchall()
     ]
 
+
+def load_combo_version(
+    cursor,
+    combo_id: int,
+    version: int,
+):
+    cursor.execute(
+        """
+        SELECT
+            combo_slot_id,
+            label,
+            selection_type,
+            quantity,
+            position
+        FROM product_combo_slots
+        WHERE combo_id = %s
+          AND version = %s
+        ORDER BY position, combo_slot_id
+        """,
+        (combo_id, version),
+    )
+
+    slot_rows = cursor.fetchall()
+
+    if not slot_rows:
+        return []
+
+    slot_ids = [int(row[0]) for row in slot_rows]
+
+    cursor.execute(
+        """
+        SELECT
+            option.combo_slot_id,
+            option.combo_option_id,
+            option.product_id,
+            option.position,
+            product.name,
+            product.cost,
+            product.price,
+            product.stock,
+            product.tracks_stock,
+            product.is_active
+        FROM product_combo_slot_options option
+        INNER JOIN product_combo_slots slot
+          ON slot.combo_slot_id = option.combo_slot_id
+        INNER JOIN product_combos combo
+          ON combo.combo_id = slot.combo_id
+        INNER JOIN products product
+          ON product.product_id = option.product_id
+         AND product.store_id = combo.store_id
+        WHERE option.combo_slot_id = ANY(%s)
+        ORDER BY
+            option.combo_slot_id,
+            option.position,
+            option.combo_option_id
+        """,
+        (slot_ids,),
+    )
+
+    options_by_slot = {
+        slot_id: []
+        for slot_id in slot_ids
+    }
+
+    for row in cursor.fetchall():
+        options_by_slot[int(row[0])].append({
+            "option_id": int(row[1]),
+            "product_id": int(row[2]),
+            "position": int(row[3]),
+            "product_name": row[4],
+            "cost": float(row[5] or 0),
+            "price": float(row[6] or 0),
+            "stock": int(row[7] or 0),
+            "tracks_stock": bool(row[8]),
+            "is_active": bool(row[9]),
+        })
+
+    return [
+        {
+            "slot_id": int(row[0]),
+            "label": row[1],
+            "selection_type": row[2],
+            "quantity": int(row[3]),
+            "position": int(row[4]),
+            "options": options_by_slot.get(
+                int(row[0]),
+                [],
+            ),
+        }
+        for row in slot_rows
+    ]
+
+
+def load_product_combo(
+    cursor,
+    store_id: int,
+    product_id: int,
+    include_inactive: bool = False,
+):
+    cursor.execute(
+        """
+        SELECT
+            combo.combo_id,
+            combo.product_id,
+            product.name,
+            product.price,
+            combo.current_version,
+            combo.active,
+            combo.created_at,
+            combo.updated_at
+        FROM product_combos combo
+        INNER JOIN products product
+          ON product.store_id = combo.store_id
+         AND product.product_id = combo.product_id
+        WHERE combo.store_id = %s
+          AND combo.product_id = %s
+          AND (%s OR combo.active = TRUE)
+        LIMIT 1
+        """,
+        (
+            store_id,
+            product_id,
+            include_inactive,
+        ),
+    )
+
+    row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "combo_id": int(row[0]),
+        "product_id": int(row[1]),
+        "product_name": row[2],
+        "price": float(row[3] or 0),
+        "version": int(row[4]),
+        "active": bool(row[5]),
+        "created_at": (
+            row[6].isoformat()
+            if row[6]
+            else None
+        ),
+        "updated_at": (
+            row[7].isoformat()
+            if row[7]
+            else None
+        ),
+        "slots": load_combo_version(
+            cursor,
+            int(row[0]),
+            int(row[4]),
+        ),
+    }
+
+
+@app.get("/product-combos")
+def get_product_combos(
+    store_id: int,
+    include_inactive: bool = False,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    ),
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied",
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT product_id
+            FROM product_combos
+            WHERE store_id = %s
+              AND (%s OR active = TRUE)
+            ORDER BY product_id
+            """,
+            (store_id, include_inactive),
+        )
+
+        combos = []
+
+        for row in cursor.fetchall():
+            combo = load_product_combo(
+                cursor,
+                store_id,
+                int(row[0]),
+                include_inactive=include_inactive,
+            )
+
+            if combo:
+                combos.append(combo)
+
+        combos.sort(
+            key=lambda combo: (
+                combo["product_name"] or ""
+            ).lower()
+        )
+
+        return {"combos": combos}
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
+@app.put("/product-combos/{product_id}")
+def upsert_product_combo(
+    product_id: int,
+    data: ProductComboUpsert,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    ),
+):
+    if current_user.store_id != data.store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied",
+        )
+
+    try:
+        normalized_slots = validate_combo_slots([
+            {
+                "label": slot.label,
+                "selection_type": slot.selection_type,
+                "quantity": slot.quantity,
+                "options": [
+                    {"product_id": option.product_id}
+                    for option in slot.options
+                ],
+            }
+            for slot in data.slots
+        ])
+    except ComboValidationError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    component_ids = {
+        option["product_id"]
+        for slot in normalized_slots
+        for option in slot["options"]
+    }
+
+    if product_id in component_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="A combo cannot contain itself.",
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT name, tracks_stock, is_active, stock
+            FROM products
+            WHERE store_id = %s
+              AND product_id = %s
+            FOR UPDATE
+            """,
+            (data.store_id, product_id),
+        )
+        parent = cursor.fetchone()
+
+        if not parent or not bool(parent[2]):
+            raise HTTPException(
+                status_code=404,
+                detail="Active combo product not found.",
+            )
+
+        if parent[1] == 1 or parent[1] is True:
+            if int(parent[3] or 0) != 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Set the combo product stock to zero before "
+                        "converting it to a combo. Component products "
+                        "will hold the inventory instead."
+                    ),
+                )
+
+            # Combo parents are sale/catalog records, never inventory.
+            # Enforce this atomically when the definition is saved.
+            cursor.execute(
+                """
+                UPDATE products
+                SET tracks_stock = 0
+                WHERE store_id = %s
+                  AND product_id = %s
+                """,
+                (data.store_id, product_id),
+            )
+
+        cursor.execute(
+            """
+            SELECT product_id
+            FROM products
+            WHERE store_id = %s
+              AND product_id = ANY(%s)
+              AND is_active = 1
+            """,
+            (data.store_id, sorted(component_ids)),
+        )
+        found_ids = {
+            int(row[0])
+            for row in cursor.fetchall()
+        }
+
+        if found_ids != component_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Every combo component must be an "
+                    "active product from this store."
+                ),
+            )
+
+        cursor.execute(
+            """
+            SELECT product_id
+            FROM product_combos
+            WHERE store_id = %s
+              AND product_id = ANY(%s)
+              AND active = TRUE
+            LIMIT 1
+            """,
+            (data.store_id, sorted(component_ids)),
+        )
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A combo cannot contain another active combo."
+                ),
+            )
+
+        cursor.execute(
+            """
+            SELECT combo_id, current_version
+            FROM product_combos
+            WHERE store_id = %s
+              AND product_id = %s
+            FOR UPDATE
+            """,
+            (data.store_id, product_id),
+        )
+        existing = cursor.fetchone()
+
+        if existing:
+            combo_id = int(existing[0])
+            version = int(existing[1]) + 1
+            cursor.execute(
+                """
+                UPDATE product_combos
+                SET current_version = %s,
+                    active = TRUE,
+                    updated_at = NOW()
+                WHERE combo_id = %s
+                """,
+                (version, combo_id),
+            )
+        else:
+            version = 1
+            cursor.execute(
+                """
+                INSERT INTO product_combos (
+                    store_id,
+                    product_id,
+                    current_version,
+                    active
+                )
+                VALUES (%s, %s, %s, TRUE)
+                RETURNING combo_id
+                """,
+                (data.store_id, product_id, version),
+            )
+            combo_id = int(cursor.fetchone()[0])
+
+        for slot in normalized_slots:
+            cursor.execute(
+                """
+                INSERT INTO product_combo_slots (
+                    combo_id,
+                    version,
+                    label,
+                    selection_type,
+                    quantity,
+                    position
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING combo_slot_id
+                """,
+                (
+                    combo_id,
+                    version,
+                    slot["label"],
+                    slot["selection_type"],
+                    slot["quantity"],
+                    slot["position"],
+                ),
+            )
+            slot_id = int(cursor.fetchone()[0])
+
+            for option in slot["options"]:
+                cursor.execute(
+                    """
+                    INSERT INTO product_combo_slot_options (
+                        combo_slot_id,
+                        product_id,
+                        position
+                    )
+                    VALUES (%s, %s, %s)
+                    """,
+                    (
+                        slot_id,
+                        option["product_id"],
+                        option["position"],
+                    ),
+                )
+
+        combo = load_product_combo(
+            cursor,
+            data.store_id,
+            product_id,
+            include_inactive=True,
+        )
+        conn.commit()
+        return combo
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as error:
+        if conn:
+            conn.rollback()
+        print("PRODUCT COMBO SAVE ERROR:", repr(error))
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save product combo.",
+        ) from error
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.delete("/product-combos/{product_id}")
+def archive_product_combo(
+    product_id: int,
+    store_id: int,
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    ),
+):
+    if current_user.store_id != store_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Store access denied",
+        )
+
+    conn = db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            UPDATE product_combos
+            SET active = FALSE,
+                updated_at = NOW()
+            WHERE store_id = %s
+              AND product_id = %s
+              AND active = TRUE
+            RETURNING combo_id
+            """,
+            (store_id, product_id),
+        )
+
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail="Active combo not found.",
+            )
+
+        conn.commit()
+        return {"status": "archived"}
+
+    except HTTPException:
+        conn.rollback()
+        raise
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def ticket_stock_product_ids(ticket: SaleTicket):
+    product_ids = set()
+
+    for item in ticket.items:
+        product_ids.add(int(item.product_id))
+
+        for selection in item.combo_selections:
+            product_ids.add(int(selection.product_id))
+
+    return sorted(product_ids)
+
+
+def resolve_sale_item_combo(
+    cursor,
+    store_id: int,
+    item: SaleItem,
+):
+    cursor.execute(
+        """
+        SELECT combo_id, active
+        FROM product_combos
+        WHERE store_id = %s
+          AND product_id = %s
+        LIMIT 1
+        """,
+        (store_id, item.product_id),
+    )
+    combo_row = cursor.fetchone()
+
+    if not combo_row:
+        if item.combo_version is not None or item.combo_selections:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Combo selections were supplied for "
+                    "a product that is not a combo."
+                ),
+            )
+        return None
+
+    if not bool(combo_row[1]) and item.combo_version is None:
+        return None
+
+    if item.combo_version is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This product requires combo selections.",
+        )
+
+    combo_id = int(combo_row[0])
+    slots = load_combo_version(
+        cursor,
+        combo_id,
+        int(item.combo_version),
+    )
+
+    if not slots:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The selected combo version is no longer available."
+            ),
+        )
+
+    try:
+        resolved = resolve_combo_selections(
+            slots,
+            [
+                {
+                    "slot_id": selection.slot_id,
+                    "product_id": selection.product_id,
+                }
+                for selection in item.combo_selections
+            ],
+            item.quantity,
+        )
+    except ComboValidationError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    component_ids = sorted({
+        component["product_id"]
+        for component in resolved
+    })
+
+    cursor.execute(
+        """
+        SELECT
+            product_id,
+            name,
+            cost,
+            stock,
+            low_stock_threshold,
+            tracks_stock,
+            location_code
+        FROM products
+        WHERE store_id = %s
+          AND product_id = ANY(%s)
+        ORDER BY product_id
+        FOR UPDATE
+        """,
+        (store_id, component_ids),
+    )
+    product_rows = {
+        int(row[0]): row
+        for row in cursor.fetchall()
+    }
+
+    if set(product_rows) != set(component_ids):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "One or more combo components no longer "
+                "exist in this store."
+            ),
+        )
+
+    for component in resolved:
+        row = product_rows[component["product_id"]]
+        component.update({
+            "product_name": row[1],
+            "cost": round(float(row[2] or 0), 4),
+            "previous_stock": int(row[3] or 0),
+            "low_stock_threshold": int(row[4] or 0),
+            "tracks_stock": bool(row[5]),
+            "location_code": row[6],
+        })
+
+    return {
+        "combo_id": combo_id,
+        "version": int(item.combo_version),
+        "components": resolved,
+    }
+
 @app.post("/sale-ticket")
 def sale_ticket(
     ticket: SaleTicket,
@@ -4705,10 +5475,9 @@ def sale_ticket(
                         load_negative_stock_items(
                             cursor,
                             ticket.store_id,
-                            [
-                                item.product_id
-                                for item in ticket.items
-                            ]
+                            ticket_stock_product_ids(
+                                ticket
+                            )
                         ),
 
                     "client_event_id":
@@ -4911,10 +5680,29 @@ def sale_ticket(
                 item.quantity
             )
 
-            cost = round(
-                float(cost or 0),
-                2
+            combo = resolve_sale_item_combo(
+                cursor,
+                ticket.store_id,
+                item,
             )
+
+            if combo:
+                # A combo is the revenue line. Its unit cost is the
+                # current cost of the exact component choices, while
+                # component stock is recorded separately below.
+                cost = round(
+                    sum(
+                        component["quantity_per_combo"] *
+                        component["cost"]
+                        for component in combo["components"]
+                    ),
+                    4,
+                )
+            else:
+                cost = round(
+                    float(cost or 0),
+                    4
+                )
 
             # Sale unit prices support three decimals.
             price = round(
@@ -4953,6 +5741,7 @@ def sale_ticket(
                     %s, %s, %s, %s,
                     %s, %s, %s
                 )
+                RETURNING event_id
                 """,
                 (
                     ticket.store_id,
@@ -4972,40 +5761,100 @@ def sale_ticket(
                     ticket.client_created_at
                 )
             )
+            sale_event_id = int(cursor.fetchone()[0])
 
             total_revenue += line_total
 
-            # Stock is reduced only for tracked products.
-            # Negative stock remains allowed.
-            cursor.execute(
-                """
-                UPDATE products
-                SET stock =
-                    COALESCE(stock, 0) - %s
-                WHERE product_id = %s
-                  AND store_id = %s
-                  AND tracks_stock = 1
-                RETURNING stock
-                """,
-                (
-                    quantity,
-                    item.product_id,
-                    ticket.store_id
+            stock_movements = {}
+
+            if combo:
+                for component in combo["components"]:
+                    cursor.execute(
+                        """
+                        INSERT INTO sale_combo_components (
+                            store_id,
+                            sale_event_id,
+                            combo_product_id,
+                            combo_version,
+                            combo_slot_id,
+                            slot_label,
+                            selection_type,
+                            component_product_id,
+                            component_name_at_time,
+                            quantity_per_combo,
+                            cost_at_time,
+                            tracks_stock_at_time
+                        )
+                        VALUES (
+                            %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s
+                        )
+                        """,
+                        (
+                            ticket.store_id,
+                            sale_event_id,
+                            item.product_id,
+                            combo["version"],
+                            component["slot_id"],
+                            component["slot_label"],
+                            component["selection_type"],
+                            component["product_id"],
+                            component["product_name"],
+                            component["quantity_per_combo"],
+                            component["cost"],
+                            component["tracks_stock"],
+                        ),
+                    )
+
+                    if component["tracks_stock"]:
+                        movement = stock_movements.setdefault(
+                            component["product_id"],
+                            {
+                                "quantity": 0,
+                                "name": component["product_name"],
+                                "previous_stock": component["previous_stock"],
+                                "low_stock_threshold": component["low_stock_threshold"],
+                                "location_code": component["location_code"],
+                            },
+                        )
+                        movement["quantity"] += component["total_quantity"]
+            elif tracks_stock == 1 or tracks_stock is True:
+                stock_movements[int(item.product_id)] = {
+                    "quantity": quantity,
+                    "name": name,
+                    "previous_stock": int(previous_stock or 0),
+                    "low_stock_threshold": int(low_stock_threshold or 0),
+                    "location_code": location_code,
+                }
+
+            # Component movements are aggregated so a product used in
+            # more than one slot is locked and updated exactly once.
+            for stock_product_id, movement in stock_movements.items():
+                cursor.execute(
+                    """
+                    UPDATE products
+                    SET stock = COALESCE(stock, 0) - %s
+                    WHERE product_id = %s
+                      AND store_id = %s
+                      AND tracks_stock = 1
+                    RETURNING stock
+                    """,
+                    (
+                        movement["quantity"],
+                        stock_product_id,
+                        ticket.store_id,
+                    ),
                 )
-            )
+                updated_product = cursor.fetchone()
+                if not updated_product:
+                    continue
 
-            updated_product = cursor.fetchone()
-
-            if updated_product and (
-                tracks_stock == 1 or
-                tracks_stock is True
-            ):
                 reminder = build_reorder_reminder(
-                    item.product_id,
-                    name,
-                    previous_stock,
+                    stock_product_id,
+                    movement["name"],
+                    movement["previous_stock"],
                     updated_product[0],
-                    low_stock_threshold
+                    movement["low_stock_threshold"],
                 )
 
                 if reminder:
@@ -5017,16 +5866,16 @@ def sale_ticket(
 
                 if new_stock < 0:
                     negative_stock_items[
-                        int(item.product_id)
+                        int(stock_product_id)
                     ] = {
                         "product_id":
-                            int(item.product_id),
-                        "product_name": name,
+                            int(stock_product_id),
+                        "product_name": movement["name"],
                         "new_stock": new_stock,
                         "low_stock_threshold": int(
-                            low_stock_threshold or 0
+                            movement["low_stock_threshold"] or 0
                         ),
-                        "location_code": location_code
+                        "location_code": movement["location_code"]
                     }
 
         total_revenue = round(
@@ -5230,10 +6079,9 @@ def sale_ticket(
                         load_negative_stock_items(
                             cursor,
                             ticket.store_id,
-                            [
-                                item.product_id
-                                for item in ticket.items
-                            ]
+                            ticket_stock_product_ids(
+                                ticket
+                            )
                         ),
 
                     "client_event_id":
@@ -6601,18 +7449,25 @@ def get_products(
         cursor.execute(
             """
             SELECT
-                product_id,
-                name,
-                stock,
-                cost,
-                price,
-                tracks_stock,
-                low_stock_threshold,
-                location_code,
-                is_active,
-                created_at,
-                last_reviewed_at,
-                last_reviewed_by
+                products.product_id,
+                products.name,
+                products.stock,
+                products.cost,
+                products.price,
+                products.tracks_stock,
+                products.low_stock_threshold,
+                products.location_code,
+                products.is_active,
+                products.created_at,
+                products.last_reviewed_at,
+                products.last_reviewed_by,
+                EXISTS (
+                    SELECT 1
+                    FROM product_combos combo
+                    WHERE combo.store_id = products.store_id
+                      AND combo.product_id = products.product_id
+                      AND combo.active = TRUE
+                ) AS is_combo
 
             FROM products
 
@@ -6675,7 +7530,10 @@ def get_products(
                 ),
 
                 "last_reviewed_by":
-                    row[11]
+                    row[11],
+
+                "is_combo":
+                    bool(row[12])
             })
 
         return {
@@ -6748,7 +7606,14 @@ def search_products(
                 tracks_stock,
                 low_stock_threshold,
                 location_code,
-                created_at
+                created_at,
+                EXISTS (
+                    SELECT 1
+                    FROM product_combos combo
+                    WHERE combo.store_id = products.store_id
+                      AND combo.product_id = products.product_id
+                      AND combo.active = TRUE
+                ) AS is_combo
 
             FROM products
 
@@ -6818,7 +7683,10 @@ def search_products(
                     row[8],
 
                 "created_at":
-                    row[9]
+                    row[9],
+
+                "is_combo":
+                    bool(row[10])
             })
 
         return {
@@ -10455,7 +11323,33 @@ def product_movement_summary(
                         )::timestamp
                         AT TIME ZONE
                         'America/El_Salvador'
-                    ) AS end_utc
+                ) AS end_utc
+            ),
+
+            movement_events AS (
+                SELECT
+                    e.product_id,
+                    e.product_name_at_time,
+                    e.quantity,
+                    e.event_type,
+                    e.event_datetime
+                FROM events e
+                WHERE e.store_id = %s
+
+                UNION ALL
+
+                SELECT
+                    component.component_product_id AS product_id,
+                    component.component_name_at_time AS product_name_at_time,
+                    e.quantity * component.quantity_per_combo AS quantity,
+                    'sale' AS event_type,
+                    e.event_datetime
+                FROM sale_combo_components component
+                INNER JOIN events e
+                  ON e.event_id = component.sale_event_id
+                 AND e.store_id = component.store_id
+                WHERE component.store_id = %s
+                  AND component.tracks_stock_at_time = TRUE
             ),
 
             period_movement AS (
@@ -10545,11 +11439,10 @@ def product_movement_summary(
                         0
                     ) AS adjustment_negative
 
-                FROM events e
+                FROM movement_events e
                 CROSS JOIN boundaries b
 
-                WHERE e.store_id = %s
-                  AND e.product_id IS NOT NULL
+                WHERE e.product_id IS NOT NULL
 
                   AND e.event_type IN (
                       'intake',
@@ -10599,11 +11492,10 @@ def product_movement_summary(
                         0
                     ) AS net_after_period
 
-                FROM events e
+                FROM movement_events e
                 CROSS JOIN boundaries b
 
-                WHERE e.store_id = %s
-                  AND e.product_id IS NOT NULL
+                WHERE e.product_id IS NOT NULL
 
                   AND e.event_type IN (
                       'intake',
@@ -14165,6 +15057,40 @@ def ticket_details(
                 detail="Sale ticket not found"
             )
 
+        sale_event_ids = [int(row[0]) for row in rows]
+        cursor.execute(
+            """
+            SELECT
+                sale_event_id,
+                combo_version,
+                combo_slot_id,
+                slot_label,
+                selection_type,
+                component_product_id,
+                component_name_at_time,
+                quantity_per_combo
+            FROM sale_combo_components
+            WHERE store_id = %s
+              AND sale_event_id = ANY(%s)
+            ORDER BY sale_event_id, sale_combo_component_id
+            """,
+            (store_id, sale_event_ids),
+        )
+        combo_components_by_event = {}
+        for component_row in cursor.fetchall():
+            combo_components_by_event.setdefault(
+                int(component_row[0]),
+                [],
+            ).append({
+                "combo_version": int(component_row[1]),
+                "slot_id": int(component_row[2]),
+                "slot_label": component_row[3],
+                "selection_type": component_row[4],
+                "product_id": int(component_row[5]),
+                "name": component_row[6],
+                "quantity_per_combo": int(component_row[7]),
+            })
+
         items = []
         total = 0.0
         cost_total = 0.0
@@ -14218,6 +15144,11 @@ def ticket_details(
 
                 "price":
                     numeric_price,
+
+                "combo_components": combo_components_by_event.get(
+                    int(sale_event_id),
+                    [],
+                ),
 
                 "line_total":
                     line_total,
@@ -15874,7 +16805,53 @@ def process_return(
                         row[0]
                     )
                 )
-                if row[6] == 1 or row[6] is True:
+                cursor.execute(
+                    """
+                    SELECT
+                        component_product_id,
+                        quantity_per_combo,
+                        tracks_stock_at_time
+                    FROM sale_combo_components
+                    WHERE store_id = %s
+                      AND sale_event_id = %s
+                    """,
+                    (data.store_id, row[0]),
+                )
+                component_rows = cursor.fetchall()
+
+                if component_rows:
+                    component_restores = {}
+                    for (
+                        component_product_id,
+                        quantity_per_combo,
+                        tracked_at_sale,
+                    ) in component_rows:
+                        if tracked_at_sale:
+                            component_restores[int(component_product_id)] = (
+                                component_restores.get(
+                                    int(component_product_id),
+                                    0,
+                                ) +
+                                int(quantity_per_combo) * returned_quantity
+                            )
+
+                    for component_product_id, restore_quantity in (
+                        component_restores.items()
+                    ):
+                        cursor.execute(
+                            """
+                            UPDATE products
+                            SET stock = COALESCE(stock, 0) + %s
+                            WHERE store_id = %s
+                              AND product_id = %s
+                            """,
+                            (
+                                restore_quantity,
+                                data.store_id,
+                                component_product_id,
+                            ),
+                        )
+                elif row[6] == 1 or row[6] is True:
                     cursor.execute(
                         """
                         UPDATE products

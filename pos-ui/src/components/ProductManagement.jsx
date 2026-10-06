@@ -15,6 +15,7 @@ import {
 } from "../offlineCatalog";
 import { offlineDb } from "../offlineDb";
 import ProductImporter from "./ProductImporter";
+import ProductComboManagement from "./ProductComboManagement";
 import {
   COLORS,
   card,
@@ -30,6 +31,7 @@ import {
 function ProductManagement({
   storeId,
   onProductsChanged,
+  onCombosChanged,
   onReorderReminder,
   onboardingActive = false
 }) {
@@ -41,7 +43,7 @@ function ProductManagement({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const immediateTool = pmView === "create" || pmView === "import";
+  const immediateTool = ["create", "import", "combos"].includes(pmView);
   const requiresProduct = pmView !== "menu" && !immediateTool;
 
   const loadProducts = async () => {
@@ -188,6 +190,7 @@ function ProductManagement({
           ["loss", "loss"],
           ["archive", "archive"],
           ["import", "import"],
+          ["combos", "combos"],
           ["performance", "performance"]
         ].map(([key, label]) => (
           <button
@@ -290,6 +293,20 @@ function ProductManagement({
           <ProductImporter
             storeId={storeId}
             onCompleted={refreshProducts}
+          />
+        </ToolModal>
+      )}
+
+      {pmView === "combos" && (
+        <ToolModal onClose={() => setPmView("menu")} wide>
+          <ProductComboManagement
+            storeId={storeId}
+            products={products}
+            onChanged={async () => {
+              await loadProducts();
+              await onProductsChanged?.();
+              await onCombosChanged?.();
+            }}
           />
         </ToolModal>
       )}
