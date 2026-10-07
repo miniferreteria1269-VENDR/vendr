@@ -29,6 +29,7 @@ function TicketPanel({
   createTicket,
   removeItem,
   updateItemField,
+  editComboItem,
   finalizeSale,
   finalizeIntake,
   finalizingIntake,
@@ -867,6 +868,9 @@ function TicketPanel({
                       }
                       updateItemField={
                         updateItemField
+                      }
+                      editComboItem={
+                        editComboItem
                       }
                       ticketType={
                         currentTicket.type

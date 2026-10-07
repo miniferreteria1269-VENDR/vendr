@@ -4,7 +4,8 @@ import {
   buildComboLine,
   calculateComboCostRange,
   comboSelectionSignature,
-  getSaleStockMovements
+  getSaleStockMovements,
+  replaceComboLineConfiguration
 } from "./comboSales.js";
 
 const combo = {
@@ -61,4 +62,44 @@ test("combines duplicate tracked components across a ticket", () => {
     ]),
     [{ product_id: 20, quantity: 5 }]
   );
+});
+
+test("reconfigures a combo line without changing sale fields", () => {
+  const original = {
+    product_id: 99,
+    name: "Lunch combo",
+    quantity: 3,
+    price: 8.5,
+    combo_version: 2,
+    combo_selections: [{ slot_id: 2, product_id: 20 }]
+  };
+  const editableCombo = {
+    ...combo,
+    slots: combo.slots.map(slot =>
+      slot.slot_id === 2
+        ? {
+            ...slot,
+            options: [
+              ...slot.options,
+              {
+                product_id: 21,
+                product_name: "Water",
+                cost: 0.35,
+                tracks_stock: true
+              }
+            ]
+          }
+        : slot
+    )
+  };
+  const replacement = buildComboLine(
+    editableCombo,
+    [{ slot_id: 2, product_id: 21 }]
+  );
+  const updated = replaceComboLineConfiguration(original, replacement);
+
+  assert.equal(updated.product_id, 99);
+  assert.equal(updated.quantity, 3);
+  assert.equal(updated.price, 8.5);
+  assert.equal(updated.combo_selections[1].product_id, 21);
 });

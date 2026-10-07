@@ -1,11 +1,15 @@
+import { useLang } from "../LanguageContext";
+
 function TicketRow({
   item,
   index,
   removeItem,
   updateItemField,
+  editComboItem,
   ticketType,
   disabled = false
 }) {
+  const { t } = useLang();
   const parsedQuantity =
     Number(item.quantity);
 
@@ -194,10 +198,49 @@ function TicketRow({
           {item.name}
         </div>
         {item.combo_components?.length > 0 && (
-          <div style={{ color: "#9da7b3", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {item.combo_components.map(component =>
-              `${component.quantity_per_combo}× ${component.name}`
-            ).join(" · ")}
+          <div
+            className="ticket-combo-summary"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              minWidth: 0,
+              color: "#9da7b3",
+              fontSize: 11
+            }}
+          >
+            <span
+              style={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap"
+              }}
+            >
+              {item.combo_components.map(component =>
+                `${component.quantity_per_combo}× ${component.name}`
+              ).join(" · ")}
+            </span>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => editComboItem(item, index)}
+              title={t("edit_combo_configuration")}
+              style={{
+                flex: "0 0 auto",
+                padding: "2px 5px",
+                border: "1px solid #3a4250",
+                borderRadius: 5,
+                background: "#222733",
+                color: "#3aa0ff",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: disabled ? "default" : "pointer",
+                opacity: disabled ? 0.6 : 1
+              }}
+            >
+              {t("edit")}
+            </button>
           </div>
         )}
       </div>
