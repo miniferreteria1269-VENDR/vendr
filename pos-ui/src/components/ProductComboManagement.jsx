@@ -14,6 +14,8 @@ export default function ProductComboManagement({ storeId, products, onChanged })
   const { t } = useLang();
   const [combos, setCombos] = useState([]);
   const [productId, setProductId] = useState("");
+  const [baseProductSearch, setBaseProductSearch] = useState("");
+  const [basePickerOpen, setBasePickerOpen] = useState(false);
   const [slots, setSlots] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -28,6 +30,20 @@ export default function ProductComboManagement({ storeId, products, onChanged })
     [combos]
   );
   const parentProducts = activeProducts;
+  const selectedBaseProduct = parentProducts.find(
+    product => Number(product.product_id) === Number(productId)
+  ) || null;
+  const matchingParentProducts = useMemo(() => {
+    const term = baseProductSearch.trim().toLowerCase();
+
+    return parentProducts
+      .filter(product =>
+        !term ||
+        String(product.name || "").toLowerCase().includes(term) ||
+        String(product.product_id || "").includes(term)
+      )
+      .slice(0, 10);
+  }, [baseProductSearch, parentProducts]);
 
   const load = useCallback(async () => {
     const response = await apiClient.get("/product-combos", {
@@ -50,6 +66,8 @@ export default function ProductComboManagement({ storeId, products, onChanged })
 
   const editCombo = combo => {
     setProductId(String(combo.product_id));
+    setBaseProductSearch(combo.product_name || "");
+    setBasePickerOpen(false);
     setSlots(combo.slots.map(slot => ({
       label: slot.label,
       selection_type: slot.selection_type,
@@ -101,6 +119,7 @@ export default function ProductComboManagement({ storeId, products, onChanged })
     });
     if (String(combo.product_id) === productId) {
       setProductId("");
+      setBaseProductSearch("");
       setSlots([]);
     }
     await load();
@@ -112,15 +131,67 @@ export default function ProductComboManagement({ storeId, products, onChanged })
       <div className="combo-editor">
         <h3>{t("combo_editor")}</h3>
         <p>{t("combo_editor_help")}</p>
-        <label>
+        <div className="combo-base-picker">
           <span>{t("combo_product")}</span>
-          <select value={productId} onChange={event => { setProductId(event.target.value); setSlots([]); }} style={input}>
-            <option value="">{t("select_product")}</option>
-            {parentProducts.map(product => (
-              <option key={product.product_id} value={product.product_id}>{product.name}</option>
-            ))}
-          </select>
-        </label>
+          {selectedBaseProduct ? (
+            <div className="combo-base-selected">
+              <div>
+                <strong>{selectedBaseProduct.name}</strong>
+                <small>#{selectedBaseProduct.product_id}</small>
+              </div>
+              <button
+                type="button"
+                style={btnSecondary}
+                onClick={() => {
+                  setProductId("");
+                  setBaseProductSearch("");
+                  setSlots([]);
+                  setBasePickerOpen(true);
+                }}
+              >
+                {t("change")}
+              </button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="search"
+                value={baseProductSearch}
+                onFocus={() => setBasePickerOpen(true)}
+                onChange={event => {
+                  setBaseProductSearch(event.target.value);
+                  setBasePickerOpen(true);
+                }}
+                placeholder={t("search_products")}
+                style={input}
+              />
+              {basePickerOpen && (
+                <div className="combo-base-results">
+                  {matchingParentProducts.map(product => (
+                    <button
+                      key={product.product_id}
+                      type="button"
+                      onClick={() => {
+                        setProductId(String(product.product_id));
+                        setBaseProductSearch(product.name);
+                        setSlots([]);
+                        setBasePickerOpen(false);
+                      }}
+                    >
+                      <strong>{product.name}</strong>
+                      <small>#{product.product_id}</small>
+                    </button>
+                  ))}
+                  {!matchingParentProducts.length && (
+                    <div className="combo-base-empty">
+                      {t("no_products_found")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
         {productId && slots.map((slot, slotIndex) => (
           <div className="combo-slot-editor" key={slotIndex}>
@@ -178,7 +249,11 @@ export default function ProductComboManagement({ storeId, products, onChanged })
         .combo-management { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr); gap:16px; }
         .combo-editor,.combo-list { border:1px solid ${COLORS.border}; border-radius:10px; padding:14px; background:${COLORS.panel}; }
         .combo-editor h3,.combo-list h3 { margin-top:0; } .combo-editor p,.combo-list p { color:${COLORS.textDim}; }
-        .combo-editor label { display:grid; gap:5px; } .combo-slot-editor { margin-top:12px; padding:12px; border:1px solid ${COLORS.border}; border-radius:9px; background:${COLORS.panelAlt}; }
+        .combo-editor label,.combo-base-picker { display:grid; gap:5px; } .combo-slot-editor { margin-top:12px; padding:12px; border:1px solid ${COLORS.border}; border-radius:9px; background:${COLORS.panelAlt}; }
+        .combo-base-picker { position:relative; } .combo-base-selected { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid ${COLORS.border}; border-radius:8px; background:${COLORS.panelAlt}; }
+        .combo-base-selected>div { display:grid; min-width:0; } .combo-base-selected strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .combo-base-selected small { color:${COLORS.textDim}; }
+        .combo-base-results { position:absolute; z-index:4; top:100%; left:0; right:0; max-height:260px; overflow:auto; border:1px solid ${COLORS.border}; border-radius:0 0 8px 8px; background:${COLORS.panelAlt}; box-shadow:0 12px 28px rgba(0,0,0,.4); }
+        .combo-base-results button { width:100%; display:flex; justify-content:space-between; gap:10px; padding:10px; border:0; border-bottom:1px solid ${COLORS.border}; background:transparent; color:inherit; text-align:left; cursor:pointer; } .combo-base-results button:hover,.combo-base-results button:focus { background:#2a3140; } .combo-base-results small,.combo-base-empty { color:${COLORS.textDim}; } .combo-base-empty { padding:12px; }
         .combo-slot-heading,.combo-option-row,.combo-editor-actions,.combo-list-item,.combo-list-item>div { display:flex; align-items:center; gap:8px; }
         .combo-slot-heading { justify-content:space-between; } .combo-slot-grid { display:grid; grid-template-columns:1fr 100px; gap:8px; margin:8px 0; }
         .combo-option-row { margin:7px 0; } .combo-option-row select { flex:1; } .combo-editor-actions { flex-wrap:wrap; margin-top:12px; }
