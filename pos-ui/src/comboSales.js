@@ -53,6 +53,23 @@ export const buildComboLine = (combo, selections) => {
   };
 };
 
+export const calculateComboCostRange = slots =>
+  (slots || []).reduce(
+    (range, slot) => {
+      const quantity = Number(slot.quantity || 0);
+      const optionCosts = (slot.options || [])
+        .map(option => Number(option.cost || 0) * quantity);
+
+      if (optionCosts.length === 0) return range;
+
+      return {
+        minimum: range.minimum + Math.min(...optionCosts),
+        maximum: range.maximum + Math.max(...optionCosts)
+      };
+    },
+    { minimum: 0, maximum: 0 }
+  );
+
 export const getSaleStockMovements = items => {
   const movements = new Map();
 

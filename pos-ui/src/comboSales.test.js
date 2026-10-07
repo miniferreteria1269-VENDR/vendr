@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildComboLine,
+  calculateComboCostRange,
   comboSelectionSignature,
   getSaleStockMovements
 } from "./comboSales.js";
@@ -38,5 +39,26 @@ test("combo stock movements use selected tracked components", () => {
   assert.deepEqual(
     getSaleStockMovements([{ ...line, product_id: 99, quantity: 2 }]),
     [{ product_id: 20, quantity: 2 }]
+  );
+});
+
+test("calculates the minimum and maximum combo cost", () => {
+  assert.deepEqual(
+    calculateComboCostRange([
+      { quantity: 2, options: [{ cost: 3 }] },
+      { quantity: 1, options: [{ cost: 1 }, { cost: 2.5 }] }
+    ]),
+    { minimum: 7, maximum: 8.5 }
+  );
+});
+
+test("combines duplicate tracked components across a ticket", () => {
+  const line = buildComboLine(combo, [{ slot_id: 2, product_id: 20 }]);
+  assert.deepEqual(
+    getSaleStockMovements([
+      { ...line, product_id: 99, quantity: 2 },
+      { product_id: 20, quantity: 3 }
+    ]),
+    [{ product_id: 20, quantity: 5 }]
   );
 });
