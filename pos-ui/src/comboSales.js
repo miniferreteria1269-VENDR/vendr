@@ -53,6 +53,13 @@ export const buildComboLine = (combo, selections) => {
   };
 };
 
+export const replaceComboLineConfiguration = (line, comboData) => ({
+  ...line,
+  ...comboData,
+  quantity: line.quantity,
+  price: line.price
+});
+
 export const calculateComboCostRange = slots =>
   (slots || []).reduce(
     (range, slot) => {

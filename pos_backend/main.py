@@ -42,6 +42,9 @@ from pos_backend.combo_logic import (
     resolve_combo_selections,
     validate_combo_slots,
 )
+from pos_backend.sale_event_ids import (
+    sale_line_client_event_id,
+)
 
 
 from enum import Enum
@@ -5897,8 +5900,33 @@ def sale_ticket(
 
         # -------------------------------------------------
         # PROCESS SALE ITEMS
+        #
+        # The offline idempotency index is scoped by
+        # (store, client event, product). A combo can appear
+        # more than once on the same ticket with different
+        # component choices, so repeated product lines need
+        # distinct event keys. Keep the original ticket key
+        # on the first occurrence so the ticket-level retry
+        # check above continues to work exactly as before.
         # -------------------------------------------------
-        for item in ticket.items:
+        product_line_occurrences = {}
+
+        for item_index, item in enumerate(ticket.items):
+            product_id = int(item.product_id)
+            product_occurrence = product_line_occurrences.get(
+                product_id,
+                0,
+            )
+            product_line_occurrences[product_id] = (
+                product_occurrence + 1
+            )
+
+            line_client_event_id = sale_line_client_event_id(
+                ticket.client_event_id,
+                item_index,
+                product_occurrence,
+            )
+
             cursor.execute(
                 """
                 SELECT
@@ -6020,7 +6048,7 @@ def sale_ticket(
                     store_ticket_number,
                     ticket.client_id,
                     client_name_at_time,
-                    ticket.client_event_id,
+                    line_client_event_id,
                     ticket.device_id,
                     ticket.client_created_at
                 )

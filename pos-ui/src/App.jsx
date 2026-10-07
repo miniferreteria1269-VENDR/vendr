@@ -47,7 +47,8 @@ import {
 } from "./productCombos";
 import {
   comboSelectionSignature,
-  getSaleStockMovements
+  getSaleStockMovements,
+  replaceComboLineConfiguration
 } from "./comboSales";
 
 import {
@@ -1669,6 +1670,42 @@ function App() {
     setPendingComboProduct({ product, combo });
   };
 
+  const editComboItem = (item, index) => {
+    const combo = productCombos.find(
+      candidate => Number(candidate.product_id) === Number(item.product_id)
+    );
+
+    if (!combo) {
+      alert(t("combo_definition_unavailable"));
+      return;
+    }
+
+    setPendingComboProduct({
+      product: products.find(
+        product => Number(product.product_id) === Number(item.product_id)
+      ) || item,
+      combo,
+      editIndex: index,
+      initialSelections: item.combo_selections || []
+    });
+  };
+
+  const replaceComboConfiguration = (index, comboData) => {
+    setTickets(previous => previous.map(ticket =>
+      ticket.id === activeTicket
+        ? {
+            ...ticket,
+            credit_limit_warning_acknowledged: false,
+            items: ticket.items.map((item, itemIndex) =>
+              itemIndex === index
+                ? replaceComboLineConfiguration(item, comboData)
+                : item
+            )
+          }
+        : ticket
+    ));
+  };
+
   // -------------------------------------------------
   // FINALIZE SALE
   // -------------------------------------------------
@@ -2753,6 +2790,7 @@ const finalizeIntake = async () => {
             createTicket={createTicket}
             removeItem={removeItem}
             updateItemField={updateItemField}
+            editComboItem={editComboItem}
             cancelTicket={cancelTicket}
             renameTicket={renameTicket}
             finalizeSale={finalizeSale}
@@ -2958,9 +2996,18 @@ const finalizeIntake = async () => {
       {pendingComboProduct && (
         <ComboSelectionModal
           combo={pendingComboProduct.combo}
+          initialSelections={pendingComboProduct.initialSelections}
+          editing={Number.isInteger(pendingComboProduct.editIndex)}
           onCancel={() => setPendingComboProduct(null)}
           onConfirm={comboData => {
-            addResolvedItem(pendingComboProduct.product, comboData);
+            if (Number.isInteger(pendingComboProduct.editIndex)) {
+              replaceComboConfiguration(
+                pendingComboProduct.editIndex,
+                comboData
+              );
+            } else {
+              addResolvedItem(pendingComboProduct.product, comboData);
+            }
             setPendingComboProduct(null);
           }}
         />

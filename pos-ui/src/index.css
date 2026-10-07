@@ -831,6 +831,11 @@ textarea {
     gap: 4px !important;
   }
 
+  .ticket-combo-summary button {
+    padding: 1px 4px !important;
+    font-size: 8px !important;
+  }
+
   .ticket-column-header {
     padding: 0 3px 2px !important;
     margin-bottom: 1px !important;

@@ -11,13 +11,25 @@ const COLORS = {
   primary: "#3aa0ff"
 };
 
-export default function ComboSelectionModal({ combo, onConfirm, onCancel }) {
+export default function ComboSelectionModal({
+  combo,
+  initialSelections = [],
+  editing = false,
+  onConfirm,
+  onCancel
+}) {
   const { t } = useLang();
   const [choices, setChoices] = useState(() =>
     Object.fromEntries(
-      (combo?.slots || [])
-        .filter(slot => slot.selection_type === "fixed")
-        .map(slot => [slot.slot_id, slot.options?.[0]?.product_id])
+      [
+        ...(combo?.slots || [])
+          .filter(slot => slot.selection_type === "fixed")
+          .map(slot => [slot.slot_id, slot.options?.[0]?.product_id]),
+        ...(initialSelections || []).map(selection => [
+          selection.slot_id,
+          selection.product_id
+        ])
+      ]
     )
   );
 
@@ -38,7 +50,7 @@ export default function ComboSelectionModal({ combo, onConfirm, onCancel }) {
   return (
     <div className="combo-modal-overlay" role="dialog" aria-modal="true">
       <div className="combo-modal-card">
-        <h3>{t("configure_combo")}</h3>
+        <h3>{t(editing ? "edit_combo_configuration" : "configure_combo")}</h3>
         <div className="combo-modal-product">{combo.product_name}</div>
 
         <div className="combo-slot-list">
@@ -75,7 +87,7 @@ export default function ComboSelectionModal({ combo, onConfirm, onCancel }) {
             {t("cancel")}
           </button>
           <button type="button" className="primary" disabled={!complete} onClick={confirm}>
-            {t("add_to_ticket")}
+            {t(editing ? "save_changes" : "add_to_ticket")}
           </button>
         </div>
       </div>
