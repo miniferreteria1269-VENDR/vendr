@@ -4,6 +4,7 @@ import { useLang } from "../LanguageContext";
 import {
   createCashCategory
 } from "../cashCategories";
+import ContextHelp from "./ContextHelp";
 
 
 function CustomCashCategoryModal({
@@ -131,6 +132,7 @@ function CustomCashCategoryModal({
             <span>
               {t("counts_as_operating_expense")}
             </span>
+            <ContextHelp topic="operatingExpense" />
           </label>
         )}
 

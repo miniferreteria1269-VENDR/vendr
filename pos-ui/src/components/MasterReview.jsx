@@ -10,6 +10,7 @@ import {
   isReviewedWithinRange,
   reviewAgeDays,
 } from "../masterReviewUtils";
+import ContextHelp from "./ContextHelp";
 
 const supplierCacheKey = storeId =>
   `vendr_intake_suppliers_${storeId}`;
@@ -490,7 +491,10 @@ function MasterReview({ storeId, onProductsChanged }) {
     <div className="master-review">
       <header className="master-review-header">
         <div>
-          <h2>{t("master_review")}</h2>
+          <h2 style={{ display: "flex", alignItems: "center" }}>
+            {t("master_review")}
+            <ContextHelp topic="masterReview" />
+          </h2>
           <p>{t("master_review_subtitle")}</p>
         </div>
         <div className="master-review-progress">

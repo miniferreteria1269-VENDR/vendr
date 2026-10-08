@@ -14,6 +14,7 @@ import RevenueModal from "./RevenueModal";
 import ExpenseModal from "./ExpenseModal";
 import CashMovementModal from "./CashMovementModal";
 import MovementSummary from "./MovementSummary";
+import ContextHelp from "./ContextHelp";
 
 import {
   cacheConfirmedCashBalance,
@@ -280,10 +281,14 @@ function CashPanel({
           <div
             className="cash-balance-label"
             style={{
-              color: COLORS.textDim
+              color: COLORS.textDim,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
             }}
           >
             {t("strongbox_balance")}
+            <ContextHelp topic="strongbox" />
           </div>
 
           <div

@@ -33,6 +33,10 @@ import NegativeStockSalePrompt from "./components/NegativeStockSalePrompt";
 import ClientManagement from "./components/ClientManagement";
 import ReceiptModal from "./components/ReceiptModal";
 import ComboSelectionModal from "./components/ComboSelectionModal";
+import {
+  ContextHelpProvider,
+  HelpModeToggle
+} from "./components/ContextHelp";
 
 import {
   cacheProducts,
@@ -2434,6 +2438,7 @@ const finalizeIntake = async () => {
   );
 
   return (
+    <ContextHelpProvider userId={user.user_id}>
     <div
       className="vendr-app"
       style={{
@@ -2522,6 +2527,8 @@ const finalizeIntake = async () => {
             flex: "0 0 auto"
           }}
         >
+          <HelpModeToggle />
+
           <button
             type="button"
             onClick={openHelp}
@@ -2585,6 +2592,7 @@ const finalizeIntake = async () => {
           </span>
         </div>
 
+        <HelpModeToggle compact />
         <SyncStatus storeId={storeId} compact />
       </div>
 
@@ -2634,6 +2642,7 @@ const finalizeIntake = async () => {
           </nav>
 
           <div className="mobile-drawer-actions">
+            <HelpModeToggle />
             <button
               type="button"
               onClick={() => {
@@ -3116,6 +3125,7 @@ const finalizeIntake = async () => {
           />
         )}
     </div>
+    </ContextHelpProvider>
   );
 }
 

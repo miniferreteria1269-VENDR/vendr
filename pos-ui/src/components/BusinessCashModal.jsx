@@ -13,6 +13,7 @@ import {
 } from "../cashCategories";
 import CustomCashCategoryModal from
   "./CustomCashCategoryModal";
+import ContextHelp from "./ContextHelp";
 
 const ADD_CUSTOM_CATEGORY =
   "__add_custom_cash_category__";
@@ -294,7 +295,7 @@ function BusinessCashModal({
   return (
     <div style={overlayStyle}>
       <div style={modalStyle}>
-        <h3 style={{ margin: 0 }}>
+        <h3 style={{ margin: 0, display: "flex", alignItems: "center" }}>
           {t(
             titleKey || (
               isExpense
@@ -302,6 +303,7 @@ function BusinessCashModal({
                 : "add_revenue"
             )
           )}
+          <ContextHelp topic={isExpense ? "expenseVsTransfer" : "otherRevenue"} />
         </h3>
 
         <Field

@@ -9,6 +9,7 @@ import {
   btnDanger,
   input
 } from "../uiStyles";
+import ContextHelp from "./ContextHelp";
 
 const emptyAssignment = {
   supplier_id: "",
@@ -922,11 +923,12 @@ export default function ProductSupplierManagement({
                     </label>
 
                     <label style={fieldStyle}>
-                      <span>
+                      <span style={{ display: "flex", alignItems: "center" }}>
                         {text(
                           "lead_time_days",
                           "Lead Time (days)"
                         )}
+                        <ContextHelp topic="supplierLeadTime" />
                       </span>
                       <input
                         type="number"
@@ -968,6 +970,7 @@ export default function ProductSupplierManagement({
                         "preferred_supplier",
                         "Preferred supplier"
                       )}
+                      <ContextHelp topic="preferredSupplier" />
                     </label>
 
                     <div

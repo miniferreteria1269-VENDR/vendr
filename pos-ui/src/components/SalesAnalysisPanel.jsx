@@ -10,6 +10,7 @@ import {
 import apiClient from "../apiClient";
 
 import AIWeeklyBriefPanel from "./AIWeeklyBriefPanel";
+import ContextHelp from "./ContextHelp";
 
 import {
   COLORS,
@@ -185,12 +186,15 @@ function SalesAnalysisPanel({
       <h2
         className="analysis-desktop-title"
         style={{
-          marginBottom: 12
+          marginBottom: 12,
+          display: "flex",
+          alignItems: "center"
         }}
       >
         {analysisView === "weekly"
           ? t("weekly_brief")
           : t("sales_analysis")}
+        <ContextHelp topic={analysisView === "weekly" ? "weeklyBrief" : "salesAnalysis"} />
       </h2>
 
       <div

@@ -14,6 +14,7 @@ import {
   btnDanger,
   input,
 } from "../uiStyles";
+import ContextHelp from "./ContextHelp";
 
 function InventoryReport({
   storeId,
@@ -1298,6 +1299,10 @@ function InventoryReport({
 
           {lowStockView === "reorder" && (
             <>
+              <h3 style={{ margin: "0 0 10px", display: "flex", alignItems: "center" }}>
+                {t("reorder_list")}
+                <ContextHelp topic="reorderList" />
+              </h3>
               <div
                 className="reorder-toolbar"
                 style={{
@@ -1936,6 +1941,10 @@ function InventoryReport({
             minHeight: 0,
           }}
         >
+          <h3 style={{ margin: "0 0 10px", display: "flex", alignItems: "center" }}>
+            {t("dead_stock")}
+            <ContextHelp topic="deadStock" />
+          </h3>
           <div
             style={{
               marginBottom: 12,
