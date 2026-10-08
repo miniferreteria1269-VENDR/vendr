@@ -50,6 +50,21 @@ body {
   scroll-padding-bottom: calc(env(safe-area-inset-bottom) + 28px);
 }
 
+/* Signup can be taller than a landscape phone viewport. Keep the form's top
+   edge reachable and let this route scroll independently inside a browser or
+   installed PWA shell. */
+.signup-page {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: calc(env(safe-area-inset-bottom) + 28px);
+}
+
 button,
 input,
 select,
