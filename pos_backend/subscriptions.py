@@ -46,6 +46,40 @@ def calculate_subscription_period(
     return period_start, add_calendar_months(period_start, months)
 
 
+def calculate_trial_extension(
+    *,
+    trial_started_at,
+    current_expires_at=None,
+    current_retention_until=None,
+    total_days: int = 30,
+    retention_days: int = 30,
+) -> tuple[datetime, datetime]:
+    started_at = parse_timestamp(trial_started_at)
+
+    if not started_at:
+        raise ValueError("A trial start date is required.")
+
+    if total_days < 1 or retention_days < 0:
+        raise ValueError("Trial and retention days must be valid.")
+
+    target_expires_at = started_at + timedelta(days=total_days)
+    current_expires_at = parse_timestamp(current_expires_at)
+    expires_at = max(
+        value
+        for value in (target_expires_at, current_expires_at)
+        if value is not None
+    )
+    target_retention_until = expires_at + timedelta(days=retention_days)
+    current_retention_until = parse_timestamp(current_retention_until)
+    retention_until = max(
+        value
+        for value in (target_retention_until, current_retention_until)
+        if value is not None
+    )
+
+    return expires_at, retention_until
+
+
 def subscription_access_state(
     *,
     account_type: str,

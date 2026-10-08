@@ -4,6 +4,7 @@ import unittest
 from pos_backend.subscriptions import (
     add_calendar_months,
     calculate_subscription_period,
+    calculate_trial_extension,
     subscription_access_state,
     subscription_display_status,
 )
@@ -128,6 +129,27 @@ class SubscriptionAccessTests(unittest.TestCase):
         )
         self.assertEqual(period_start, paid_through)
         self.assertEqual(period_end, datetime(2026, 11, 5, 12, 0, tzinfo=UTC))
+
+    def test_trial_extension_is_thirty_total_days_from_start(self):
+        started_at = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+        expires_at, retention_until = calculate_trial_extension(
+            trial_started_at=started_at,
+            current_expires_at=started_at + timedelta(days=14),
+            current_retention_until=started_at + timedelta(days=44),
+        )
+        self.assertEqual(expires_at, started_at + timedelta(days=30))
+        self.assertEqual(retention_until, started_at + timedelta(days=60))
+
+    def test_trial_extension_never_shortens_a_longer_trial(self):
+        started_at = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+        current_expires_at = started_at + timedelta(days=45)
+        expires_at, retention_until = calculate_trial_extension(
+            trial_started_at=started_at,
+            current_expires_at=current_expires_at,
+            current_retention_until=started_at + timedelta(days=70),
+        )
+        self.assertEqual(expires_at, current_expires_at)
+        self.assertEqual(retention_until, started_at + timedelta(days=75))
 
 
 if __name__ == "__main__":

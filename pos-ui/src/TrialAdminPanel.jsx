@@ -19,6 +19,7 @@ export default function TrialAdminPanel({ onBack }) {
   const [historyStore, setHistoryStore] = useState(null);
   const [payments, setPayments] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [extendingStoreId, setExtendingStoreId] = useState(null);
   const [filter, setFilter] = useState("all");
   const [form, setForm] = useState({
     client_payment_id: newPaymentId(),
@@ -145,6 +146,29 @@ export default function TrialAdminPanel({ onBack }) {
     }
   };
 
+  const extendTrial = async store => {
+    if (!window.confirm(
+      t("trial_admin_extend_confirm").replace("{store}", store.store_name)
+    )) return;
+
+    setExtendingStoreId(store.store_id);
+    setError("");
+
+    try {
+      await apiClient.post(
+        `/trial/admin/stores/${store.store_id}/extend-trial`
+      );
+      await loadStores();
+    } catch (requestError) {
+      setError(
+        requestError.response?.data?.detail ||
+        t("trial_admin_extend_failed")
+      );
+    } finally {
+      setExtendingStoreId(null);
+    }
+  };
+
   return (
     <main style={page}>
       <div style={{ maxWidth: 1280, margin: "0 auto" }}>
@@ -206,6 +230,17 @@ export default function TrialAdminPanel({ onBack }) {
                     </td>
                     <td style={td}>
                       <div style={actions}>
+                        {canExtendTrial(store) && (
+                          <button
+                            onClick={() => extendTrial(store)}
+                            disabled={extendingStoreId === store.store_id}
+                            style={warningButton}
+                          >
+                            {extendingStoreId === store.store_id
+                              ? t("loading")
+                              : t("trial_admin_extend_30_days")}
+                          </button>
+                        )}
                         <button onClick={() => openPayment(store)} style={primaryButton}>{t("subscription_record_payment")}</button>
                         <button onClick={() => openHistory(store)} style={secondaryButton}>{t("subscription_history")}</button>
                         {["active", "due_soon"].includes(store.subscription_status) && <button onClick={() => cancelSubscription(store)} style={dangerButton}>{t("subscription_cancel")}</button>}
@@ -292,6 +327,22 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
 }
 
+function canExtendTrial(store) {
+  if (store.account_type !== "trial") return false;
+
+  const startedAt = new Date(store.trial_started_at);
+  const expiresAt = new Date(store.trial_expires_at);
+
+  if (
+    Number.isNaN(startedAt.getTime()) ||
+    Number.isNaN(expiresAt.getTime())
+  ) return false;
+
+  const thirtyDayExpiry = new Date(startedAt);
+  thirtyDayExpiry.setUTCDate(thirtyDayExpiry.getUTCDate() + 30);
+  return expiresAt.getTime() < thirtyDayExpiry.getTime();
+}
+
 const page = { minHeight: "100dvh", background: "#0b0d12", color: "#f5f7fb", padding: "clamp(18px, 4vw, 48px)", boxSizing: "border-box", fontFamily: "system-ui, -apple-system, sans-serif" };
 const header = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 20, flexWrap: "wrap" };
 const summaryGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 16 };
@@ -305,6 +356,7 @@ const badge = { display: "inline-block", border: "1px solid", borderRadius: 999,
 const actions = { display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" };
 const primaryButton = { border: 0, borderRadius: 8, background: "#3ba4f7", color: "#08111d", padding: "9px 12px", fontWeight: 800, cursor: "pointer" };
 const secondaryButton = { border: "1px solid #32394a", borderRadius: 8, background: "#202532", color: "#f5f7fb", padding: "9px 12px", fontWeight: 700, cursor: "pointer" };
+const warningButton = { ...secondaryButton, borderColor: "#a16207", color: "#fde68a" };
 const dangerButton = { ...secondaryButton, borderColor: "#7f1d1d", color: "#fca5a5" };
 const errorBox = { marginBottom: 18, border: "1px solid #991b1b", background: "rgba(127,29,29,.32)", color: "#fecaca", borderRadius: 9, padding: 12 };
 const emptyCard = { border: "1px solid #32394a", background: "#181c25", color: "#aeb7c9", borderRadius: 12, padding: 24 };

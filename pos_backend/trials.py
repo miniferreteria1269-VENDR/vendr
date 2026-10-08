@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from pwdlib import PasswordHash
 from jwt.exceptions import InvalidTokenError
 from pos_backend.subscriptions import (
+    calculate_trial_extension,
     calculate_subscription_period,
     parse_timestamp,
     subscription_access_state,
@@ -1280,6 +1281,114 @@ def list_trial_stores(
 
         return {"stores": stores}
 
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@router.post("/admin/stores/{store_id}/extend-trial")
+def extend_trial_to_thirty_days(
+    store_id: int,
+    current_user: TrialAuthenticatedUser = Depends(
+        require_platform_admin
+    ),
+):
+    conn = db()
+    cursor = conn.cursor()
+    now = utc_now()
+    retention_days = max(
+        0,
+        int(os.environ.get("TRIAL_RETENTION_DAYS", "30")),
+    )
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                name,
+                account_type,
+                trial_started_at,
+                trial_expires_at,
+                trial_retention_until
+            FROM stores
+            WHERE store_id = %s
+            FOR UPDATE
+            """,
+            (store_id,),
+        )
+        store = cursor.fetchone()
+
+        if not store or not store[2]:
+            raise HTTPException(status_code=404, detail="Trial store not found.")
+
+        if (store[1] or "legacy") != "trial":
+            raise HTTPException(
+                status_code=409,
+                detail="Only trial accounts can receive a trial extension.",
+            )
+
+        current_expires_at = parse_timestamp(store[3])
+        expires_at, retention_until = calculate_trial_extension(
+            trial_started_at=store[2],
+            current_expires_at=current_expires_at,
+            current_retention_until=store[4],
+            total_days=30,
+            retention_days=retention_days,
+        )
+        already_extended = bool(
+            current_expires_at and current_expires_at >= expires_at
+        )
+
+        if not already_extended:
+            cursor.execute(
+                """
+                UPDATE stores
+                SET
+                    trial_expires_at = %s,
+                    trial_retention_until = %s
+                WHERE store_id = %s
+                """,
+                (expires_at, retention_until, store_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO subscription_admin_events (
+                    store_id,
+                    event_type,
+                    note,
+                    recorded_by_user_id,
+                    created_at
+                )
+                VALUES (
+                    %s,
+                    'trial_extended_to_30_days',
+                    %s,
+                    %s,
+                    %s
+                )
+                """,
+                (
+                    store_id,
+                    "Trial extended to 30 total days.",
+                    current_user.user_id,
+                    now,
+                ),
+            )
+
+        conn.commit()
+        return {
+            "store_id": store_id,
+            "store_name": store[0],
+            "trial_expires_at": expires_at.isoformat(),
+            "trial_retention_until": retention_until.isoformat(),
+            "already_extended": already_extended,
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cursor.close()
         conn.close()
