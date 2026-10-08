@@ -32,12 +32,12 @@ export default function TrialLanding({ onStart, onLogin }) {
   ];
 
   return (
-    <main style={{
-      minHeight: "100dvh",
+    <main className="trial-landing-page" style={{
       background: `radial-gradient(circle at 85% 5%, rgba(59,164,247,.18), transparent 34%), ${palette.bg}`,
       color: palette.text,
       fontFamily: "system-ui, -apple-system, sans-serif",
       padding: "clamp(20px, 5vw, 72px)",
+      paddingBottom: "max(clamp(28px, 5vw, 72px), calc(env(safe-area-inset-bottom) + 28px))",
       boxSizing: "border-box",
     }}>
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
