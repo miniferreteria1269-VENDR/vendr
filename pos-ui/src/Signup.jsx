@@ -386,11 +386,12 @@ export default function Signup({
   };
 
   const shellStyle = {
-    minHeight: "100vh",
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center",
     padding: 16,
+    paddingBottom:
+      "max(28px, calc(env(safe-area-inset-bottom) + 28px))",
     background:
       COLORS.background ||
       COLORS.bg ||
@@ -400,7 +401,7 @@ export default function Signup({
 
   if (verificationToken) {
     return (
-      <div style={shellStyle}>
+      <div className="signup-page" style={shellStyle}>
         <LanguageToggle style={signupLanguageToggle} />
         <div
           style={{
@@ -452,7 +453,7 @@ export default function Signup({
 
   if (verificationState === "sent") {
     return (
-      <div style={shellStyle}>
+      <div className="signup-page" style={shellStyle}>
         <LanguageToggle style={signupLanguageToggle} />
         <div
           style={{
@@ -496,7 +497,7 @@ export default function Signup({
   }
 
   return (
-    <div style={shellStyle}>
+    <div className="signup-page" style={shellStyle}>
         <LanguageToggle style={signupLanguageToggle} />
       <form
         onSubmit={handleSignup}
