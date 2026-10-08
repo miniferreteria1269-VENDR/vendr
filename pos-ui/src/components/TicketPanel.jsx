@@ -8,6 +8,7 @@ import {
 
 import ChangeCalculatorModal from "./ChangeCalculatorModal";
 import TicketRow from "./TicketRow";
+import ContextHelp from "./ContextHelp";
 
 const COLORS = {
   panel: "#1a1d24",
@@ -333,6 +334,7 @@ function TicketPanel({
               }
             />
             <span>{t("change_calculator_toggle")}</span>
+            <ContextHelp topic="changeCalculator" />
           </label>
         )}
         </div>
@@ -553,6 +555,7 @@ function TicketPanel({
                     marginLeft: "auto"
                   }}
                 >
+                  <ContextHelp topic="saleDiscount" />
                   <select
                     className="ticket-discount-type"
                     value={
@@ -714,6 +717,7 @@ function TicketPanel({
                 />
 
                 {t("paid")}
+                <ContextHelp topic="paidIntake" />
               </label>
             </div>
           )}

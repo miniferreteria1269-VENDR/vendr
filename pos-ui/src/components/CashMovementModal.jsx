@@ -18,6 +18,7 @@ import {
   btnSecondary,
   input
 } from "../uiStyles";
+import ContextHelp from "./ContextHelp";
 
 const createClientEventId = prefix =>
   crypto.randomUUID?.() ||
@@ -270,7 +271,7 @@ function CashMovementModal({
           color: COLORS.text
         }}
       >
-        <h3 className="cash-movement-modal-title" style={{ marginTop: 0 }}>
+        <h3 className="cash-movement-modal-title" style={{ marginTop: 0, display: "flex", alignItems: "center" }}>
           {titleKey
             ? t(titleKey)
             : isTransfer
@@ -278,6 +279,7 @@ function CashMovementModal({
               : isStrongboxAdjustment
                 ? t("adjust_strongbox")
                 : t("adjust_register")}
+          <ContextHelp topic={isTransfer ? "expenseVsTransfer" : "cashCorrection"} />
         </h3>
 
         <div className="cash-movement-modal-body">

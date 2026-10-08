@@ -1,4 +1,5 @@
 import { useLang } from "../LanguageContext";
+import ContextHelp from "./ContextHelp";
 
 function TicketRow({
   item,
@@ -241,6 +242,7 @@ function TicketRow({
             >
               {t("edit")}
             </button>
+            <ContextHelp topic="comboTicketEdit" />
           </div>
         )}
       </div>

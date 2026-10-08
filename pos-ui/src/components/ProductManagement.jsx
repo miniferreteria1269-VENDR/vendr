@@ -16,6 +16,7 @@ import {
 import { offlineDb } from "../offlineDb";
 import ProductImporter from "./ProductImporter";
 import ProductComboManagement from "./ProductComboManagement";
+import ContextHelp from "./ContextHelp";
 import {
   COLORS,
   card,
@@ -440,8 +441,9 @@ export function ProductPerformance({ product }) {
   return (
     <div>
       <div style={{ paddingRight: 34, marginBottom: 14 }}>
-        <h3 style={{ margin: 0 }}>
+        <h3 style={{ margin: 0, display: "flex", alignItems: "center" }}>
           {text("product_performance", "Product Performance")}
+          <ContextHelp topic="productVelocity" />
         </h3>
         <div style={{ marginTop: 4, fontWeight: 700 }}>
           {product.name}
@@ -1053,7 +1055,10 @@ function CreateProduct({ storeId, goBack, onCompleted }) {
         onChange={(e) => setPrice(Number(e.target.value))}
       />
 
-      <label>{t("low_stock")}</label>
+      <label style={{ display: "flex", alignItems: "center" }}>
+        {t("low_stock")}
+        <ContextHelp topic="lowStockThreshold" />
+      </label>
       <input
         style={{ ...input, width: "100%", marginBottom: 8 }}
         type="number"
@@ -1072,13 +1077,14 @@ function CreateProduct({ storeId, goBack, onCompleted }) {
       />
 
       <div style={{ marginTop: 10, marginBottom: 10 }}>
-        <label>
+        <label style={{ display: "flex", alignItems: "center" }}>
           <input
             type="checkbox"
             checked={tracksStock}
             onChange={(e) => setTracksStock(e.target.checked)}
           />
           {" "}{t("tracks_stock")}
+          <ContextHelp topic="tracksStock" />
         </label>
       </div>
 
@@ -1376,7 +1382,10 @@ function EditDetails({ storeId, product, onCompleted, onClose }) {
           <label>{t("name")}</label>
           <input style={input} value={name} onChange={e=>setName(e.target.value)}/>
 
-          <label>{t("low_stock")}</label>
+          <label style={{ display: "flex", alignItems: "center" }}>
+            {t("low_stock")}
+            <ContextHelp topic="lowStockThreshold" />
+          </label>
           <input style={input} value={threshold}
             onChange={e=>setThreshold(Number(e.target.value))}/>
 
@@ -1389,10 +1398,11 @@ function EditDetails({ storeId, product, onCompleted, onClose }) {
             placeholder={t("location_code_placeholder")}
           />
 
-          <label>
+          <label style={{ display: "flex", alignItems: "center" }}>
             <input type="checkbox" checked={tracksStock}
               onChange={e=>setTracksStock(e.target.checked)}/>
             {" "}{t("tracks_stock")}
+            <ContextHelp topic="tracksStock" />
           </label>
 
           <button style={btnPrimary} onClick={submit}>
@@ -1464,7 +1474,10 @@ function ArchiveProduct({ storeId, product, onCompleted, onClose }) {
 
   return (
     <div style={{ maxWidth: 400 }}>
-      <h3>{t("archive_product")}</h3>
+      <h3 style={{ display: "flex", alignItems: "center" }}>
+        {t("archive_product")}
+        <ContextHelp topic="archiveProduct" />
+      </h3>
 
       {product ? (
         <div style={resultCard()}>
@@ -1916,8 +1929,9 @@ export function StockAdjustment({
         }}
       >
         <div>
-          <h3 style={{ margin: 0 }}>
+          <h3 style={{ margin: 0, display: "flex", alignItems: "center" }}>
             {t("stock_adjustment")}
+            <ContextHelp topic="stockAdjustment" />
           </h3>
 
           <div

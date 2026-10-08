@@ -24,6 +24,7 @@ import {
   input
 } from "../uiStyles";
 import { useLang } from "../LanguageContext";
+import ContextHelp from "./ContextHelp";
 
 const translateTemplate = (
   t,
@@ -365,8 +366,9 @@ function TransferPanel({
         }}
       >
         <div>
-          <h2 style={{ margin: 0 }}>
+          <h2 style={{ margin: 0, display: "flex", alignItems: "center" }}>
             {t("stock_transfers")}
+            <ContextHelp topic="transfers" />
           </h2>
 
           <div

@@ -6,6 +6,7 @@ import {
 
 import apiClient from "../apiClient";
 import { useLang } from "../LanguageContext";
+import ContextHelp from "./ContextHelp";
 
 const COLORS = {
   panel: "#1a1d24",
@@ -490,11 +491,12 @@ function OrganizationPanel({
         }}
       >
         <div>
-          <h2 style={{ margin: 0 }}>
+          <h2 style={{ margin: 0, display: "flex", alignItems: "center" }}>
             {report?.organization
               ?.organization_name ||
               organization?.organization_name ||
               t("organization_reports")}
+            <ContextHelp topic="organizationAnalytics" />
           </h2>
 
           <div

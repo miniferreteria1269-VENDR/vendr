@@ -3,6 +3,7 @@ import apiClient from "../apiClient";
 import { calculateComboCostRange } from "../comboSales";
 import { useLang } from "../LanguageContext";
 import { COLORS, btnDanger, btnPrimary, btnSecondary, input } from "../uiStyles";
+import ContextHelp from "./ContextHelp";
 
 const makeKey = () =>
   globalThis.crypto?.randomUUID?.() ||
@@ -325,7 +326,10 @@ export default function ProductComboManagement({ storeId, products, onChanged })
       <div className="combo-editor">
         <div className="combo-editor-title">
           <div>
-            <h3>{editingCombo ? t("edit_combo") : t("create_combo")}</h3>
+            <h3 style={{ display: "flex", alignItems: "center" }}>
+              {editingCombo ? t("edit_combo") : t("create_combo")}
+              <ContextHelp topic="comboConfiguration" />
+            </h3>
             <p>{t("combo_editor_help")}</p>
           </div>
           {editingCombo && (
